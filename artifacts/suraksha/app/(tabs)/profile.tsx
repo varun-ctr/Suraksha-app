@@ -1,0 +1,379 @@
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
+import React, { useState } from "react";
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { Icon } from "@/components/Icon";
+import { Card } from "@/components/ui";
+import {
+  ACCENTS,
+  THEME_LABELS,
+  THEME_ORDER,
+  type ThemeKey,
+  withAlpha,
+} from "@/constants/colors";
+import type { IconName } from "@/constants/data";
+import { LANGUAGE_LABELS } from "@/constants/i18n";
+import { useApp } from "@/context/AppContext";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+import { useToast } from "@/context/ToastContext";
+
+function Row({
+  icon,
+  color,
+  label,
+  right,
+  onPress,
+}: {
+  icon: IconName;
+  color: string;
+  label: string;
+  right?: React.ReactNode;
+  onPress?: () => void;
+}) {
+  const { c } = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11 }}
+    >
+      <View
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 10,
+          backgroundColor: withAlpha(color, 0.12),
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Icon name={icon} size={16} color={color} />
+      </View>
+      <Text style={{ flex: 1, fontSize: 13.5, fontFamily: "Inter_600SemiBold", color: c.text }}>{label}</Text>
+      {right ?? <Icon name="chevronRight" size={16} color={c.textFaint} />}
+    </Pressable>
+  );
+}
+
+export default function ProfileScreen() {
+  const { c, themeKey, setThemeKey, isDark, mode, setMode } = useTheme();
+  const { t, lang, setLang, pick } = useI18n();
+  const { profile, settings, setSettings, setProfile } = useApp();
+  const { showToast } = useToast();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+
+  const [editing, setEditing] = useState(false);
+  const [draftName, setDraftName] = useState(profile.name);
+  const [draftPhone, setDraftPhone] = useState(profile.phone);
+
+  const saveProfile = () => {
+    setProfile({ name: draftName.trim() || profile.name, phone: draftPhone.trim() || profile.phone });
+    setEditing(false);
+    showToast(t("common.done"));
+  };
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: c.bg }}
+      contentContainerStyle={{ paddingBottom: 110 }}
+      showsVerticalScrollIndicator={false}
+    >
+      <LinearGradient
+        colors={[c.primary, c.primaryDark]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{ paddingTop: insets.top + 18, paddingHorizontal: 18, paddingBottom: 26 }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+          <View style={styles.bigAvatar}>
+            <Text style={{ color: "#fff", fontSize: 26, fontFamily: "Inter_700Bold" }}>
+              {profile.name.charAt(0)}
+            </Text>
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: "#fff", fontSize: 20, fontFamily: "Inter_700Bold" }} numberOfLines={1}>
+              {profile.name}
+            </Text>
+            <Text style={{ color: "rgba(255,255,255,0.85)", fontSize: 12.5, marginTop: 1 }}>
+              {profile.phone}
+            </Text>
+            {profile.premium && (
+              <View style={styles.premiumBadge}>
+                <Icon name="crown" size={12} color="#FFD66B" />
+                <Text style={{ color: "#FFD66B", fontSize: 11, fontFamily: "Inter_700Bold" }}>
+                  {t("profile.premiumMember")}
+                </Text>
+              </View>
+            )}
+          </View>
+          <Pressable
+            onPress={() => {
+              setDraftName(profile.name);
+              setDraftPhone(profile.phone);
+              setEditing(true);
+            }}
+            hitSlop={10}
+            style={styles.editBtn}
+          >
+            <Icon name="edit" size={16} color="#fff" />
+          </Pressable>
+        </View>
+      </LinearGradient>
+
+      <View style={{ paddingHorizontal: 18, marginTop: 16 }}>
+        <Text style={styles.section}>{t("profile.appearance")}</Text>
+        <Card style={{ marginBottom: 16 }}>
+          <Text style={{ fontSize: 12.5, fontFamily: "Inter_600SemiBold", color: c.textMuted, marginBottom: 12 }}>
+            {t("profile.colorTheme")}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 12, marginBottom: 6 }}>
+            {THEME_ORDER.map((k: ThemeKey) => {
+              const active = themeKey === k;
+              return (
+                <Pressable key={k} onPress={() => setThemeKey(k)} style={{ alignItems: "center", gap: 6 }}>
+                  <View
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 23,
+                      backgroundColor: ACCENTS[k].primary,
+                      borderWidth: active ? 3 : 0,
+                      borderColor: c.text,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {active && <Icon name="check" size={18} color="#fff" />}
+                  </View>
+                  <Text style={{ fontSize: 11, color: c.textMuted, fontFamily: "Inter_500Medium" }}>
+                    {pick(THEME_LABELS[k])}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row
+            icon={isDark ? "moon" : "sun"}
+            color={c.primary}
+            label={t("profile.darkMode")}
+            right={
+              <Switch
+                value={isDark}
+                onValueChange={(v) => setMode(v ? "dark" : "light")}
+                trackColor={{ true: c.primary, false: c.border }}
+                thumbColor="#fff"
+              />
+            }
+          />
+        </Card>
+
+        <Text style={styles.section}>{t("profile.settings")}</Text>
+        <Card style={{ marginBottom: 16, paddingVertical: 6 }}>
+          <Row
+            icon="bell"
+            color={c.accent}
+            label={t("profile.notifications")}
+            right={
+              <Switch
+                value={settings.notifications}
+                onValueChange={(v) => setSettings({ notifications: v })}
+                trackColor={{ true: c.primary, false: c.border }}
+                thumbColor="#fff"
+              />
+            }
+          />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row
+            icon="mapPin"
+            color={c.success}
+            label={t("profile.bgLocation")}
+            right={
+              <Switch
+                value={settings.bgLocation}
+                onValueChange={(v) => setSettings({ bgLocation: v })}
+                trackColor={{ true: c.primary, false: c.border }}
+                thumbColor="#fff"
+              />
+            }
+          />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11 }}>
+            <View
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                backgroundColor: withAlpha(c.police, 0.12),
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Icon name="globe" size={16} color={c.police} />
+            </View>
+            <Text style={{ flex: 1, fontSize: 13.5, fontFamily: "Inter_600SemiBold", color: c.text }}>
+              {t("profile.language")}
+            </Text>
+            <View style={[styles.segment, { backgroundColor: c.cardAlt }]}>
+              {(["en", "hi"] as const).map((l) => {
+                const active = lang === l;
+                return (
+                  <Pressable
+                    key={l}
+                    onPress={() => setLang(l)}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 8,
+                      backgroundColor: active ? c.primary : "transparent",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontFamily: "Inter_700Bold",
+                        color: active ? "#fff" : c.textMuted,
+                      }}
+                    >
+                      {LANGUAGE_LABELS[l]}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </Card>
+
+        <Pressable onPress={() => router.push("/premium")}>
+          <LinearGradient
+            colors={[c.accent, c.accentDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.premiumCard}
+          >
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+                <Icon name="crown" size={16} color="#fff" />
+                <Text style={{ color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" }}>
+                  {t("profile.premium")}
+                </Text>
+              </View>
+              <Text style={{ color: "rgba(255,255,255,0.85)", fontSize: 11.5, marginTop: 3 }}>
+                {t("premium.sub")}
+              </Text>
+            </View>
+            <Icon name="chevronRight" size={18} color="#fff" />
+          </LinearGradient>
+        </Pressable>
+
+        <Text style={[styles.section, { marginTop: 16 }]}>{t("profile.account")}</Text>
+        <Card style={{ paddingVertical: 6 }}>
+          <Row icon="lock" color={c.police} label={t("profile.privacy")} onPress={() => showToast(t("report.anonymous"))} />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row icon="info" color={c.primary} label={t("profile.about")} onPress={() => showToast("Suraksha v1.0")} />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row
+            icon="helpCircle"
+            color={c.success}
+            label={t("profile.support")}
+            onPress={() => router.push("/helpline")}
+          />
+        </Card>
+      </View>
+
+      <Modal visible={editing} transparent animationType="fade" onRequestClose={() => setEditing(false)}>
+        <Pressable style={[styles.modalBg, { backgroundColor: c.overlay }]} onPress={() => setEditing(false)}>
+          <Pressable style={[styles.modalCard, { backgroundColor: c.card }]} onPress={() => {}}>
+            <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 14 }}>
+              {t("profile.editName")}
+            </Text>
+            <Text style={[styles.label, { color: c.textMuted }]}>{t("common.name")}</Text>
+            <TextInput
+              value={draftName}
+              onChangeText={setDraftName}
+              style={[styles.input, { backgroundColor: c.cardAlt, color: c.text, borderColor: c.border }]}
+              placeholderTextColor={c.textFaint}
+            />
+            <Text style={[styles.label, { color: c.textMuted, marginTop: 10 }]}>{t("contacts.phone")}</Text>
+            <TextInput
+              value={draftPhone}
+              onChangeText={setDraftPhone}
+              keyboardType="phone-pad"
+              style={[styles.input, { backgroundColor: c.cardAlt, color: c.text, borderColor: c.border }]}
+              placeholderTextColor={c.textFaint}
+            />
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 18 }}>
+              <Pressable
+                onPress={() => setEditing(false)}
+                style={[styles.modalBtn, { backgroundColor: c.cardAlt }]}
+              >
+                <Text style={{ color: c.text, fontFamily: "Inter_700Bold", fontSize: 13.5 }}>{t("common.cancel")}</Text>
+              </Pressable>
+              <Pressable onPress={saveProfile} style={[styles.modalBtn, { backgroundColor: c.primary }]}>
+                <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>{t("common.save")}</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  bigAvatar: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  premiumBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(0,0,0,0.2)",
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 20,
+    marginTop: 6,
+  },
+  editBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  section: { fontSize: 13, fontFamily: "Inter_700Bold", marginBottom: 8, color: "#8A7FA6" },
+  divider: { height: StyleSheet.hairlineWidth, marginVertical: 2 },
+  segment: { flexDirection: "row", borderRadius: 10, padding: 3 },
+  premiumCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 16,
+    padding: 16,
+  },
+  modalBg: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 28 },
+  modalCard: { width: "100%", borderRadius: 18, padding: 20 },
+  label: { fontSize: 12, fontFamily: "Inter_600SemiBold", marginBottom: 6 },
+  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14 },
+  modalBtn: { flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 12 },
+});

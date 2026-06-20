@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: sakhi
+    description: Sakhi AI safety assistant
 paths:
   /healthz:
     get:
@@ -24,6 +26,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /sakhi/chat:
+    post:
+      operationId: sendSakhiMessage
+      tags: [sakhi]
+      summary: Chat with Sakhi
+      description: Sends the conversation history to the Sakhi AI safety assistant and returns the assistant reply.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SakhiChatRequest"
+      responses:
+        "200":
+          description: Assistant reply
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SakhiChatResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +54,38 @@ components:
           type: string
       required:
         - status
+    SakhiChatMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+          minLength: 1
+          maxLength: 4000
+      required:
+        - role
+        - content
+    SakhiChatRequest:
+      type: object
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 30
+          items:
+            $ref: "#/components/schemas/SakhiChatMessage"
+        language:
+          type: string
+          enum: [en, hi]
+      required:
+        - messages
+    SakhiChatResponse:
+      type: object
+      properties:
+        reply:
+          type: string
+      required:
+        - reply
 
