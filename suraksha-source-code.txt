@@ -1,0 +1,5294 @@
+============================================================
+ SURAKSHA — Women's Safety & Empowerment App (source code)
+ Exported: Sat Jun 20 11:58:13 AM UTC 2026
+============================================================
+
+
+########################################################################
+# FILE: artifacts/suraksha/app/contacts.tsx
+########################################################################
+
+import * as Contacts from "expo-contacts";
+import React, { useState } from "react";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+
+import { BackHeader } from "@/components/Headers";
+import { Icon } from "@/components/Icon";
+import { Avatar } from "@/components/ui";
+import { withAlpha } from "@/constants/colors";
+import { useApp } from "@/context/AppContext";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+import { useToast } from "@/context/ToastContext";
+import { callNumber } from "@/lib/native";
+
+export default function ContactsScreen() {
+  const { c } = useTheme();
+  const { t } = useI18n();
+  const { contacts, addContact, addContacts, deleteContact } = useApp();
+  const { showToast } = useToast();
+
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [importing, setImporting] = useState(false);
+
+  const onAdd = () => {
+    if (!name.trim() || !phone.trim()) return;
+    addContact(name, phone);
+    setName("");
+    setPhone("");
+    showToast(t("contacts.added"));
+  };
+
+  const onImport = async () => {
+    setImporting(true);
+    try {
+      const picked = await Contacts.presentContactPickerAsync();
+      if (!picked) return;
+      const phoneNumber = picked.phoneNumbers?.[0]?.number;
+      if (!phoneNumber) {
+        showToast(t("contacts.import"));
+        return;
+      }
+      const added = addContacts([{ name: picked.name ?? "Contact", phone: phoneNumber }]);
+      showToast(added > 0 ? t("contacts.added") : t("contacts.import"));
+    } catch {
+      showToast(t("contacts.import"));
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <BackHeader title={t("contacts.title")} subtitle={t("contacts.sub")} />
+      <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
+        <View style={[styles.infoBox, { backgroundColor: withAlpha(c.primary, 0.08), borderColor: withAlpha(c.primary, 0.2) }]}>
+          <Icon name="info" size={15} color={c.primary} />
+          <Text style={{ flex: 1, fontSize: 11.5, color: c.text, lineHeight: 17 }}>{t("contacts.info")}</Text>
+        </View>
+
+        <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
+          <Text style={{ fontSize: 13.5, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 12 }}>
+            {t("contacts.addNew")}
+          </Text>
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            placeholder={t("contacts.fullName")}
+            placeholderTextColor={c.textFaint}
+            style={[styles.input, { backgroundColor: c.cardAlt, color: c.text, borderColor: c.border }]}
+          />
+          <TextInput
+            value={phone}
+            onChangeText={setPhone}
+            placeholder={t("contacts.phone")}
+            placeholderTextColor={c.textFaint}
+            keyboardType="phone-pad"
+            style={[styles.input, { backgroundColor: c.cardAlt, color: c.text, borderColor: c.border, marginTop: 10 }]}
+          />
+          <Pressable
+            onPress={onAdd}
+            disabled={!name.trim() || !phone.trim()}
+            style={[
+              styles.addBtn,
+              { backgroundColor: name.trim() && phone.trim() ? c.primary : c.border },
+            ]}
+          >
+            <Icon name="plus" size={16} color="#fff" />
+            <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>{t("contacts.add")}</Text>
+          </Pressable>
+          <Pressable
+            onPress={onImport}
+            disabled={importing}
+            style={[styles.importBtn, { borderColor: c.primary }]}
+          >
+            <Icon name="users" size={15} color={c.primary} />
+            <Text style={{ color: c.primary, fontFamily: "Inter_700Bold", fontSize: 13 }}>{t("contacts.import")}</Text>
+          </Pressable>
+        </View>
+
+        {contacts.length === 0 ? (
+          <Text style={{ textAlign: "center", color: c.textMuted, fontSize: 13, marginTop: 26 }}>
+            {t("contacts.empty")}
+          </Text>
+        ) : (
+          contacts.map((contact) => (
+            <View key={contact.id} style={[styles.row, { backgroundColor: c.card, borderColor: c.border }]}>
+              <Avatar label={contact.name} size={42} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text }} numberOfLines={1}>
+                  {contact.name}
+                </Text>
+                <Text style={{ fontSize: 12, color: c.textMuted }}>{contact.phone}</Text>
+              </View>
+              <Pressable
+                onPress={() => {
+                  showToast(`${t("common.calling")} ${contact.name}…`);
+                  callNumber(contact.phone);
+                }}
+                style={[styles.iconBtn, { backgroundColor: c.successSoft }]}
+              >
+                <Icon name="phone" size={16} color={c.success} />
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  deleteContact(contact.id);
+                  showToast(t("contacts.removed"));
+                }}
+                style={[styles.iconBtn, { backgroundColor: c.dangerSoft }]}
+              >
+                <Icon name="trash" size={16} color={c.danger} />
+              </Pressable>
+            </View>
+          ))
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  infoBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  card: { borderWidth: 1, borderRadius: 16, padding: 16, marginBottom: 18 },
+  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14 },
+  addBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginTop: 12,
+  },
+  importBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    paddingVertical: 11,
+    marginTop: 10,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+  },
+  iconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+});
+
+
+########################################################################
+# FILE: artifacts/suraksha/app/fakecall.tsx
+########################################################################
+
+import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
+import React, { useEffect, useRef, useState } from "react";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { BackHeader } from "@/components/Headers";
+import { Icon } from "@/components/Icon";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+import { useToast } from "@/context/ToastContext";
+import { fmtClock } from "@/lib/format";
+
+const DELAYS = [5, 10, 30];
+
+export default function FakeCallScreen() {
+  const { c } = useTheme();
+  const { t } = useI18n();
+  const { showToast } = useToast();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+
+  const [name, setName] = useState("Mom");
+  const [delay, setDelay] = useState(10);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [phase, setPhase] = useState<"form" | "ringing" | "connected">("form");
+  const [callSeconds, setCallSeconds] = useState(0);
+
+  const countdownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const ringTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const callTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearTimers = () => {
+    [countdownTimer, ringTimer, callTimer].forEach((ref) => {
+      if (ref.current) {
+        clearInterval(ref.current);
+        ref.current = null;
+      }
+    });
+  };
+
+  useEffect(() => () => clearTimers(), []);
+
+  const schedule = () => {
+    setCountdown(delay);
+    showToast(t("fake.scheduled"));
+    countdownTimer.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev === null) return null;
+        if (prev <= 1) {
+          if (countdownTimer.current) clearInterval(countdownTimer.current);
+          countdownTimer.current = null;
+          startRinging();
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const cancelSchedule = () => {
+    clearTimers();
+    setCountdown(null);
+    showToast(t("common.cancel"));
+  };
+
+  const startRinging = () => {
+    setPhase("ringing");
+    ringTimer.current = setInterval(() => {
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    }, 1500);
+  };
+
+  const accept = () => {
+    if (ringTimer.current) clearInterval(ringTimer.current);
+    ringTimer.current = null;
+    setPhase("connected");
+    setCallSeconds(0);
+    callTimer.current = setInterval(() => setCallSeconds((s) => s + 1), 1000);
+  };
+
+  const hangUp = () => {
+    clearTimers();
+    setPhase("form");
+    setCountdown(null);
+    setCallSeconds(0);
+  };
+
+  if (phase === "ringing" || phase === "connected") {
+    return (
+      <LinearGradient
+        colors={["#1A1430", "#0C0818"]}
+        style={{ flex: 1, paddingTop: insets.top + 50, paddingBottom: insets.bottom + 40, alignItems: "center" }}
+      >
+        <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 14, marginBottom: 6 }}>
+          {phase === "ringing" ? t("fake.incoming") : fmtClock(callSeconds)}
+        </Text>
+        <View style={styles.callAvatar}>
+          <Text style={{ color: "#fff", fontSize: 44, fontFamily: "Inter_700Bold" }}>{name.charAt(0) || "?"}</Text>
+        </View>
+        <Text style={{ color: "#fff", fontSize: 28, fontFamily: "Inter_700Bold", marginTop: 24 }}>{name}</Text>
+        <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 14, marginTop: 4 }}>mobile</Text>
+
+        <View style={{ flex: 1 }} />
+
+        {phase === "ringing" ? (
+          <View style={{ flexDirection: "row", gap: 70 }}>
+            <View style={{ alignItems: "center", gap: 10 }}>
+              <Pressable onPress={hangUp} style={[styles.callBtn, { backgroundColor: "#E5484D" }]}>
+                <Icon name="phone" size={26} color="#fff" />
+              </Pressable>
+              <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 12.5 }}>{t("fake.decline")}</Text>
+            </View>
+            <View style={{ alignItems: "center", gap: 10 }}>
+              <Pressable onPress={accept} style={[styles.callBtn, { backgroundColor: "#30A46C" }]}>
+                <Icon name="phoneCall" size={26} color="#fff" />
+              </Pressable>
+              <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 12.5 }}>{t("fake.accept")}</Text>
+            </View>
+          </View>
+        ) : (
+          <View style={{ alignItems: "center", gap: 10 }}>
+            <Pressable onPress={hangUp} style={[styles.callBtn, { backgroundColor: "#E5484D" }]}>
+              <Icon name="phone" size={26} color="#fff" />
+            </Pressable>
+            <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 12.5 }}>{t("fake.decline")}</Text>
+          </View>
+        )}
+      </LinearGradient>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <BackHeader title={t("fake.title")} subtitle={t("fake.sub")} />
+      <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+        <View style={[styles.illus, { backgroundColor: c.card, borderColor: c.border }]}>
+          <View style={[styles.illusIcon, { backgroundColor: c.primary }]}>
+            <Icon name="phoneCall" size={30} color="#fff" />
+          </View>
+          <Text style={{ fontSize: 13, color: c.textMuted, textAlign: "center", lineHeight: 19, marginTop: 12 }}>
+            {t("fake.sub")}
+          </Text>
+        </View>
+
+        {countdown !== null ? (
+          <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border, alignItems: "center" }]}>
+            <Text style={{ fontSize: 13, color: c.textMuted }}>{t("fake.ringIn")}</Text>
+            <Text style={{ fontSize: 44, fontFamily: "Inter_700Bold", color: c.primary, marginVertical: 6 }}>
+              {countdown}
+            </Text>
+            <Text style={{ fontSize: 13, color: c.textMuted, marginBottom: 16 }}>{t("fake.seconds")}</Text>
+            <Pressable onPress={cancelSchedule} style={[styles.scheduleBtn, { backgroundColor: c.dangerSoft }]}>
+              <Text style={{ color: c.danger, fontFamily: "Inter_700Bold", fontSize: 13.5 }}>{t("fake.cancel")}</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
+            <Text style={[styles.label, { color: c.textMuted }]}>{t("fake.callerName")}</Text>
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              placeholder={t("fake.callerName")}
+              placeholderTextColor={c.textFaint}
+              style={[styles.input, { backgroundColor: c.cardAlt, color: c.text, borderColor: c.border }]}
+            />
+            <Text style={[styles.label, { color: c.textMuted, marginTop: 14 }]}>{t("fake.ringIn")}</Text>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              {DELAYS.map((d) => {
+                const active = delay === d;
+                return (
+                  <Pressable
+                    key={d}
+                    onPress={() => setDelay(d)}
+                    style={{
+                      flex: 1,
+                      alignItems: "center",
+                      paddingVertical: 11,
+                      borderRadius: 10,
+                      backgroundColor: active ? c.primary : c.cardAlt,
+                    }}
+                  >
+                    <Text style={{ fontSize: 13.5, fontFamily: "Inter_700Bold", color: active ? "#fff" : c.primary }}>
+                      {d}s
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Pressable onPress={schedule} style={[styles.scheduleBtn, { backgroundColor: c.primary, marginTop: 18 }]}>
+              <Icon name="phoneCall" size={16} color="#fff" />
+              <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>{t("fake.schedule")}</Text>
+            </Pressable>
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  illus: { borderWidth: 1, borderRadius: 16, padding: 20, alignItems: "center", marginBottom: 16 },
+  illusIcon: { width: 64, height: 64, borderRadius: 32, alignItems: "center", justifyContent: "center" },
+  card: { borderWidth: 1, borderRadius: 16, padding: 16 },
+  label: { fontSize: 12, fontFamily: "Inter_600SemiBold", marginBottom: 8 },
+  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14 },
+  scheduleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 18,
+  },
+  callAvatar: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  callBtn: { width: 68, height: 68, borderRadius: 34, alignItems: "center", justifyContent: "center" },
+});
+
+
+########################################################################
+# FILE: artifacts/suraksha/app/helpline.tsx
+########################################################################
+
+import React from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+
+import { BackHeader } from "@/components/Headers";
+import { Icon } from "@/components/Icon";
+import { withAlpha } from "@/constants/colors";
+import { HELPLINES } from "@/constants/data";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+import { useToast } from "@/context/ToastContext";
+import { callNumber } from "@/lib/native";
+
+export default function HelplineScreen() {
+  const { c } = useTheme();
+  const { t, pick } = useI18n();
+  const { showToast } = useToast();
+
+  return (
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <BackHeader title={t("helpline.title")} subtitle={t("helpline.sub")} />
+      <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+        {HELPLINES.map((h) => {
+          const color = h.color(c);
+          return (
+            <Pressable
+              key={h.number}
+              onPress={() => {
+                showToast(`${t("common.calling")} ${h.number}…`);
+                callNumber(h.number);
+              }}
+              style={[styles.row, { backgroundColor: c.card, borderColor: c.border }]}
+            >
+              <View style={[styles.badge, { backgroundColor: withAlpha(color, 0.12) }]}>
+                <Icon name="phone" size={20} color={color} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 14.5, fontFamily: "Inter_700Bold", color: c.text }}>
+                  {pick({ en: h.name, hi: h.hi })}
+                </Text>
+                <Text style={{ fontSize: 11.5, color: c.textMuted, marginTop: 1 }} numberOfLines={2}>
+                  {pick({ en: h.desc, hi: h.descHi })}
+                </Text>
+              </View>
+              <View style={{ alignItems: "flex-end" }}>
+                <Text style={{ fontSize: 18, fontFamily: "Inter_700Bold", color }}>{h.number}</Text>
+                <View style={[styles.callPill, { backgroundColor: color }]}>
+                  <Icon name="phoneCall" size={11} color="#fff" />
+                  <Text style={{ color: "#fff", fontSize: 10.5, fontFamily: "Inter_700Bold" }}>
+                    {t("map.callNow")}
+                  </Text>
+                </View>
+              </View>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
+  },
+  badge: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center" },
+  callPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 12,
+    marginTop: 4,
+  },
+});
+
+
+########################################################################
+# FILE: artifacts/suraksha/app/_layout.tsx
+########################################################################
+
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  useFonts,
+} from "@expo-google-fonts/inter";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { setBaseUrl } from "@workspace/api-client-react";
+import { Stack, useRouter, useSegments } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import React, { useEffect } from "react";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { AppProvider, useApp } from "@/context/AppContext";
+import { LanguageProvider, useI18n } from "@/context/LanguageContext";
+import { SafetyProvider } from "@/context/SafetyContext";
+import { ThemeProvider, useTheme } from "@/context/ThemeContext";
+import { ToastProvider } from "@/context/ToastContext";
+
+// Prevent the splash screen from auto-hiding before asset loading is complete.
+SplashScreen.preventAutoHideAsync();
+
+const domain = process.env.EXPO_PUBLIC_DOMAIN;
+if (domain) {
+  setBaseUrl(`https://${domain}`);
+}
+
+const queryClient = new QueryClient();
+
+function RootLayoutNav() {
+  return (
+    <Stack screenOptions={{ headerShown: false, headerBackTitle: "Back" }}>
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="onboarding" />
+      <Stack.Screen name="contacts" />
+      <Stack.Screen name="helpline" />
+      <Stack.Screen name="fakecall" />
+      <Stack.Screen name="report" />
+      <Stack.Screen name="premium" />
+    </Stack>
+  );
+}
+
+function Gate() {
+  const { ready: appReady, onboarded } = useApp();
+  const { ready: themeReady } = useTheme();
+  const { ready: langReady } = useI18n();
+  const router = useRouter();
+  const segments = useSegments();
+
+  const allReady = appReady && themeReady && langReady;
+
+  useEffect(() => {
+    if (allReady) SplashScreen.hideAsync();
+  }, [allReady]);
+
+  useEffect(() => {
+    if (!allReady) return;
+    const inOnboarding = segments[0] === "onboarding";
+    if (!onboarded && !inOnboarding) {
+      router.replace("/onboarding");
+    } else if (onboarded && inOnboarding) {
+      router.replace("/(tabs)");
+    }
+  }, [allReady, onboarded, segments, router]);
+
+  if (!allReady) return null;
+
+  return <RootLayoutNav />;
+}
+
+export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+  });
+
+  if (!fontsLoaded && !fontError) return null;
+
+  return (
+    <SafeAreaProvider>
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <KeyboardProvider>
+              <ThemeProvider>
+                <LanguageProvider>
+                  <AppProvider>
+                    <SafetyProvider>
+                      <ToastProvider>
+                        <Gate />
+                      </ToastProvider>
+                    </SafetyProvider>
+                  </AppProvider>
+                </LanguageProvider>
+              </ThemeProvider>
+            </KeyboardProvider>
+          </GestureHandlerRootView>
+        </QueryClientProvider>
+      </ErrorBoundary>
+    </SafeAreaProvider>
+  );
+}
+
+
+########################################################################
+# FILE: artifacts/suraksha/app/+not-found.tsx
+########################################################################
+
+import { Link, Stack } from "expo-router";
+import { StyleSheet, Text, View } from "react-native";
+
+import { useColors } from "@/hooks/useColors";
+
+export default function NotFoundScreen() {
+  const colors = useColors();
+
+  return (
+    <>
+      <Stack.Screen options={{ title: "Oops!" }} />
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <Text style={[styles.title, { color: colors.foreground }]}>
+          This screen doesn&apos;t exist.
+        </Text>
+
+        <Link href="/" style={styles.link}>
+          <Text style={[styles.linkText, { color: colors.primary }]}>
+            Go to home screen!
+          </Text>
+        </Link>
+      </View>
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "bold",
+  },
+  link: {
+    marginTop: 15,
+    paddingVertical: 15,
+  },
+  linkText: {
+    fontSize: 14,
+  },
+});
+
+
+########################################################################
+# FILE: artifacts/suraksha/app/onboarding.tsx
+########################################################################
+
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
+import React, { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { Icon } from "@/components/Icon";
+import type { IconName } from "@/constants/data";
+import { LANGUAGE_LABELS, type Language } from "@/constants/i18n";
+import { useApp } from "@/context/AppContext";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+
+const SLIDES: { icon: IconName; titleKey: string; bodyKey: string }[] = [
+  { icon: "heart", titleKey: "onb.title1", bodyKey: "onb.body1" },
+  { icon: "mapPin", titleKey: "onb.title2", bodyKey: "onb.body2" },
+  { icon: "book", titleKey: "onb.title3", bodyKey: "onb.body3" },
+];
+
+export default function Onboarding() {
+  const { c } = useTheme();
+  const { t, lang, setLang } = useI18n();
+  const { completeOnboarding } = useApp();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+
+  // step 0 = language picker, steps 1..3 = feature slides
+  const [step, setStep] = useState(0);
+
+  const finish = () => {
+    completeOnboarding();
+    router.replace("/(tabs)");
+  };
+
+  return (
+    <LinearGradient
+      colors={[c.primary, c.primaryDark]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={{ flex: 1, paddingTop: insets.top + 16, paddingBottom: insets.bottom + 20, paddingHorizontal: 26 }}
+    >
+      <View style={{ flexDirection: "row", justifyContent: "flex-end", height: 28 }}>
+        {step > 0 && step < SLIDES.length && (
+          <Pressable onPress={finish} hitSlop={10}>
+            <Text style={{ color: "rgba(255,255,255,0.85)", fontSize: 14, fontFamily: "Inter_600SemiBold" }}>
+              {t("onb.skip")}
+            </Text>
+          </Pressable>
+        )}
+      </View>
+
+      {step === 0 ? (
+        <View style={{ flex: 1, justifyContent: "center" }}>
+          <View style={styles.logoCircle}>
+            <Icon name="shield" size={42} color="#fff" />
+          </View>
+          <Text style={styles.brand}>Suraksha</Text>
+          <Text style={styles.brandSub}>सुरक्षा</Text>
+          <Text style={[styles.title, { marginTop: 32 }]}>{t("onb.chooseLanguage")}</Text>
+          <Text style={styles.body}>{t("onb.langSub")}</Text>
+          <View style={{ gap: 12, marginTop: 24 }}>
+            {(["en", "hi"] as Language[]).map((l) => {
+              const active = lang === l;
+              return (
+                <Pressable
+                  key={l}
+                  onPress={() => setLang(l)}
+                  style={[
+                    styles.langOption,
+                    {
+                      backgroundColor: active ? "#fff" : "rgba(255,255,255,0.12)",
+                      borderColor: active ? "#fff" : "rgba(255,255,255,0.25)",
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      fontSize: 16,
+                      fontFamily: "Inter_700Bold",
+                      color: active ? c.primary : "#fff",
+                    }}
+                  >
+                    {LANGUAGE_LABELS[l]}
+                  </Text>
+                  {active && <Icon name="check" size={18} color={c.primary} />}
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : (
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+          <View style={styles.slideIcon}>
+            <Icon name={SLIDES[step - 1].icon} size={52} color="#fff" />
+          </View>
+          <Text style={[styles.title, { textAlign: "center", marginTop: 36 }]}>
+            {t(SLIDES[step - 1].titleKey)}
+          </Text>
+          <Text style={[styles.body, { textAlign: "center", marginTop: 12 }]}>
+            {t(SLIDES[step - 1].bodyKey)}
+          </Text>
+        </View>
+      )}
+
+      <View style={{ flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 22 }}>
+        {[0, 1, 2, 3].map((i) => (
+          <View
+            key={i}
+            style={{
+              width: step === i ? 22 : 8,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: step === i ? "#fff" : "rgba(255,255,255,0.4)",
+            }}
+          />
+        ))}
+      </View>
+
+      <Pressable
+        onPress={() => (step < SLIDES.length ? setStep((s) => s + 1) : finish())}
+        style={styles.cta}
+      >
+        <Text style={{ color: c.primary, fontSize: 15.5, fontFamily: "Inter_700Bold" }}>
+          {step === 0 ? t("onb.next") : step < SLIDES.length ? t("onb.next") : t("onb.getStarted")}
+        </Text>
+      </Pressable>
+    </LinearGradient>
+  );
+}
+
+const styles = StyleSheet.create({
+  logoCircle: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+  },
+  brand: { color: "#fff", fontSize: 30, fontFamily: "Inter_700Bold", textAlign: "center", marginTop: 16 },
+  brandSub: { color: "rgba(255,255,255,0.85)", fontSize: 18, textAlign: "center", marginTop: 2 },
+  slideIcon: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  title: { color: "#fff", fontSize: 23, fontFamily: "Inter_700Bold" },
+  body: { color: "rgba(255,255,255,0.85)", fontSize: 14.5, lineHeight: 22, marginTop: 6 },
+  langOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1.5,
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+  },
+  cta: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    paddingVertical: 15,
+    alignItems: "center",
+  },
+});
+
+
+########################################################################
+# FILE: artifacts/suraksha/app/premium.tsx
+########################################################################
+
+import { LinearGradient } from "expo-linear-gradient";
+import React, { useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { BackHeader } from "@/components/Headers";
+import { Icon } from "@/components/Icon";
+import type { IconName } from "@/constants/data";
+import { useApp } from "@/context/AppContext";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+import { useToast } from "@/context/ToastContext";
+
+const PLANS = [
+  { key: "monthly", en: "Monthly", hi: "मासिक", price: "₹99", per: { en: "/month", hi: "/माह" } },
+  { key: "yearly", en: "Yearly", hi: "वार्षिक", price: "₹799", per: { en: "/year", hi: "/वर्ष" }, badge: { en: "Save 33%", hi: "33% बचत" } },
+  { key: "family", en: "Family", hi: "परिवार", price: "₹1299", per: { en: "/year · 5 members", hi: "/वर्ष · 5 सदस्य" } },
+];
+
+const FEATURES: { icon: IconName; en: string; hi: string }[] = [
+  { icon: "navigation", en: "Unlimited journey sharing", hi: "असीमित यात्रा साझाकरण" },
+  { icon: "users", en: "Up to 10 trusted contacts", hi: "10 तक विश्वसनीय संपर्क" },
+  { icon: "bell", en: "Priority SOS alerts", hi: "प्राथमिकता SOS अलर्ट" },
+  { icon: "message", en: "Unlimited Sakhi conversations", hi: "असीमित सखी बातचीत" },
+  { icon: "shield", en: "Live safety monitoring", hi: "लाइव सुरक्षा निगरानी" },
+];
+
+export default function PremiumScreen() {
+  const { c } = useTheme();
+  const { t, pick } = useI18n();
+  const { profile } = useApp();
+  const { showToast } = useToast();
+  const insets = useSafeAreaInsets();
+
+  const [selected, setSelected] = useState("yearly");
+
+  return (
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <BackHeader title={t("premium.title")} />
+      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 30 }} showsVerticalScrollIndicator={false}>
+        <LinearGradient
+          colors={[c.accent, c.accentDark]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ padding: 24, alignItems: "center" }}
+        >
+          <View style={styles.crown}>
+            <Icon name="crown" size={32} color="#fff" />
+          </View>
+          <Text style={{ color: "#fff", fontSize: 22, fontFamily: "Inter_700Bold", marginTop: 12 }}>
+            {t("premium.title")}
+          </Text>
+          <Text style={{ color: "rgba(255,255,255,0.9)", fontSize: 13, textAlign: "center", marginTop: 6 }}>
+            {t("premium.sub")}
+          </Text>
+          {profile.premium && (
+            <View style={styles.activeBadge}>
+              <Icon name="check" size={13} color="#fff" />
+              <Text style={{ color: "#fff", fontSize: 12, fontFamily: "Inter_700Bold" }}>
+                {t("premium.currentPlan")}
+              </Text>
+            </View>
+          )}
+        </LinearGradient>
+
+        <View style={{ padding: 18 }}>
+          <View style={[styles.featureCard, { backgroundColor: c.card, borderColor: c.border }]}>
+            {FEATURES.map((f, i) => (
+              <View
+                key={f.en}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                  paddingVertical: 10,
+                  borderTopWidth: i === 0 ? 0 : StyleSheet.hairlineWidth,
+                  borderTopColor: c.border,
+                }}
+              >
+                <View style={[styles.featureIcon, { backgroundColor: c.successSoft }]}>
+                  <Icon name={f.icon} size={15} color={c.success} />
+                </View>
+                <Text style={{ flex: 1, fontSize: 13, color: c.text, fontFamily: "Inter_500Medium" }}>{pick(f)}</Text>
+                <Icon name="check" size={16} color={c.success} />
+              </View>
+            ))}
+          </View>
+
+          <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text, marginTop: 22, marginBottom: 12 }}>
+            {t("premium.choosePlan")}
+          </Text>
+
+          {PLANS.map((p) => {
+            const active = selected === p.key;
+            return (
+              <Pressable
+                key={p.key}
+                onPress={() => setSelected(p.key)}
+                style={[
+                  styles.plan,
+                  {
+                    backgroundColor: c.card,
+                    borderColor: active ? c.accent : c.border,
+                    borderWidth: active ? 2 : 1,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.radio,
+                    { borderColor: active ? c.accent : c.border },
+                  ]}
+                >
+                  {active && <View style={[styles.radioDot, { backgroundColor: c.accent }]} />}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={{ fontSize: 15, fontFamily: "Inter_700Bold", color: c.text }}>{pick(p)}</Text>
+                    {p.badge && (
+                      <View style={[styles.saveBadge, { backgroundColor: c.successSoft }]}>
+                        <Text style={{ fontSize: 10.5, fontFamily: "Inter_700Bold", color: c.success }}>
+                          {pick(p.badge)}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+                <View style={{ alignItems: "flex-end" }}>
+                  <Text style={{ fontSize: 17, fontFamily: "Inter_700Bold", color: c.accent }}>{p.price}</Text>
+                  <Text style={{ fontSize: 10.5, color: c.textMuted }}>{pick(p.per)}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+
+          <Pressable onPress={() => showToast(t("premium.note"))} style={{ marginTop: 18 }}>
+            <LinearGradient
+              colors={[c.accent, c.accentDark]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.subscribeBtn}
+            >
+              <Icon name="crown" size={16} color="#fff" />
+              <Text style={{ color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" }}>{t("premium.subscribe")}</Text>
+            </LinearGradient>
+          </Pressable>
+          <Text style={{ fontSize: 11, color: c.textFaint, textAlign: "center", marginTop: 12 }}>
+            {t("premium.note")}
+          </Text>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  crown: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  activeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(0,0,0,0.2)",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    marginTop: 12,
+  },
+  featureCard: { borderWidth: 1, borderRadius: 16, padding: 14 },
+  featureIcon: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  plan: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 10,
+  },
+  radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: "center", justifyContent: "center" },
+  radioDot: { width: 11, height: 11, borderRadius: 5.5 },
+  saveBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
+  subscribeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 14,
+    paddingVertical: 15,
+  },
+});
+
+
+########################################################################
+# FILE: artifacts/suraksha/app/report.tsx
+########################################################################
+
+import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
+import React, { useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+
+import { BackHeader } from "@/components/Headers";
+import { Icon } from "@/components/Icon";
+import { withAlpha } from "@/constants/colors";
+import { REPORT_CATEGORIES } from "@/constants/data";
+import { useApp } from "@/context/AppContext";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+import { useToast } from "@/context/ToastContext";
+import { timeAgo } from "@/lib/format";
+
+export default function ReportScreen() {
+  const { c } = useTheme();
+  const { t, pick, lang } = useI18n();
+  const { reports, addReport, deleteReport } = useApp();
+  const { showToast } = useToast();
+
+  const [category, setCategory] = useState(REPORT_CATEGORIES[0].key);
+  const [description, setDescription] = useState("");
+  const [photoUri, setPhotoUri] = useState<string | undefined>();
+  const [attachLocation, setAttachLocation] = useState(true);
+
+  const pickPhoto = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      showToast(t("report.addPhoto"));
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.6,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setPhotoUri(result.assets[0].uri);
+    }
+  };
+
+  const submit = () => {
+    if (!description.trim()) return;
+    addReport({
+      category,
+      description: description.trim(),
+      photoUri,
+      location: attachLocation ? "Koramangala, Bengaluru" : undefined,
+    });
+    setDescription("");
+    setPhotoUri(undefined);
+    setCategory(REPORT_CATEGORIES[0].key);
+    showToast(t("report.submitted"));
+  };
+
+  const catLabel = (key: string) => {
+    const found = REPORT_CATEGORIES.find((r) => r.key === key);
+    return found ? pick(found) : key;
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <BackHeader title={t("report.title")} subtitle={t("report.sub")} />
+      <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 50 }} showsVerticalScrollIndicator={false}>
+        <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
+          <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 12 }}>
+            {t("report.newReport")}
+          </Text>
+
+          <Text style={[styles.label, { color: c.textMuted }]}>{t("report.category")}</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+            {REPORT_CATEGORIES.map((cat) => {
+              const active = category === cat.key;
+              return (
+                <Pressable
+                  key={cat.key}
+                  onPress={() => setCategory(cat.key)}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 10,
+                    backgroundColor: active ? c.primary : c.cardAlt,
+                  }}
+                >
+                  <Icon name={cat.icon} size={13} color={active ? "#fff" : c.primary} />
+                  <Text style={{ fontSize: 12, fontFamily: "Inter_600SemiBold", color: active ? "#fff" : c.text }}>
+                    {pick(cat)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Text style={[styles.label, { color: c.textMuted }]}>{t("report.description")}</Text>
+          <TextInput
+            value={description}
+            onChangeText={setDescription}
+            placeholder={t("report.description")}
+            placeholderTextColor={c.textFaint}
+            multiline
+            style={[styles.textarea, { backgroundColor: c.cardAlt, color: c.text, borderColor: c.border }]}
+          />
+
+          {photoUri ? (
+            <View style={{ marginTop: 12 }}>
+              <Image source={{ uri: photoUri }} style={styles.preview} contentFit="cover" />
+              <Pressable onPress={() => setPhotoUri(undefined)} style={[styles.removePhoto, { backgroundColor: c.danger }]}>
+                <Icon name="x" size={14} color="#fff" />
+              </Pressable>
+            </View>
+          ) : (
+            <Pressable onPress={pickPhoto} style={[styles.photoBtn, { borderColor: c.border }]}>
+              <Icon name="camera" size={16} color={c.primary} />
+              <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>{t("report.addPhoto")}</Text>
+            </Pressable>
+          )}
+
+          <Pressable
+            onPress={() => setAttachLocation((v) => !v)}
+            style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 14 }}
+          >
+            <View
+              style={[
+                styles.checkbox,
+                { borderColor: attachLocation ? c.primary : c.border, backgroundColor: attachLocation ? c.primary : "transparent" },
+              ]}
+            >
+              {attachLocation && <Icon name="check" size={12} color="#fff" />}
+            </View>
+            <Icon name="mapPin" size={14} color={c.textMuted} />
+            <Text style={{ fontSize: 12.5, color: c.text }}>{t("report.attachLocation")}</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={submit}
+            disabled={!description.trim()}
+            style={[styles.submitBtn, { backgroundColor: description.trim() ? c.primary : c.border }]}
+          >
+            <Icon name="check" size={16} color="#fff" />
+            <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>{t("report.submit")}</Text>
+          </Pressable>
+
+          <Text style={{ fontSize: 11, color: c.textFaint, textAlign: "center", marginTop: 12 }}>
+            {t("report.anonymous")}
+          </Text>
+        </View>
+
+        <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 10 }}>
+          {t("report.recent")}
+        </Text>
+        {reports.length === 0 ? (
+          <Text style={{ textAlign: "center", color: c.textMuted, fontSize: 13, marginTop: 10 }}>
+            {t("report.empty")}
+          </Text>
+        ) : (
+          reports.map((r) => (
+            <View key={r.id} style={[styles.reportRow, { backgroundColor: c.card, borderColor: c.border }]}>
+              <View style={[styles.reportBadge, { backgroundColor: withAlpha(c.accent, 0.12) }]}>
+                <Icon name="fileText" size={16} color={c.accent} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: c.text }}>{catLabel(r.category)}</Text>
+                <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }} numberOfLines={2}>
+                  {r.description}
+                </Text>
+                <Text style={{ fontSize: 10.5, color: c.textFaint, marginTop: 4 }}>
+                  {timeAgo(r.createdAt, lang)}
+                  {r.location ? ` · ${r.location}` : ""}
+                </Text>
+              </View>
+              <Pressable onPress={() => deleteReport(r.id)} hitSlop={8}>
+                <Icon name="trash" size={16} color={c.textFaint} />
+              </Pressable>
+            </View>
+          ))
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: { borderWidth: 1, borderRadius: 16, padding: 16, marginBottom: 18 },
+  label: { fontSize: 12, fontFamily: "Inter_600SemiBold", marginBottom: 8 },
+  textarea: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 14,
+    minHeight: 84,
+    textAlignVertical: "top",
+  },
+  preview: { width: "100%", height: 160, borderRadius: 12 },
+  removePhoto: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    borderRadius: 12,
+    paddingVertical: 14,
+    marginTop: 12,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  submitBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 12,
+    paddingVertical: 13,
+    marginTop: 18,
+  },
+  reportRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+  },
+  reportBadge: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
+});
+
+
+########################################################################
+# FILE: artifacts/suraksha/app/(tabs)/index.tsx
+########################################################################
+
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
+import React, { useEffect, useRef } from "react";
+import {
+  Animated,
+  Easing,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { Icon } from "@/components/Icon";
+import { Avatar, Card, IconBadge } from "@/components/ui";
+import { withAlpha } from "@/constants/colors";
+import { QUICK_ACTIONS } from "@/constants/data";
+import { useApp } from "@/context/AppContext";
+import { useI18n } from "@/context/LanguageContext";
+import { useSafety } from "@/context/SafetyContext";
+import { useTheme } from "@/context/ThemeContext";
+import { useToast } from "@/context/ToastContext";
+import { fmtClock } from "@/lib/format";
+import { callNumber } from "@/lib/native";
+
+function SosButton({ onPress }: { onPress: () => void }) {
+  const { c } = useTheme();
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(pulse, {
+        toValue: 1,
+        duration: 2000,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.7] });
+  const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0] });
+
+  return (
+    <View style={{ width: 168, height: 168, alignItems: "center", justifyContent: "center" }}>
+      <Animated.View
+        style={{
+          position: "absolute",
+          width: 140,
+          height: 140,
+          borderRadius: 70,
+          backgroundColor: c.accent,
+          transform: [{ scale }],
+          opacity,
+        }}
+      />
+      <Pressable onPress={onPress} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.96 : 1 }] })}>
+        <LinearGradient
+          colors={[c.accent, c.accentDark]}
+          start={{ x: 0.2, y: 0.1 }}
+          end={{ x: 0.9, y: 1 }}
+          style={styles.sosCircle}
+        >
+          <Icon name="bell" size={38} color="#fff" />
+          <Text style={styles.sosText}>SOS</Text>
+        </LinearGradient>
+      </Pressable>
+    </View>
+  );
+}
+
+export default function HomeScreen() {
+  const { c } = useTheme();
+  const { t, pick, lang } = useI18n();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { contacts, profile } = useApp();
+  const { triggerSOS, journey, setJourneyDuration, startJourney, endJourney } = useSafety();
+  const { showToast } = useToast();
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: c.bg }}
+      contentContainerStyle={{ paddingBottom: 110 }}
+      showsVerticalScrollIndicator={false}
+    >
+      <LinearGradient
+        colors={[c.primary, c.primaryDark]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{ paddingTop: insets.top + 14, paddingHorizontal: 18, paddingBottom: 54 }}
+      >
+        <View style={styles.headerRow}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View style={styles.headerAvatar}>
+              <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 17 }}>
+                {profile.name.charAt(0)}
+              </Text>
+            </View>
+            <View>
+              <Text style={styles.greeting}>{t("home.greeting")}</Text>
+              <Text style={styles.name}>{profile.name}</Text>
+            </View>
+          </View>
+          <Pressable style={styles.bellBtn} onPress={() => router.push("/helpline")}>
+            <Icon name="bell" size={18} color="#fff" />
+          </Pressable>
+        </View>
+
+        <View style={styles.locPill}>
+          <Icon name="mapPin" size={13} color="#fff" />
+          <Text style={styles.locText}>Koramangala, Bengaluru</Text>
+          <Text style={{ color: "rgba(255,255,255,0.7)" }}>·</Text>
+          <Text style={styles.safeZone}>{t("home.safeZone")}</Text>
+        </View>
+      </LinearGradient>
+
+      <View style={{ alignItems: "center", marginTop: -48, marginBottom: 6 }}>
+        <SosButton onPress={triggerSOS} />
+        <Text style={{ fontSize: 12.5, color: c.textMuted, fontFamily: "Inter_500Medium", marginTop: 2 }}>
+          {t("home.tapForHelp")}
+        </Text>
+      </View>
+
+      <View style={{ paddingHorizontal: 18, marginTop: 18 }}>
+        <View style={styles.grid}>
+          {QUICK_ACTIONS.map((qa) => (
+            <Pressable
+              key={qa.key}
+              onPress={() => router.push(qa.route as never)}
+              style={[styles.qaCard, { backgroundColor: c.card, borderColor: c.border }]}
+            >
+              <IconBadge name={qa.icon} color={qa.color(c)} box={36} size={18} />
+              <Text style={[styles.qaLabel, { color: c.text }]}>{pick(qa)}</Text>
+              <Text style={[styles.qaSub, { color: c.textMuted }]}>{lang === "en" ? qa.hi : qa.en}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <Card style={{ marginBottom: 20 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 3 }}>
+            <Icon name="navigation" size={16} color={c.primary} />
+            <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text }}>
+              {t("home.journey")}
+            </Text>
+          </View>
+          <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 12 }}>{t("home.journeySub")}</Text>
+
+          {!journey.active ? (
+            <>
+              <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+                {[15, 30, 60].map((d) => {
+                  const active = journey.duration === d;
+                  return (
+                    <Pressable
+                      key={d}
+                      onPress={() => setJourneyDuration(d)}
+                      style={{
+                        flex: 1,
+                        alignItems: "center",
+                        paddingVertical: 9,
+                        borderRadius: 10,
+                        backgroundColor: active ? c.primary : c.cardAlt,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontFamily: "Inter_700Bold",
+                          color: active ? "#fff" : c.primary,
+                        }}
+                      >
+                        {d} {t("home.minutes")}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Pressable
+                onPress={() => {
+                  startJourney();
+                  showToast(t("home.sharingLive"));
+                }}
+                style={{ backgroundColor: c.primary, borderRadius: 10, paddingVertical: 11, alignItems: "center" }}
+              >
+                <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>
+                  {t("home.startSharing")}
+                </Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <View style={[styles.liveRow, { backgroundColor: c.successSoft }]}>
+                <View style={[styles.dot, { backgroundColor: c.success }]} />
+                <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: c.success }}>
+                  {t("home.sharingLive")} · {fmtClock(journey.seconds)}
+                </Text>
+                <Text style={{ fontSize: 11, color: c.textMuted, marginLeft: "auto" }}>
+                  / {journey.duration} {t("home.minutes")}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => {
+                  endJourney();
+                  showToast(t("home.arrivedSafely"));
+                }}
+                style={{ backgroundColor: c.success, borderRadius: 10, paddingVertical: 11, alignItems: "center" }}
+              >
+                <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>
+                  {t("home.arrivedSafely")}
+                </Text>
+              </Pressable>
+            </>
+          )}
+        </Card>
+
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+          <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text }}>
+            {t("home.trustedContacts")}
+          </Text>
+          <Pressable style={{ marginLeft: "auto" }} onPress={() => router.push("/contacts")}>
+            <Text style={{ fontSize: 12.5, fontFamily: "Inter_600SemiBold", color: c.primary }}>
+              {t("home.manage")}
+            </Text>
+          </Pressable>
+        </View>
+
+        {contacts.slice(0, 4).map((contact) => (
+          <View key={contact.id} style={[styles.contactRow, { backgroundColor: c.card, borderColor: c.border }]}>
+            <Avatar label={contact.name} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ fontSize: 13.5, fontFamily: "Inter_700Bold", color: c.text }} numberOfLines={1}>
+                {contact.name}
+              </Text>
+              <Text style={{ fontSize: 11.5, color: c.textMuted }}>{contact.phone}</Text>
+            </View>
+            <Pressable
+              onPress={() => {
+                showToast(`${t("common.calling")} ${contact.name}…`);
+                callNumber(contact.phone);
+              }}
+              style={[styles.callBtn, { backgroundColor: c.successSoft }]}
+            >
+              <Icon name="phone" size={15} color={c.success} />
+            </Pressable>
+          </View>
+        ))}
+      </View>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
+  headerAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  greeting: { color: "rgba(255,255,255,0.85)", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  name: { color: "#fff", fontSize: 18, fontFamily: "Inter_700Bold" },
+  bellBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  locPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255,255,255,0.16)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  locText: { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  safeZone: { color: "#BFF4DC", fontSize: 12, fontFamily: "Inter_700Bold" },
+  sosCircle: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 5,
+    borderColor: "#fff",
+  },
+  sosText: { color: "#fff", fontFamily: "Inter_700Bold", fontSize: 17, marginTop: 4, letterSpacing: 1 },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 20 },
+  qaCard: {
+    width: "47.5%",
+    flexGrow: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+  },
+  qaLabel: { fontSize: 13.5, fontFamily: "Inter_700Bold", marginTop: 10 },
+  qaSub: { fontSize: 11.5, marginTop: 2 },
+  liveRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  dot: { width: 9, height: 9, borderRadius: 4.5 },
+  contactRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 10,
+    marginBottom: 8,
+  },
+  callBtn: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+});
+
+
+########################################################################
+# FILE: artifacts/suraksha/app/(tabs)/_layout.tsx
+########################################################################
+
+import { Tabs } from "expo-router";
+import React from "react";
+import { Platform, StyleSheet, View } from "react-native";
+
+import { Icon } from "@/components/Icon";
+import type { IconName } from "@/constants/data";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+
+const TABS: { name: string; icon: IconName; key: string }[] = [
+  { name: "index", icon: "home", key: "tab.home" },
+  { name: "map", icon: "map", key: "tab.map" },
+  { name: "sakhi", icon: "message", key: "tab.sakhi" },
+  { name: "rights", icon: "book", key: "tab.rights" },
+  { name: "profile", icon: "user", key: "tab.profile" },
+];
+
+export default function TabLayout() {
+  const { c } = useTheme();
+  const { t } = useI18n();
+  const isWeb = Platform.OS === "web";
+
+  return (
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: c.primary,
+        tabBarInactiveTintColor: c.textFaint,
+        tabBarLabelStyle: { fontFamily: "Inter_600SemiBold", fontSize: 11 },
+        tabBarStyle: {
+          backgroundColor: c.card,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: c.border,
+          elevation: 0,
+          ...(isWeb ? { height: 64 } : {}),
+        },
+      }}
+    >
+      {TABS.map((tab) => (
+        <Tabs.Screen
+          key={tab.name}
+          name={tab.name}
+          options={{
+            title: t(tab.key),
+            tabBarIcon: ({ color, focused }) => (
+              <View style={{ alignItems: "center", justifyContent: "center" }}>
+                <Icon name={tab.icon} size={focused ? 24 : 22} color={color} />
+              </View>
+            ),
+          }}
+        />
+      ))}
+    </Tabs>
+  );
+}
+
+
+########################################################################
+# FILE: artifacts/suraksha/app/(tabs)/map.tsx
+########################################################################
+
+import React, { useMemo, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { Icon } from "@/components/Icon";
+import { MapPreview } from "@/components/MapPreview";
+import { Card, Chip, IconBadge } from "@/components/ui";
+import { type IconName, type Place, type PlaceCategory, PLACES } from "@/constants/data";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+import { useToast } from "@/context/ToastContext";
+import { callNumber, navigateTo } from "@/lib/native";
+
+const FILTERS: { key: PlaceCategory | "All"; labelKey: string }[] = [
+  { key: "All", labelKey: "map.all" },
+  { key: "Police", labelKey: "map.police" },
+  { key: "Hospital", labelKey: "map.hospital" },
+  { key: "Shelter", labelKey: "map.shelter" },
+  { key: "Shops", labelKey: "map.shops" },
+];
+
+const CAT_ICON: Record<PlaceCategory, IconName> = {
+  Police: "shield",
+  Hospital: "hospital",
+  Shelter: "home",
+  Shops: "store",
+};
+
+export default function MapScreen() {
+  const { c } = useTheme();
+  const { t } = useI18n();
+  const { showToast } = useToast();
+  const insets = useSafeAreaInsets();
+  const [filter, setFilter] = useState<PlaceCategory | "All">("All");
+  const [expanded, setExpanded] = useState<number | null>(null);
+
+  const colorFor = (cat: PlaceCategory) =>
+    ({ Police: c.police, Hospital: c.hospital, Shelter: c.shelter, Shops: c.shops })[cat];
+
+  const filtered = useMemo(
+    () => (filter === "All" ? PLACES : PLACES.filter((p) => p.category === filter)),
+    [filter],
+  );
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: c.bg }}
+      contentContainerStyle={{ paddingBottom: 110 }}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={{ paddingTop: insets.top + 14, paddingHorizontal: 18, paddingBottom: 10 }}>
+        <Text style={{ fontSize: 19, fontFamily: "Inter_700Bold", color: c.text }}>{t("map.title")}</Text>
+        <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>{t("map.sub")}</Text>
+      </View>
+
+      <MapPreview places={filtered} colorFor={colorFor} />
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: 8, paddingHorizontal: 18, paddingBottom: 14 }}
+      >
+        {FILTERS.map((f) => (
+          <Chip
+            key={f.key}
+            label={t(f.labelKey)}
+            active={filter === f.key}
+            onPress={() => setFilter(f.key)}
+          />
+        ))}
+      </ScrollView>
+
+      <View style={{ paddingHorizontal: 18 }}>
+        {filtered.map((p: Place) => {
+          const isOpen = expanded === p.id;
+          const color = colorFor(p.category);
+          return (
+            <Card key={p.id} style={{ marginBottom: 10, padding: 14 }}>
+              <Pressable
+                onPress={() => setExpanded(isOpen ? null : p.id)}
+                style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
+              >
+                <IconBadge name={CAT_ICON[p.category]} color={color} size={17} box={38} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontSize: 13.5, fontFamily: "Inter_700Bold", color: c.text }}>{p.name}</Text>
+                  <Text style={{ fontSize: 11.5, color: c.textMuted, marginTop: 1 }}>{p.address}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 5 }}>
+                    <Text style={{ fontSize: 11, color: c.textMuted }}>{p.distance}</Text>
+                    <View style={[styles.safeBadge, { backgroundColor: c.successSoft }]}>
+                      <Text style={{ fontSize: 10.5, fontFamily: "Inter_700Bold", color: c.success }}>
+                        ✓ {t("map.safe")}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+                <View style={{ transform: [{ rotate: isOpen ? "180deg" : "0deg" }] }}>
+                  <Icon name="chevronDown" size={16} color={c.textFaint} />
+                </View>
+              </Pressable>
+
+              {isOpen && (
+                <View style={{ flexDirection: "row", gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: c.border }}>
+                  <Pressable
+                    onPress={() => {
+                      showToast(`${t("common.calling")} ${p.name}…`);
+                      callNumber(p.phone);
+                    }}
+                    style={[styles.actBtn, { backgroundColor: c.success }]}
+                  >
+                    <Icon name="phone" size={14} color="#fff" />
+                    <Text style={styles.actText}>{t("map.callNow")}</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      showToast(`${t("common.navigatingTo")} ${p.name}…`);
+                      navigateTo(p.lat, p.lng, p.name);
+                    }}
+                    style={[styles.actBtn, { backgroundColor: c.primary }]}
+                  >
+                    <Icon name="navigation" size={14} color="#fff" />
+                    <Text style={styles.actText}>{t("map.navigate")}</Text>
+                  </Pressable>
+                </View>
+              )}
+            </Card>
+          );
+        })}
+      </View>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safeBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
+  actBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: 10,
+  },
+  actText: { color: "#fff", fontSize: 12.5, fontFamily: "Inter_700Bold" },
+});
+
+
+########################################################################
+# FILE: artifacts/suraksha/app/(tabs)/profile.tsx
+########################################################################
+
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
+import React, { useState } from "react";
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { Icon } from "@/components/Icon";
+import { Card } from "@/components/ui";
+import {
+  ACCENTS,
+  THEME_LABELS,
+  THEME_ORDER,
+  type ThemeKey,
+  withAlpha,
+} from "@/constants/colors";
+import type { IconName } from "@/constants/data";
+import { LANGUAGE_LABELS } from "@/constants/i18n";
+import { useApp } from "@/context/AppContext";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+import { useToast } from "@/context/ToastContext";
+
+function Row({
+  icon,
+  color,
+  label,
+  right,
+  onPress,
+}: {
+  icon: IconName;
+  color: string;
+  label: string;
+  right?: React.ReactNode;
+  onPress?: () => void;
+}) {
+  const { c } = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11 }}
+    >
+      <View
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 10,
+          backgroundColor: withAlpha(color, 0.12),
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Icon name={icon} size={16} color={color} />
+      </View>
+      <Text style={{ flex: 1, fontSize: 13.5, fontFamily: "Inter_600SemiBold", color: c.text }}>{label}</Text>
+      {right ?? <Icon name="chevronRight" size={16} color={c.textFaint} />}
+    </Pressable>
+  );
+}
+
+export default function ProfileScreen() {
+  const { c, themeKey, setThemeKey, isDark, mode, setMode } = useTheme();
+  const { t, lang, setLang, pick } = useI18n();
+  const { profile, settings, setSettings, setProfile } = useApp();
+  const { showToast } = useToast();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+
+  const [editing, setEditing] = useState(false);
+  const [draftName, setDraftName] = useState(profile.name);
+  const [draftPhone, setDraftPhone] = useState(profile.phone);
+
+  const saveProfile = () => {
+    setProfile({ name: draftName.trim() || profile.name, phone: draftPhone.trim() || profile.phone });
+    setEditing(false);
+    showToast(t("common.done"));
+  };
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: c.bg }}
+      contentContainerStyle={{ paddingBottom: 110 }}
+      showsVerticalScrollIndicator={false}
+    >
+      <LinearGradient
+        colors={[c.primary, c.primaryDark]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{ paddingTop: insets.top + 18, paddingHorizontal: 18, paddingBottom: 26 }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+          <View style={styles.bigAvatar}>
+            <Text style={{ color: "#fff", fontSize: 26, fontFamily: "Inter_700Bold" }}>
+              {profile.name.charAt(0)}
+            </Text>
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: "#fff", fontSize: 20, fontFamily: "Inter_700Bold" }} numberOfLines={1}>
+              {profile.name}
+            </Text>
+            <Text style={{ color: "rgba(255,255,255,0.85)", fontSize: 12.5, marginTop: 1 }}>
+              {profile.phone}
+            </Text>
+            {profile.premium && (
+              <View style={styles.premiumBadge}>
+                <Icon name="crown" size={12} color="#FFD66B" />
+                <Text style={{ color: "#FFD66B", fontSize: 11, fontFamily: "Inter_700Bold" }}>
+                  {t("profile.premiumMember")}
+                </Text>
+              </View>
+            )}
+          </View>
+          <Pressable
+            onPress={() => {
+              setDraftName(profile.name);
+              setDraftPhone(profile.phone);
+              setEditing(true);
+            }}
+            hitSlop={10}
+            style={styles.editBtn}
+          >
+            <Icon name="edit" size={16} color="#fff" />
+          </Pressable>
+        </View>
+      </LinearGradient>
+
+      <View style={{ paddingHorizontal: 18, marginTop: 16 }}>
+        <Text style={styles.section}>{t("profile.appearance")}</Text>
+        <Card style={{ marginBottom: 16 }}>
+          <Text style={{ fontSize: 12.5, fontFamily: "Inter_600SemiBold", color: c.textMuted, marginBottom: 12 }}>
+            {t("profile.colorTheme")}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 12, marginBottom: 6 }}>
+            {THEME_ORDER.map((k: ThemeKey) => {
+              const active = themeKey === k;
+              return (
+                <Pressable key={k} onPress={() => setThemeKey(k)} style={{ alignItems: "center", gap: 6 }}>
+                  <View
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 23,
+                      backgroundColor: ACCENTS[k].primary,
+                      borderWidth: active ? 3 : 0,
+                      borderColor: c.text,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {active && <Icon name="check" size={18} color="#fff" />}
+                  </View>
+                  <Text style={{ fontSize: 11, color: c.textMuted, fontFamily: "Inter_500Medium" }}>
+                    {pick(THEME_LABELS[k])}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row
+            icon={isDark ? "moon" : "sun"}
+            color={c.primary}
+            label={t("profile.darkMode")}
+            right={
+              <Switch
+                value={isDark}
+                onValueChange={(v) => setMode(v ? "dark" : "light")}
+                trackColor={{ true: c.primary, false: c.border }}
+                thumbColor="#fff"
+              />
+            }
+          />
+        </Card>
+
+        <Text style={styles.section}>{t("profile.settings")}</Text>
+        <Card style={{ marginBottom: 16, paddingVertical: 6 }}>
+          <Row
+            icon="bell"
+            color={c.accent}
+            label={t("profile.notifications")}
+            right={
+              <Switch
+                value={settings.notifications}
+                onValueChange={(v) => setSettings({ notifications: v })}
+                trackColor={{ true: c.primary, false: c.border }}
+                thumbColor="#fff"
+              />
+            }
+          />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row
+            icon="mapPin"
+            color={c.success}
+            label={t("profile.bgLocation")}
+            right={
+              <Switch
+                value={settings.bgLocation}
+                onValueChange={(v) => setSettings({ bgLocation: v })}
+                trackColor={{ true: c.primary, false: c.border }}
+                thumbColor="#fff"
+              />
+            }
+          />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11 }}>
+            <View
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                backgroundColor: withAlpha(c.police, 0.12),
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Icon name="globe" size={16} color={c.police} />
+            </View>
+            <Text style={{ flex: 1, fontSize: 13.5, fontFamily: "Inter_600SemiBold", color: c.text }}>
+              {t("profile.language")}
+            </Text>
+            <View style={[styles.segment, { backgroundColor: c.cardAlt }]}>
+              {(["en", "hi"] as const).map((l) => {
+                const active = lang === l;
+                return (
+                  <Pressable
+                    key={l}
+                    onPress={() => setLang(l)}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 8,
+                      backgroundColor: active ? c.primary : "transparent",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontFamily: "Inter_700Bold",
+                        color: active ? "#fff" : c.textMuted,
+                      }}
+                    >
+                      {LANGUAGE_LABELS[l]}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </Card>
+
+        <Pressable onPress={() => router.push("/premium")}>
+          <LinearGradient
+            colors={[c.accent, c.accentDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.premiumCard}
+          >
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+                <Icon name="crown" size={16} color="#fff" />
+                <Text style={{ color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" }}>
+                  {t("profile.premium")}
+                </Text>
+              </View>
+              <Text style={{ color: "rgba(255,255,255,0.85)", fontSize: 11.5, marginTop: 3 }}>
+                {t("premium.sub")}
+              </Text>
+            </View>
+            <Icon name="chevronRight" size={18} color="#fff" />
+          </LinearGradient>
+        </Pressable>
+
+        <Text style={[styles.section, { marginTop: 16 }]}>{t("profile.account")}</Text>
+        <Card style={{ paddingVertical: 6 }}>
+          <Row icon="lock" color={c.police} label={t("profile.privacy")} onPress={() => showToast(t("report.anonymous"))} />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row icon="info" color={c.primary} label={t("profile.about")} onPress={() => showToast("Suraksha v1.0")} />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row
+            icon="helpCircle"
+            color={c.success}
+            label={t("profile.support")}
+            onPress={() => router.push("/helpline")}
+          />
+        </Card>
+      </View>
+
+      <Modal visible={editing} transparent animationType="fade" onRequestClose={() => setEditing(false)}>
+        <Pressable style={[styles.modalBg, { backgroundColor: c.overlay }]} onPress={() => setEditing(false)}>
+          <Pressable style={[styles.modalCard, { backgroundColor: c.card }]} onPress={() => {}}>
+            <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 14 }}>
+              {t("profile.editName")}
+            </Text>
+            <Text style={[styles.label, { color: c.textMuted }]}>{t("common.name")}</Text>
+            <TextInput
+              value={draftName}
+              onChangeText={setDraftName}
+              style={[styles.input, { backgroundColor: c.cardAlt, color: c.text, borderColor: c.border }]}
+              placeholderTextColor={c.textFaint}
+            />
+            <Text style={[styles.label, { color: c.textMuted, marginTop: 10 }]}>{t("contacts.phone")}</Text>
+            <TextInput
+              value={draftPhone}
+              onChangeText={setDraftPhone}
+              keyboardType="phone-pad"
+              style={[styles.input, { backgroundColor: c.cardAlt, color: c.text, borderColor: c.border }]}
+              placeholderTextColor={c.textFaint}
+            />
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 18 }}>
+              <Pressable
+                onPress={() => setEditing(false)}
+                style={[styles.modalBtn, { backgroundColor: c.cardAlt }]}
+              >
+                <Text style={{ color: c.text, fontFamily: "Inter_700Bold", fontSize: 13.5 }}>{t("common.cancel")}</Text>
+              </Pressable>
+              <Pressable onPress={saveProfile} style={[styles.modalBtn, { backgroundColor: c.primary }]}>
+                <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>{t("common.save")}</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  bigAvatar: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  premiumBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(0,0,0,0.2)",
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 20,
+    marginTop: 6,
+  },
+  editBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  section: { fontSize: 13, fontFamily: "Inter_700Bold", marginBottom: 8, color: "#8A7FA6" },
+  divider: { height: StyleSheet.hairlineWidth, marginVertical: 2 },
+  segment: { flexDirection: "row", borderRadius: 10, padding: 3 },
+  premiumCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 16,
+    padding: 16,
+  },
+  modalBg: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 28 },
+  modalCard: { width: "100%", borderRadius: 18, padding: 20 },
+  label: { fontSize: 12, fontFamily: "Inter_600SemiBold", marginBottom: 6 },
+  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14 },
+  modalBtn: { flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 12 },
+});
+
+
+########################################################################
+# FILE: artifacts/suraksha/app/(tabs)/rights.tsx
+########################################################################
+
+import React, { useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+
+import { GradientHeader } from "@/components/Headers";
+import { Icon } from "@/components/Icon";
+import { Card, IconBadge } from "@/components/ui";
+import { withAlpha } from "@/constants/colors";
+import { RIGHTS } from "@/constants/data";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+import { useToast } from "@/context/ToastContext";
+import { callNumber } from "@/lib/native";
+
+const QUICK_NUMBERS = [
+  { label: { en: "Police", hi: "पुलिस" }, num: "100" },
+  { label: { en: "Women Helpline", hi: "महिला हेल्पलाइन" }, num: "1091" },
+  { label: { en: "Childline", hi: "चाइल्डलाइन" }, num: "1098" },
+];
+
+export default function RightsScreen() {
+  const { c } = useTheme();
+  const { t, pick, lang } = useI18n();
+  const { showToast } = useToast();
+  const [expanded, setExpanded] = useState<number | null>(null);
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: c.bg }}
+      contentContainerStyle={{ paddingBottom: 110 }}
+      showsVerticalScrollIndicator={false}
+    >
+      <GradientHeader
+        title={lang === "hi" ? "अपने अधिकार जानें" : "Know Your Rights"}
+        subtitle={lang === "hi" ? "Know Your Rights" : "अपने अधिकार जानें"}
+        colors={[c.police, "#173A8C"]}
+      />
+
+      <View style={{ paddingHorizontal: 18, marginTop: 16 }}>
+        <View style={{ flexDirection: "row", gap: 8, marginBottom: 18 }}>
+          {QUICK_NUMBERS.map((n) => (
+            <Pressable
+              key={n.num}
+              onPress={() => {
+                showToast(`${t("common.calling")} ${n.num}…`);
+                callNumber(n.num);
+              }}
+              style={[styles.numCard, { backgroundColor: c.card, borderColor: c.border }]}
+            >
+              <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: c.accent }}>{n.num}</Text>
+              <Text style={{ fontSize: 10.5, fontFamily: "Inter_600SemiBold", color: c.text, marginTop: 2, textAlign: "center" }}>
+                {pick(n.label)}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 10 }}>
+          {t("rights.legalProtections")}
+        </Text>
+
+        {RIGHTS.map((r) => {
+          const isOpen = expanded === r.id;
+          const color = r.color(c);
+          return (
+            <Card key={r.id} style={{ marginBottom: 10, padding: 14 }}>
+              <Pressable
+                onPress={() => setExpanded(isOpen ? null : r.id)}
+                style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
+              >
+                <IconBadge name={r.icon} color={color} size={18} box={38} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13.5, fontFamily: "Inter_700Bold", color: c.text }}>{r.title}</Text>
+                  <Text style={{ fontSize: 11, color: c.textMuted, marginTop: 1 }}>{r.subtitle}</Text>
+                </View>
+                <View style={{ transform: [{ rotate: isOpen ? "180deg" : "0deg" }] }}>
+                  <Icon name="chevronDown" size={16} color={c.textFaint} />
+                </View>
+              </Pressable>
+
+              {isOpen && (
+                <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: c.border }}>
+                  <Text style={{ fontSize: 12.5, color: c.text, lineHeight: 20, marginBottom: 12 }}>
+                    {pick(r)}
+                  </Text>
+                  <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color, marginBottom: 8 }}>
+                    {t("rights.stepsToTake")}
+                  </Text>
+                  {r.steps.map((s, i) => (
+                    <View key={i} style={{ flexDirection: "row", gap: 8, marginBottom: 7 }}>
+                      <View
+                        style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: 9,
+                          backgroundColor: withAlpha(color, 0.12),
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginTop: 1,
+                        }}
+                      >
+                        <Text style={{ fontSize: 10.5, fontFamily: "Inter_700Bold", color }}>{i + 1}</Text>
+                      </View>
+                      <Text style={{ flex: 1, fontSize: 12, color: c.textMuted, lineHeight: 18 }}>{pick(s)}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </Card>
+          );
+        })}
+      </View>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  numCard: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: "center",
+  },
+});
+
+
+########################################################################
+# FILE: artifacts/suraksha/app/(tabs)/sakhi.tsx
+########################################################################
+
+import { useSendSakhiMessage } from "@workspace/api-client-react";
+import type { SakhiChatMessage } from "@workspace/api-client-react";
+import { LinearGradient } from "expo-linear-gradient";
+import React, { useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { Icon } from "@/components/Icon";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+
+type Msg = { id: string; role: "user" | "assistant"; content: string };
+
+export default function SakhiScreen() {
+  const { c } = useTheme();
+  const { t, lang } = useI18n();
+  const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView>(null);
+  const send = useSendSakhiMessage();
+
+  const [messages, setMessages] = useState<Msg[]>([
+    { id: "seed", role: "assistant", content: t("sakhi.greeting") },
+  ]);
+  const [input, setInput] = useState("");
+
+  const suggestions = [t("sakhi.suggest1"), t("sakhi.suggest2"), t("sakhi.suggest3")];
+
+  const submit = async (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || send.isPending) return;
+    setInput("");
+
+    const userMsg: Msg = { id: `u${Date.now()}`, role: "user", content: trimmed };
+    const next = [...messages, userMsg];
+    setMessages(next);
+    requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+
+    const history: SakhiChatMessage[] = next
+      .filter((m) => m.id !== "seed")
+      .map((m) => ({ role: m.role, content: m.content }));
+
+    try {
+      const res = await send.mutateAsync({ data: { messages: history, language: lang } });
+      setMessages((prev) => [
+        ...prev,
+        { id: `a${Date.now()}`, role: "assistant", content: res.reply },
+      ]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        { id: `e${Date.now()}`, role: "assistant", content: t("sakhi.error") },
+      ]);
+    } finally {
+      requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+    }
+  };
+
+  return (
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: c.bg }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+    >
+      <LinearGradient
+        colors={[c.primary, c.primaryDark]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{ paddingTop: insets.top + 14, paddingHorizontal: 18, paddingBottom: 16 }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={styles.botAvatar}>
+            <Icon name="sparkles" size={20} color="#fff" />
+          </View>
+          <View>
+            <Text style={{ color: "#fff", fontSize: 17, fontFamily: "Inter_700Bold" }}>{t("sakhi.title")}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
+              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: "#6EE7A8" }} />
+              <Text style={{ color: "rgba(255,255,255,0.85)", fontSize: 11.5 }}>{t("sakhi.online")}</Text>
+            </View>
+          </View>
+        </View>
+      </LinearGradient>
+
+      <ScrollView
+        ref={scrollRef}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+      >
+        {messages.map((m) => {
+          const mine = m.role === "user";
+          return (
+            <View
+              key={m.id}
+              style={{
+                alignSelf: mine ? "flex-end" : "flex-start",
+                maxWidth: "82%",
+                marginBottom: 10,
+              }}
+            >
+              <View
+                style={{
+                  backgroundColor: mine ? c.primary : c.card,
+                  borderColor: mine ? "transparent" : c.border,
+                  borderWidth: mine ? 0 : 1,
+                  borderRadius: 16,
+                  borderBottomRightRadius: mine ? 4 : 16,
+                  borderBottomLeftRadius: mine ? 16 : 4,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                }}
+              >
+                <Text style={{ color: mine ? "#fff" : c.text, fontSize: 13.5, lineHeight: 20 }}>{m.content}</Text>
+              </View>
+            </View>
+          );
+        })}
+        {send.isPending && (
+          <View style={{ alignSelf: "flex-start", marginBottom: 10 }}>
+            <View style={[styles.typing, { backgroundColor: c.card, borderColor: c.border }]}>
+              <ActivityIndicator size="small" color={c.primary} />
+              <Text style={{ color: c.textMuted, fontSize: 12.5 }}>{t("sakhi.thinking")}</Text>
+            </View>
+          </View>
+        )}
+      </ScrollView>
+
+      {messages.length <= 1 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingBottom: 10 }}
+        >
+          {suggestions.map((s) => (
+            <Pressable
+              key={s}
+              onPress={() => submit(s)}
+              style={[styles.suggestion, { backgroundColor: c.cardAlt, borderColor: c.border }]}
+            >
+              <Text style={{ color: c.primary, fontSize: 12.5, fontFamily: "Inter_600SemiBold" }}>{s}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
+
+      <View
+        style={[
+          styles.inputBar,
+          { backgroundColor: c.card, borderTopColor: c.border, paddingBottom: insets.bottom + 10 },
+        ]}
+      >
+        <TextInput
+          value={input}
+          onChangeText={setInput}
+          placeholder={t("sakhi.placeholder")}
+          placeholderTextColor={c.textFaint}
+          style={[styles.input, { backgroundColor: c.cardAlt, color: c.text }]}
+          multiline
+          onSubmitEditing={() => submit(input)}
+          returnKeyType="send"
+        />
+        <Pressable
+          onPress={() => submit(input)}
+          disabled={!input.trim() || send.isPending}
+          style={[
+            styles.sendBtn,
+            { backgroundColor: input.trim() && !send.isPending ? c.primary : c.border },
+          ]}
+        >
+          <Icon name="send" size={18} color="#fff" />
+        </Pressable>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
+const styles = StyleSheet.create({
+  botAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  typing: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  suggestion: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9 },
+  inputBar: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    borderTopWidth: 1,
+  },
+  input: {
+    flex: 1,
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
+    fontSize: 13.5,
+    maxHeight: 110,
+  },
+  sendBtn: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+});
+
+
+########################################################################
+# FILE: artifacts/suraksha/components/ErrorBoundary.tsx
+########################################################################
+
+import React, { Component, ComponentType, PropsWithChildren } from "react";
+
+import { ErrorFallback, ErrorFallbackProps } from "@/components/ErrorFallback";
+
+export type ErrorBoundaryProps = PropsWithChildren<{
+  FallbackComponent?: ComponentType<ErrorFallbackProps>;
+  onError?: (error: Error, stackTrace: string) => void;
+}>;
+
+type ErrorBoundaryState = { error: Error | null };
+
+/**
+ * This is a special case for for using the class components. Error boundaries must be class components because React only provides error boundary functionality through lifecycle methods (componentDidCatch and getDerivedStateFromError) which are not available in functional components.
+ * https://react.dev/reference/react/Component#catching-rendering-errors-with-an-error-boundary
+ */
+export class ErrorBoundary extends Component<
+  ErrorBoundaryProps,
+  ErrorBoundaryState
+> {
+  state: ErrorBoundaryState = { error: null };
+
+  static defaultProps: {
+    FallbackComponent: ComponentType<ErrorFallbackProps>;
+  } = {
+    FallbackComponent: ErrorFallback,
+  };
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: { componentStack: string }): void {
+    if (typeof this.props.onError === "function") {
+      this.props.onError(error, info.componentStack);
+    }
+  }
+
+  resetError = (): void => {
+    this.setState({ error: null });
+  };
+
+  render() {
+    const { FallbackComponent } = this.props;
+
+    return this.state.error && FallbackComponent ? (
+      <FallbackComponent
+        error={this.state.error}
+        resetError={this.resetError}
+      />
+    ) : (
+      this.props.children
+    );
+  }
+}
+
+
+########################################################################
+# FILE: artifacts/suraksha/components/ErrorFallback.tsx
+########################################################################
+
+import { Feather } from "@expo/vector-icons";
+import { reloadAppAsync } from "expo";
+import React, { useState } from "react";
+import {
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { useColors } from "@/hooks/useColors";
+
+export type ErrorFallbackProps = {
+  error: Error;
+  resetError: () => void;
+};
+
+export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+
+  const [isModalVisible, setIsModalVisible] = useState(false);
+
+  const handleRestart = async () => {
+    try {
+      await reloadAppAsync();
+    } catch (restartError) {
+      console.error("Failed to restart app:", restartError);
+      resetError();
+    }
+  };
+
+  const formatErrorDetails = (): string => {
+    let details = `Error: ${error.message}\n\n`;
+    if (error.stack) {
+      details += `Stack Trace:\n${error.stack}`;
+    }
+    return details;
+  };
+
+  const monoFont = Platform.select({
+    ios: "Menlo",
+    android: "monospace",
+    default: "monospace",
+  });
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {__DEV__ ? (
+        <Pressable
+          onPress={() => setIsModalVisible(true)}
+          accessibilityLabel="View error details"
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            styles.topButton,
+            {
+              top: insets.top + 16,
+              backgroundColor: colors.card,
+              opacity: pressed ? 0.8 : 1,
+            },
+          ]}
+        >
+          <Feather name="alert-circle" size={20} color={colors.foreground} />
+        </Pressable>
+      ) : null}
+
+      <View style={styles.content}>
+        <Text style={[styles.title, { color: colors.foreground }]}>
+          Something went wrong
+        </Text>
+
+        <Text style={[styles.message, { color: colors.mutedForeground }]}>
+          Please reload the app to continue.
+        </Text>
+
+        <Pressable
+          onPress={handleRestart}
+          style={({ pressed }) => [
+            styles.button,
+            {
+              backgroundColor: colors.primary,
+              opacity: pressed ? 0.9 : 1,
+              transform: [{ scale: pressed ? 0.98 : 1 }],
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.buttonText,
+              { color: colors.primaryForeground },
+            ]}
+          >
+            Try Again
+          </Text>
+        </Pressable>
+      </View>
+
+      {__DEV__ ? (
+        <Modal
+          visible={isModalVisible}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setIsModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View
+              style={[
+                styles.modalContainer,
+                { backgroundColor: colors.background },
+              ]}
+            >
+              <View
+                style={[
+                  styles.modalHeader,
+                  { borderBottomColor: colors.border },
+                ]}
+              >
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                  Error Details
+                </Text>
+                <Pressable
+                  onPress={() => setIsModalVisible(false)}
+                  accessibilityLabel="Close error details"
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    styles.closeButton,
+                    { opacity: pressed ? 0.6 : 1 },
+                  ]}
+                >
+                  <Feather name="x" size={24} color={colors.foreground} />
+                </Pressable>
+              </View>
+
+              <ScrollView
+                style={styles.modalScrollView}
+                contentContainerStyle={[
+                  styles.modalScrollContent,
+                  { paddingBottom: insets.bottom + 16 },
+                ]}
+                showsVerticalScrollIndicator
+              >
+                <View
+                  style={[
+                    styles.errorContainer,
+                    { backgroundColor: colors.card },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.errorText,
+                      {
+                        color: colors.foreground,
+                        fontFamily: monoFont,
+                      },
+                    ]}
+                    selectable
+                  >
+                    {formatErrorDetails()}
+                  </Text>
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  content: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+    width: "100%",
+    maxWidth: 600,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: "700",
+    textAlign: "center",
+    lineHeight: 40,
+  },
+  message: {
+    fontSize: 16,
+    textAlign: "center",
+    lineHeight: 24,
+  },
+  topButton: {
+    position: "absolute",
+    right: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 10,
+  },
+  button: {
+    paddingVertical: 16,
+    borderRadius: 8,
+    paddingHorizontal: 24,
+    minWidth: 200,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  buttonText: {
+    fontWeight: "600",
+    textAlign: "center",
+    fontSize: 16,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContainer: {
+    width: "100%",
+    height: "90%",
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+  },
+  closeButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalScrollView: {
+    flex: 1,
+  },
+  modalScrollContent: {
+    padding: 16,
+  },
+  errorContainer: {
+    width: "100%",
+    borderRadius: 8,
+    overflow: "hidden",
+    padding: 16,
+  },
+  errorText: {
+    fontSize: 12,
+    lineHeight: 18,
+    width: "100%",
+  },
+});
+
+
+########################################################################
+# FILE: artifacts/suraksha/components/Headers.tsx
+########################################################################
+
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
+import React from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { Icon } from "@/components/Icon";
+import { withAlpha } from "@/constants/colors";
+import { useTheme } from "@/context/ThemeContext";
+
+/** Full-width gradient header used at the top of tab screens. */
+export function GradientHeader({
+  title,
+  subtitle,
+  colors,
+  children,
+  right,
+  paddingBottom = 22,
+}: {
+  title: string;
+  subtitle?: string;
+  colors?: [string, string];
+  children?: React.ReactNode;
+  right?: React.ReactNode;
+  paddingBottom?: number;
+}) {
+  const { c } = useTheme();
+  const insets = useSafeAreaInsets();
+  return (
+    <LinearGradient
+      colors={colors ?? [c.primary, c.primaryDark]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={{
+        paddingTop: insets.top + 14,
+        paddingHorizontal: 18,
+        paddingBottom,
+      }}
+    >
+      <View style={styles.row}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>{title}</Text>
+          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+        </View>
+        {right}
+      </View>
+      {children}
+    </LinearGradient>
+  );
+}
+
+/** Sticky back header used by pushed stack screens. */
+export function BackHeader({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle?: string;
+}) {
+  const { c } = useTheme();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  return (
+    <View
+      style={{
+        paddingTop: insets.top + 8,
+        paddingBottom: 14,
+        paddingHorizontal: 18,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        backgroundColor: c.card,
+        borderBottomWidth: 1,
+        borderBottomColor: c.border,
+      }}
+    >
+      <Pressable
+        onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)"))}
+        hitSlop={10}
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 17,
+          backgroundColor: withAlpha(c.primary, 0.12),
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Icon name="arrowLeft" size={17} color={c.primary} />
+      </Pressable>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: c.text }}>{title}</Text>
+        {subtitle ? (
+          <Text style={{ fontSize: 11.5, color: c.textMuted, fontFamily: "Inter_500Medium" }}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  row: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
+  title: { color: "#fff", fontSize: 20, fontFamily: "Inter_700Bold" },
+  subtitle: { color: "rgba(255,255,255,0.85)", fontSize: 13, marginTop: 2, fontFamily: "Inter_500Medium" },
+});
+
+
+########################################################################
+# FILE: artifacts/suraksha/components/Icon.tsx
+########################################################################
+
+import { Feather } from "@expo/vector-icons";
+import React from "react";
+
+import type { IconName } from "@/constants/data";
+
+const MAP: Record<IconName, React.ComponentProps<typeof Feather>["name"]> = {
+  bell: "bell",
+  alert: "alert-triangle",
+  mapPin: "map-pin",
+  home: "home",
+  map: "map",
+  book: "book-open",
+  user: "user",
+  phone: "phone",
+  plus: "plus",
+  x: "x",
+  check: "check",
+  chevronRight: "chevron-right",
+  chevronDown: "chevron-down",
+  arrowLeft: "arrow-left",
+  users: "users",
+  store: "shopping-bag",
+  hospital: "plus-square",
+  shield: "shield",
+  navigation: "navigation",
+  clock: "clock",
+  search: "search",
+  info: "info",
+  lock: "lock",
+  globe: "globe",
+  fileText: "file-text",
+  helpCircle: "help-circle",
+  crown: "award",
+  message: "message-circle",
+  phoneCall: "phone-call",
+  camera: "camera",
+  moon: "moon",
+  sun: "sun",
+  palette: "droplet",
+  share: "share-2",
+  heart: "heart",
+  send: "send",
+  sparkles: "star",
+  edit: "edit-2",
+  trash: "trash-2",
+  logOut: "log-out",
+  bellRing: "bell",
+};
+
+interface Props {
+  name: IconName;
+  size?: number;
+  color?: string;
+}
+
+export function Icon({ name, size = 20, color = "#000" }: Props) {
+  return <Feather name={MAP[name] ?? "circle"} size={size} color={color} />;
+}
+
+
+########################################################################
+# FILE: artifacts/suraksha/components/KeyboardAwareScrollViewCompat.tsx
+########################################################################
+
+import {
+  KeyboardAwareScrollView,
+  KeyboardAwareScrollViewProps,
+} from "react-native-keyboard-controller";
+import { Platform, ScrollView, ScrollViewProps } from "react-native";
+
+type Props = KeyboardAwareScrollViewProps & ScrollViewProps;
+
+export function KeyboardAwareScrollViewCompat({
+  children,
+  keyboardShouldPersistTaps = "handled",
+  ...props
+}: Props) {
+  if (Platform.OS === "web") {
+    return (
+      <ScrollView keyboardShouldPersistTaps={keyboardShouldPersistTaps} {...props}>
+        {children}
+      </ScrollView>
+    );
+  }
+  return (
+    <KeyboardAwareScrollView
+      keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+      {...props}
+    >
+      {children}
+    </KeyboardAwareScrollView>
+  );
+}
+
+
+########################################################################
+# FILE: artifacts/suraksha/components/MapPreview.tsx
+########################################################################
+
+import React from "react";
+import { StyleSheet, View } from "react-native";
+import MapView, { Marker } from "react-native-maps";
+
+import type { Place } from "@/constants/data";
+import { useTheme } from "@/context/ThemeContext";
+
+const CENTER = { latitude: 12.9352, longitude: 77.6245 };
+
+export function MapPreview({
+  places,
+  colorFor,
+}: {
+  places: Place[];
+  colorFor: (cat: Place["category"]) => string;
+}) {
+  const { radius } = useTheme();
+  return (
+    <View style={[styles.wrap, { borderRadius: radius + 2 }]}>
+      <MapView
+        style={StyleSheet.absoluteFill}
+        showsUserLocation
+        showsMyLocationButton={false}
+        initialRegion={{
+          ...CENTER,
+          latitudeDelta: 0.025,
+          longitudeDelta: 0.025,
+        }}
+      >
+        {places.map((p) => (
+          <Marker
+            key={p.id}
+            coordinate={{ latitude: p.lat, longitude: p.lng }}
+            title={p.name}
+            description={p.address}
+          >
+            <View style={[styles.pin, { backgroundColor: colorFor(p.category) }]}>
+              <View style={styles.pinDot} />
+            </View>
+          </Marker>
+        ))}
+      </MapView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: { height: 230, overflow: "hidden", marginHorizontal: 18, marginBottom: 14 },
+  pin: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#fff",
+  },
+  pinDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: "#fff" },
+});
+
+
+########################################################################
+# FILE: artifacts/suraksha/components/MapPreview.web.tsx
+########################################################################
+
+import { LinearGradient } from "expo-linear-gradient";
+import React from "react";
+import { StyleSheet, View } from "react-native";
+import Svg, { Circle, Path } from "react-native-svg";
+
+import type { Place } from "@/constants/data";
+import { useTheme } from "@/context/ThemeContext";
+
+/**
+ * Web fallback: react-native-maps has no web implementation, so we render a
+ * stylised faux-map (matching the prototype) with pins positioned by percent.
+ */
+export function MapPreview({
+  places,
+  colorFor,
+}: {
+  places: Place[];
+  colorFor: (cat: Place["category"]) => string;
+}) {
+  const { c, radius } = useTheme();
+  return (
+    <View style={[styles.wrap, { borderRadius: radius + 2, borderColor: c.border }]}>
+      <LinearGradient
+        colors={["#CFE8D6", "#BFE0DB", "#D9E7C8", "#CFE0CF"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0.4, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={[styles.road, { top: "46%", left: 0, right: 0, height: 6 }]} />
+      <View style={[styles.road, { left: "40%", top: 0, bottom: 0, width: 6 }]} />
+
+      <View style={[styles.userWrap, { left: "45%", top: "48%" }]}>
+        <View style={[styles.userRing, { borderColor: c.primary }]} />
+        <View style={[styles.userDot, { backgroundColor: c.primary }]} />
+      </View>
+
+      {places.map((p) => (
+        <View key={p.id} style={[styles.pin, { left: `${p.x}%`, top: `${p.y}%` }]}>
+          <Svg width={26} height={32} viewBox="0 0 24 30">
+            <Path
+              d="M12 0C5.4 0 0 5.3 0 11.8 0 20.5 12 30 12 30s12-9.5 12-18.2C24 5.3 18.6 0 12 0Z"
+              fill={colorFor(p.category)}
+            />
+            <Circle cx="12" cy="11.5" r="5" fill="#fff" />
+          </Svg>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: {
+    height: 230,
+    overflow: "hidden",
+    marginHorizontal: 18,
+    marginBottom: 14,
+    borderWidth: 1,
+  },
+  road: { position: "absolute", backgroundColor: "rgba(255,255,255,0.65)" },
+  userWrap: { position: "absolute", alignItems: "center", justifyContent: "center" },
+  userRing: {
+    position: "absolute",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    opacity: 0.5,
+  },
+  userDot: { width: 14, height: 14, borderRadius: 7, borderWidth: 3, borderColor: "#fff" },
+  pin: { position: "absolute", marginLeft: -13, marginTop: -32 },
+});
+
+
+########################################################################
+# FILE: artifacts/suraksha/components/SosModal.tsx
+########################################################################
+
+import { LinearGradient } from "expo-linear-gradient";
+import React from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { Icon } from "@/components/Icon";
+import type { Coords } from "@/context/SafetyContext";
+import { useApp } from "@/context/AppContext";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+import { fmtClock } from "@/lib/format";
+import { callNumber, shareLiveLocation } from "@/lib/native";
+
+interface SosModalProps {
+  sos: { active: boolean; seconds: number; coords: Coords | null; loading: boolean };
+  cancelSOS: () => void;
+}
+
+export function SosModal({ sos, cancelSOS }: SosModalProps) {
+  const { c } = useTheme();
+  const { t } = useI18n();
+  const { contacts } = useApp();
+  const insets = useSafeAreaInsets();
+
+  const delivered = Math.min(contacts.length, Math.floor(sos.seconds / 1.4) + 1);
+
+  const locationText = sos.loading
+    ? t("sos.gettingLocation")
+    : sos.coords
+      ? `Lat ${sos.coords.lat.toFixed(5)}, Lng ${sos.coords.lng.toFixed(5)}${
+          sos.coords.accuracy ? ` · ±${Math.round(sos.coords.accuracy)}m` : ""
+        }`
+      : "Koramangala, Bengaluru";
+
+  return (
+    <View style={[StyleSheet.absoluteFill, styles.root]}>
+      <LinearGradient colors={[c.accentDark, "#1A0820"]} style={StyleSheet.absoluteFill} />
+      <ScrollView
+        contentContainerStyle={{
+          paddingTop: insets.top + 28,
+          paddingHorizontal: 22,
+          paddingBottom: insets.bottom + 22,
+          alignItems: "center",
+          flexGrow: 1,
+        }}
+      >
+        <View style={styles.iconWrap}>
+          <Icon name="alert" size={36} color="#fff" />
+        </View>
+        <Text style={styles.heading}>{t("sos.sent")}</Text>
+        <Text style={styles.sub}>{t("sos.helpComing")}</Text>
+        <Text style={styles.clock}>{fmtClock(sos.seconds)}</Text>
+        <Text style={styles.elapsed}>{t("sos.elapsed")}</Text>
+
+        <View style={styles.panel}>
+          <View style={styles.panelRow}>
+            <Icon name="mapPin" size={15} color="#fff" />
+            <Text style={styles.panelTitle}>{t("sos.liveLocation")}</Text>
+          </View>
+          <Text style={styles.panelBody}>{locationText}</Text>
+        </View>
+
+        <View style={styles.panel}>
+          <Text style={[styles.panelTitle, { marginBottom: 10 }]}>{t("sos.alertedContacts")}</Text>
+          {contacts.map((contact, i) => (
+            <View
+              key={contact.id}
+              style={[
+                styles.contactRow,
+                {
+                  borderBottomWidth: i < contacts.length - 1 ? StyleSheet.hairlineWidth : 0,
+                },
+              ]}
+            >
+              <View style={styles.contactAvatar}>
+                <Text style={styles.contactAvatarText}>{contact.name.charAt(0)}</Text>
+              </View>
+              <Text style={styles.contactName} numberOfLines={1}>
+                {contact.name}
+              </Text>
+              {i < delivered ? (
+                <View style={styles.deliveredRow}>
+                  <Icon name="check" size={13} color="#7CF0B5" />
+                  <Text style={styles.deliveredText}>{t("sos.delivered")}</Text>
+                </View>
+              ) : (
+                <Text style={styles.sendingText}>{t("sos.sending")}</Text>
+              )}
+            </View>
+          ))}
+        </View>
+
+        <View style={{ width: "100%", gap: 10, marginTop: 4 }}>
+          <Pressable style={[styles.actionBtn, { backgroundColor: "rgba(255,255,255,0.16)" }]} onPress={() => callNumber("112")}>
+            <Icon name="phone" size={16} color="#fff" />
+            <Text style={styles.actionText}>{t("sos.call112")}</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.actionBtn, { backgroundColor: "rgba(255,255,255,0.16)" }]}
+            onPress={() => shareLiveLocation(sos.coords)}
+          >
+            <Icon name="share" size={16} color="#fff" />
+            <Text style={styles.actionText}>{t("sos.shareLocation")}</Text>
+          </Pressable>
+          <Pressable style={[styles.actionBtn, { backgroundColor: c.success }]} onPress={cancelSOS}>
+            <Icon name="check" size={16} color="#fff" />
+            <Text style={[styles.actionText, { fontFamily: "Inter_700Bold" }]}>{t("sos.imSafe")}</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { zIndex: 1000, elevation: 1000 },
+  iconWrap: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
+  },
+  heading: { color: "#fff", fontSize: 21, fontFamily: "Inter_700Bold" },
+  sub: { color: "rgba(255,255,255,0.85)", fontSize: 13, marginTop: 3, fontFamily: "Inter_500Medium" },
+  clock: { color: "#fff", fontSize: 32, fontFamily: "Inter_700Bold", marginTop: 14, letterSpacing: 1 },
+  elapsed: { color: "rgba(255,255,255,0.7)", fontSize: 11.5, marginBottom: 18 },
+  panel: {
+    width: "100%",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 14,
+  },
+  panelRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
+  panelTitle: { color: "#fff", fontSize: 12.5, fontFamily: "Inter_700Bold" },
+  panelBody: { color: "rgba(255,255,255,0.8)", fontSize: 11.5, lineHeight: 17 },
+  contactRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 7,
+    borderBottomColor: "rgba(255,255,255,0.12)",
+  },
+  contactAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  contactAvatarText: { color: "#fff", fontSize: 12, fontFamily: "Inter_700Bold" },
+  contactName: { flex: 1, color: "#fff", fontSize: 12.5, fontFamily: "Inter_600SemiBold" },
+  deliveredRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  deliveredText: { color: "#7CF0B5", fontSize: 10.5, fontFamily: "Inter_700Bold" },
+  sendingText: { color: "rgba(255,255,255,0.6)", fontSize: 10.5 },
+  actionBtn: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 13,
+    borderRadius: 12,
+  },
+  actionText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+});
+
+
+########################################################################
+# FILE: artifacts/suraksha/components/ui.tsx
+########################################################################
+
+import React from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  type TextStyle,
+  View,
+  type ViewStyle,
+} from "react-native";
+
+import { withAlpha } from "@/constants/colors";
+import { useTheme } from "@/context/ThemeContext";
+import { Icon } from "@/components/Icon";
+import type { IconName } from "@/constants/data";
+
+export function Card({
+  children,
+  style,
+}: {
+  children: React.ReactNode;
+  style?: ViewStyle | ViewStyle[];
+}) {
+  const { c, radius } = useTheme();
+  return (
+    <View
+      style={[
+        {
+          backgroundColor: c.card,
+          borderColor: c.border,
+          borderWidth: 1,
+          borderRadius: radius,
+          padding: 16,
+        },
+        style,
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
+export function SectionTitle({ children }: { children: React.ReactNode }) {
+  const { c } = useTheme();
+  return (
+    <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 10 }}>
+      {children}
+    </Text>
+  );
+}
+
+export function Avatar({ label, size = 38, color }: { label: string; size?: number; color?: string }) {
+  const { c } = useTheme();
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: color ?? c.primaryLight,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: size * 0.38 }}>
+        {label.charAt(0).toUpperCase()}
+      </Text>
+    </View>
+  );
+}
+
+export function IconBadge({
+  name,
+  color,
+  size = 18,
+  box = 38,
+}: {
+  name: IconName;
+  color: string;
+  size?: number;
+  box?: number;
+}) {
+  return (
+    <View
+      style={{
+        width: box,
+        height: box,
+        borderRadius: box * 0.28,
+        backgroundColor: withAlpha(color, 0.12),
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Icon name={name} size={size} color={color} />
+    </View>
+  );
+}
+
+interface ButtonProps {
+  label: string;
+  onPress?: () => void;
+  variant?: "primary" | "success" | "accent" | "ghost" | "danger";
+  icon?: IconName;
+  loading?: boolean;
+  disabled?: boolean;
+  style?: ViewStyle;
+  textStyle?: TextStyle;
+  small?: boolean;
+}
+
+export function Button({
+  label,
+  onPress,
+  variant = "primary",
+  icon,
+  loading,
+  disabled,
+  style,
+  textStyle,
+  small,
+}: ButtonProps) {
+  const { c, radius } = useTheme();
+  const bg = {
+    primary: c.primary,
+    success: c.success,
+    accent: c.accent,
+    danger: c.danger,
+    ghost: c.cardAlt,
+  }[variant];
+  const fg = variant === "ghost" ? c.primary : "#fff";
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled || loading}
+      style={({ pressed }) => [
+        {
+          backgroundColor: bg,
+          borderRadius: radius * 0.7,
+          paddingVertical: small ? 9 : 12,
+          paddingHorizontal: 14,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 7,
+          opacity: pressed || disabled ? 0.85 : 1,
+        },
+        style,
+      ]}
+    >
+      {loading ? (
+        <ActivityIndicator color={fg} size="small" />
+      ) : (
+        <>
+          {icon && <Icon name={icon} size={small ? 14 : 16} color={fg} />}
+          <Text
+            style={[
+              { color: fg, fontFamily: "Inter_700Bold", fontSize: small ? 13 : 14 },
+              textStyle,
+            ]}
+          >
+            {label}
+          </Text>
+        </>
+      )}
+    </Pressable>
+  );
+}
+
+export function Chip({
+  label,
+  active,
+  onPress,
+  color,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+  color?: string;
+}) {
+  const { c } = useTheme();
+  const activeColor = color ?? c.primary;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        paddingHorizontal: 16,
+        paddingVertical: 7,
+        borderRadius: 18,
+        backgroundColor: active ? activeColor : c.card,
+        borderWidth: 1,
+        borderColor: active ? activeColor : c.border,
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 12.5,
+          fontFamily: "Inter_700Bold",
+          color: active ? "#fff" : c.textMuted,
+        }}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+export const sharedStyles = StyleSheet.create({
+  screen: { flex: 1 },
+  pad: { paddingHorizontal: 18 },
+});
+
+
+########################################################################
+# FILE: artifacts/suraksha/constants/colors.ts
+########################################################################
+
+/**
+ * Suraksha theme system.
+ *
+ * The app ships a small "theme engine": the user can pick an accent theme
+ * (purple / rose / ocean / sunset) and a colour mode (light / dark / system).
+ * `buildPalette(themeKey, isDark)` composes a full palette from a neutral set
+ * (driven by the mode) plus an accent set (driven by the theme).
+ *
+ * The default export keeps the scaffold `useColors()` hook working by exposing
+ * a light/dark palette plus `radius`.
+ */
+
+export type ThemeKey = "purple" | "rose" | "ocean" | "sunset";
+export type ColorMode = "light" | "dark" | "system";
+
+export interface AccentSet {
+  primary: string;
+  primaryDark: string;
+  primaryLight: string;
+  accent: string;
+  accentDark: string;
+}
+
+export interface Palette extends AccentSet {
+  isDark: boolean;
+  success: string;
+  successSoft: string;
+  warning: string;
+  danger: string;
+  dangerSoft: string;
+  // Map categories (kept constant across themes for legibility)
+  police: string;
+  hospital: string;
+  shelter: string;
+  shops: string;
+  // Neutrals
+  bg: string;
+  card: string;
+  cardAlt: string;
+  text: string;
+  textMuted: string;
+  textFaint: string;
+  border: string;
+  inputBg: string;
+  onColor: string;
+  overlay: string;
+}
+
+export const THEME_ORDER: ThemeKey[] = ["purple", "rose", "ocean", "sunset"];
+
+export const ACCENTS: Record<ThemeKey, AccentSet> = {
+  purple: {
+    primary: "#5B2FBF",
+    primaryDark: "#3F1F8C",
+    primaryLight: "#8B68DC",
+    accent: "#D91A7A",
+    accentDark: "#A8125C",
+  },
+  rose: {
+    primary: "#C2185B",
+    primaryDark: "#8E0E42",
+    primaryLight: "#E1659A",
+    accent: "#7B1FA2",
+    accentDark: "#591680",
+  },
+  ocean: {
+    primary: "#0E7490",
+    primaryDark: "#0B5366",
+    primaryLight: "#2FA6C2",
+    accent: "#DB2777",
+    accentDark: "#9D174D",
+  },
+  sunset: {
+    primary: "#EA580C",
+    primaryDark: "#C2410C",
+    primaryLight: "#FB923C",
+    accent: "#DB2777",
+    accentDark: "#9D174D",
+  },
+};
+
+export const THEME_LABELS: Record<ThemeKey, { en: string; hi: string }> = {
+  purple: { en: "Purple", hi: "बैंगनी" },
+  rose: { en: "Rose", hi: "गुलाबी" },
+  ocean: { en: "Ocean", hi: "नीला" },
+  sunset: { en: "Sunset", hi: "नारंगी" },
+};
+
+const LIGHT_NEUTRALS = {
+  success: "#0E9B6B",
+  successSoft: "#E9F9F2",
+  warning: "#C47D0E",
+  danger: "#D92D20",
+  dangerSoft: "#FBEAF1",
+  police: "#2454C7",
+  hospital: "#D91A7A",
+  shelter: "#0E9B6B",
+  shops: "#C47D0E",
+  bg: "#F6F3FB",
+  card: "#FFFFFF",
+  cardAlt: "#F1ECFA",
+  text: "#1A1035",
+  textMuted: "#6E6485",
+  textFaint: "#A099B4",
+  border: "#E9E3F4",
+  inputBg: "#FFFFFF",
+  onColor: "#FFFFFF",
+  overlay: "rgba(20,10,40,0.45)",
+};
+
+const DARK_NEUTRALS = {
+  success: "#1FB985",
+  successSoft: "#13352A",
+  warning: "#E0A130",
+  danger: "#F0635A",
+  dangerSoft: "#3A1622",
+  police: "#5B83E8",
+  hospital: "#EC5FA0",
+  shelter: "#1FB985",
+  shops: "#E0A130",
+  bg: "#100A1E",
+  card: "#1B1430",
+  cardAlt: "#271C40",
+  text: "#F4F1FA",
+  textMuted: "#B5ABCC",
+  textFaint: "#7C7196",
+  border: "#2E2348",
+  inputBg: "#241A3C",
+  onColor: "#FFFFFF",
+  overlay: "rgba(0,0,0,0.6)",
+};
+
+export function buildPalette(themeKey: ThemeKey, isDark: boolean): Palette {
+  const accent = ACCENTS[themeKey] ?? ACCENTS.purple;
+  const neutrals = isDark ? DARK_NEUTRALS : LIGHT_NEUTRALS;
+  return { isDark, ...accent, ...neutrals };
+}
+
+export const RADIUS = 16;
+
+/** Adds an alpha channel to a 6-digit hex colour. */
+export function withAlpha(hex: string, alpha: number): string {
+  const a = Math.round(Math.max(0, Math.min(1, alpha)) * 255)
+    .toString(16)
+    .padStart(2, "0");
+  return `${hex}${a}`;
+}
+
+// --- Scaffold compatibility (useColors hook) -------------------------------
+function toScaffold(p: Palette) {
+  return {
+    text: p.text,
+    tint: p.primary,
+    background: p.bg,
+    foreground: p.text,
+    card: p.card,
+    cardForeground: p.text,
+    primary: p.primary,
+    primaryForeground: p.onColor,
+    secondary: p.cardAlt,
+    secondaryForeground: p.primary,
+    muted: p.cardAlt,
+    mutedForeground: p.textMuted,
+    accent: p.accent,
+    accentForeground: p.onColor,
+    destructive: p.danger,
+    destructiveForeground: p.onColor,
+    border: p.border,
+    input: p.border,
+  };
+}
+
+const colors = {
+  light: toScaffold(buildPalette("purple", false)),
+  dark: toScaffold(buildPalette("purple", true)),
+  radius: RADIUS,
+};
+
+export default colors;
+
+
+########################################################################
+# FILE: artifacts/suraksha/constants/data.ts
+########################################################################
+
+/**
+ * Static, offline content for Suraksha.
+ *
+ * All user-facing copy carries an English (`en`) and Hindi (`hi`) variant so
+ * the app stays fully usable offline in either language.
+ */
+
+import type { Palette } from "./colors";
+
+export type IconName =
+  | "bell"
+  | "alert"
+  | "mapPin"
+  | "home"
+  | "map"
+  | "book"
+  | "user"
+  | "phone"
+  | "plus"
+  | "x"
+  | "check"
+  | "chevronRight"
+  | "chevronDown"
+  | "arrowLeft"
+  | "users"
+  | "store"
+  | "hospital"
+  | "shield"
+  | "navigation"
+  | "clock"
+  | "search"
+  | "info"
+  | "lock"
+  | "globe"
+  | "fileText"
+  | "helpCircle"
+  | "crown"
+  | "message"
+  | "phoneCall"
+  | "camera"
+  | "moon"
+  | "sun"
+  | "palette"
+  | "share"
+  | "heart"
+  | "send"
+  | "sparkles"
+  | "edit"
+  | "trash"
+  | "logOut"
+  | "bellRing";
+
+export type PlaceCategory = "Police" | "Hospital" | "Shelter" | "Shops";
+
+export interface Place {
+  id: number;
+  name: string;
+  category: PlaceCategory;
+  address: string;
+  distance: string;
+  /** Percent offsets used by the web faux-map fallback. */
+  x: number;
+  y: number;
+  /** Real coordinates used by react-native-maps on device. */
+  lat: number;
+  lng: number;
+  phone: string;
+}
+
+export interface QuickAction {
+  key: "safe" | "rights" | "addcontact" | "helpline" | "sakhi" | "fakecall";
+  en: string;
+  hi: string;
+  icon: IconName;
+  color: (c: Palette) => string;
+  route: string;
+}
+
+export interface RightItem {
+  id: number;
+  title: string;
+  subtitle: string;
+  icon: IconName;
+  color: (c: Palette) => string;
+  en: string;
+  hi: string;
+  steps: { en: string; hi: string }[];
+}
+
+export interface Helpline {
+  name: string;
+  hi: string;
+  number: string;
+  desc: string;
+  descHi: string;
+  color: (c: Palette) => string;
+}
+
+export const QUICK_ACTIONS: QuickAction[] = [
+  { key: "safe", en: "Safe Places", hi: "सुरक्षित स्थान", icon: "mapPin", color: (c) => c.primary, route: "/(tabs)/map" },
+  { key: "rights", en: "Know Your Rights", hi: "अपने अधिकार जानें", icon: "book", color: (c) => c.police, route: "/(tabs)/rights" },
+  { key: "addcontact", en: "Trusted Contacts", hi: "विश्वसनीय संपर्क", icon: "users", color: (c) => c.success, route: "/contacts" },
+  { key: "helpline", en: "Helpline", hi: "हेल्पलाइन", icon: "phone", color: (c) => c.accent, route: "/helpline" },
+  { key: "sakhi", en: "Ask Sakhi", hi: "सखी से पूछें", icon: "message", color: (c) => c.primaryLight, route: "/(tabs)/sakhi" },
+  { key: "fakecall", en: "Fake Call", hi: "नकली कॉल", icon: "phoneCall", color: (c) => c.warning, route: "/fakecall" },
+];
+
+export const PLACES: Place[] = [
+  { id: 1, name: "Koramangala Police Station", category: "Police", address: "80 Feet Rd, Koramangala 4th Block", distance: "0.4 km", x: 32, y: 36, lat: 12.9352, lng: 77.6245, phone: "100" },
+  { id: 2, name: "St. John's Medical College Hospital", category: "Hospital", address: "Sarjapur Road, Koramangala", distance: "1.2 km", x: 64, y: 24, lat: 12.9279, lng: 77.6217, phone: "08022065000" },
+  { id: 3, name: "Sakhi One Stop Centre", category: "Shelter", address: "Near BDA Complex, Koramangala", distance: "2.1 km", x: 50, y: 64, lat: 12.9337, lng: 77.6195, phone: "181" },
+  { id: 4, name: "Forum Mall Koramangala", category: "Shops", address: "Hosur Road, Koramangala", distance: "0.8 km", x: 74, y: 56, lat: 12.9345, lng: 77.6112, phone: "08049065000" },
+  { id: 5, name: "Jyoti Nivas Police Outpost", category: "Police", address: "5th Block, Koramangala", distance: "1.5 km", x: 18, y: 66, lat: 12.9368, lng: 77.6258, phone: "100" },
+  { id: 6, name: "Cloudnine Hospital", category: "Hospital", address: "Old Airport Road", distance: "2.4 km", x: 82, y: 36, lat: 12.9412, lng: 77.6286, phone: "08049072904" },
+  { id: 7, name: "Swadhar Greh Shelter Home", category: "Shelter", address: "Ejipura, Bengaluru", distance: "3.0 km", x: 34, y: 82, lat: 12.9412, lng: 77.6312, phone: "181" },
+  { id: 8, name: "5th Block Market", category: "Shops", address: "5th Block, Koramangala", distance: "0.6 km", x: 56, y: 16, lat: 12.9311, lng: 77.6271, phone: "100" },
+];
+
+export const RIGHTS: RightItem[] = [
+  {
+    id: 1,
+    title: "POSH Act, 2013",
+    subtitle: "Sexual Harassment of Women at Workplace",
+    icon: "shield",
+    color: (c) => c.primary,
+    en: "Protects women from sexual harassment at the workplace. Employers with 10 or more employees must set up an Internal Committee (IC) to handle complaints.",
+    hi: "महिलाओं को कार्यस्थल पर यौन उत्पीड़न से सुरक्षा देता है। 10 या अधिक कर्मचारियों वाले हर नियोक्ता को शिकायतों के लिए आंतरिक समिति (IC) बनानी अनिवार्य है।",
+    steps: [
+      { en: "Write a complaint to the Internal Committee (IC) within 3 months of the incident.", hi: "घटना के 3 महीने के भीतर आंतरिक समिति (IC) को लिखित शिकायत दें।" },
+      { en: "The IC must complete its inquiry and submit a report within 90 days.", hi: "IC को 90 दिनों के भीतर जांच पूरी कर रिपोर्ट देनी होती है।" },
+      { en: "You can request interim relief such as transfer or leave during the inquiry.", hi: "जांच के दौरान आप स्थानांतरण या छुट्टी जैसी अंतरिम राहत मांग सकती हैं।" },
+      { en: "If unsatisfied with the outcome, you can appeal in court within 90 days of the IC's report.", hi: "परिणाम से असंतुष्ट होने पर रिपोर्ट के 90 दिनों के भीतर अदालत में अपील कर सकती हैं।" },
+    ],
+  },
+  {
+    id: 2,
+    title: "POCSO Act, 2012",
+    subtitle: "Protection of Children from Sexual Offences",
+    icon: "users",
+    color: (c) => c.accent,
+    en: "Protects children under 18 from sexual abuse and exploitation, and mandates child-friendly procedures in police stations and courts.",
+    hi: "18 वर्ष से कम आयु के बच्चों को यौन शोषण से बचाता है, और पुलिस व अदालत में बाल-सुलभ प्रक्रिया अनिवार्य करता है।",
+    steps: [
+      { en: "Call Childline at 1098 immediately — it is free and available 24x7.", hi: "तुरंत चाइल्डलाइन 1098 पर कॉल करें — यह निःशुल्क और 24x7 उपलब्ध है।" },
+      { en: "Reporting is legally mandatory for anyone who becomes aware of the offence.", hi: "अपराध की जानकारी होने पर रिपोर्ट करना कानूनन अनिवार्य है।" },
+      { en: "The child's statement is recorded in the presence of a parent or trusted adult.", hi: "बच्चे का बयान माता-पिता या विश्वसनीय वयस्क की उपस्थिति में दर्ज होता है।" },
+      { en: "The trial is conducted in-camera to protect the child's identity.", hi: "बच्चे की पहचान सुरक्षित रखने के लिए सुनवाई बंद कमरे में होती है।" },
+    ],
+  },
+  {
+    id: 3,
+    title: "Domestic Violence Act, 2005",
+    subtitle: "Protection of Women from Domestic Violence",
+    icon: "home",
+    color: (c) => c.warning,
+    en: "Gives women the right to live free from violence at home, and to seek protection orders, residence rights and maintenance.",
+    hi: "महिलाओं को घर में हिंसा से मुक्त रहने तथा सुरक्षा आदेश, निवास अधिकार और भरण-पोषण पाने का अधिकार देता है।",
+    steps: [
+      { en: "Approach a Protection Officer or file a complaint directly with the Magistrate.", hi: "संरक्षण अधिकारी से संपर्क करें या सीधे मजिस्ट्रेट के पास शिकायत दर्ज करें।" },
+      { en: "Request a Protection Order to stop the abuser from contacting you.", hi: "उत्पीड़क को संपर्क से रोकने के लिए सुरक्षा आदेश का अनुरोध करें।" },
+      { en: "Ask for a Residence Order to continue living in the shared household.", hi: "साझा घर में रहना जारी रखने के लिए निवास आदेश मांगें।" },
+      { en: "Apply for monetary relief to cover medical costs and lost income.", hi: "चिकित्सा खर्च और आय की हानि के लिए आर्थिक राहत हेतु आवेदन करें।" },
+    ],
+  },
+  {
+    id: 4,
+    title: "IPC Section 354",
+    subtitle: "Assault on a Woman to Outrage Her Modesty",
+    icon: "alert",
+    color: (c) => c.police,
+    en: "Makes it a criminal offence to assault or use force against a woman with the intent to outrage her modesty, punishable with imprisonment.",
+    hi: "महिला की मर्यादा भंग करने के इरादे से हमला या बल प्रयोग करना दंडनीय अपराध है, जिसमें कारावास की सजा हो सकती है।",
+    steps: [
+      { en: "File an FIR at the nearest police station — this is a cognizable offence.", hi: "नज़दीकी थाने में FIR दर्ज करें — यह संज्ञेय अपराध है।" },
+      { en: "The police cannot refuse to register your FIR.", hi: "पुलिस आपकी FIR दर्ज करने से इनकार नहीं कर सकती।" },
+      { en: "You may request a woman police officer to record your statement.", hi: "आप बयान दर्ज करने के लिए महिला पुलिस अधिकारी का अनुरोध कर सकती हैं।" },
+      { en: "Free legal aid is available through the District Legal Services Authority.", hi: "जिला विधिक सेवा प्राधिकरण से निःशुल्क कानूनी सहायता उपलब्ध है।" },
+    ],
+  },
+];
+
+export const HELPLINES: Helpline[] = [
+  { name: "Women Helpline", hi: "महिला हेल्पलाइन", number: "1091", desc: "24x7 support for women in distress", descHi: "संकटग्रस्त महिलाओं के लिए 24x7 सहायता", color: (c) => c.accent },
+  { name: "Police", hi: "पुलिस", number: "100", desc: "For immediate police assistance", descHi: "तत्काल पुलिस सहायता के लिए", color: (c) => c.police },
+  { name: "Childline", hi: "चाइल्डलाइन", number: "1098", desc: "For children in need of care and protection", descHi: "देखभाल व सुरक्षा हेतु बच्चों के लिए", color: (c) => c.warning },
+  { name: "Domestic Violence Helpline", hi: "घरेलू हिंसा हेल्पलाइन", number: "181", desc: "24x7 helpline for women facing violence at home", descHi: "घर में हिंसा झेल रही महिलाओं के लिए 24x7", color: (c) => c.primary },
+  { name: "AASRA — Crisis Line", hi: "आसरा — संकट रेखा", number: "9820466726", desc: "Emotional support & suicide-prevention helpline", descHi: "भावनात्मक सहायता व आत्महत्या रोकथाम हेल्पलाइन", color: (c) => c.success },
+];
+
+export const REPORT_CATEGORIES: { key: string; en: string; hi: string; icon: IconName }[] = [
+  { key: "harassment", en: "Harassment", hi: "उत्पीड़न", icon: "alert" },
+  { key: "unsafe", en: "Unsafe Area", hi: "असुरक्षित क्षेत्र", icon: "mapPin" },
+  { key: "stalking", en: "Stalking", hi: "पीछा करना", icon: "user" },
+  { key: "poorLighting", en: "Poor Lighting", hi: "खराब रोशनी", icon: "sun" },
+  { key: "other", en: "Other", hi: "अन्य", icon: "info" },
+];
+
+
+########################################################################
+# FILE: artifacts/suraksha/constants/i18n.ts
+########################################################################
+
+/**
+ * Lightweight bilingual string table (English / Hindi).
+ *
+ * Access via the `useI18n()` hook (see context/LanguageContext). Keys are flat
+ * dotted strings; `t("home.tapForHelp")` returns the active-language value.
+ */
+
+export type Language = "en" | "hi";
+
+export const LANGUAGE_LABELS: Record<Language, string> = {
+  en: "English",
+  hi: "हिंदी",
+};
+
+type Strings = Record<string, { en: string; hi: string }>;
+
+export const STRINGS: Strings = {
+  // Tabs
+  "tab.home": { en: "Home", hi: "होम" },
+  "tab.map": { en: "Map", hi: "नक्शा" },
+  "tab.sakhi": { en: "Sakhi", hi: "सखी" },
+  "tab.rights": { en: "Rights", hi: "अधिकार" },
+  "tab.profile": { en: "Profile", hi: "प्रोफ़ाइल" },
+
+  // Onboarding
+  "onb.skip": { en: "Skip", hi: "छोड़ें" },
+  "onb.next": { en: "Next", hi: "आगे" },
+  "onb.getStarted": { en: "Get Started", hi: "शुरू करें" },
+  "onb.chooseLanguage": { en: "Choose your language", hi: "अपनी भाषा चुनें" },
+  "onb.langSub": { en: "You can change this anytime in Profile", hi: "इसे आप प्रोफ़ाइल में कभी भी बदल सकती हैं" },
+  "onb.title1": { en: "You are never alone", hi: "आप कभी अकेली नहीं हैं" },
+  "onb.body1": { en: "One tap on SOS instantly alerts your trusted contacts with your live location.", hi: "SOS पर एक टैप आपके विश्वसनीय संपर्कों को तुरंत आपकी लाइव लोकेशन भेज देता है।" },
+  "onb.title2": { en: "Safety, all around you", hi: "हर ओर सुरक्षा" },
+  "onb.body2": { en: "Find nearby police stations, hospitals and shelters on the safety map.", hi: "सुरक्षा नक्शे पर पास के थाने, अस्पताल और आश्रय खोजें।" },
+  "onb.title3": { en: "Know your rights", hi: "अपने अधिकार जानें" },
+  "onb.body3": { en: "Learn the laws that protect you — and meet Sakhi, your private safety companion.", hi: "आपकी रक्षा करने वाले कानून जानें — और मिलें सखी से, आपकी निजी साथी।" },
+
+  // Home
+  "home.greeting": { en: "Namaste,", hi: "नमस्ते," },
+  "home.safeZone": { en: "Safe Zone", hi: "सुरक्षित क्षेत्र" },
+  "home.locating": { en: "Locating…", hi: "लोकेशन ढूँढ रहे हैं…" },
+  "home.tapForHelp": { en: "Tap for instant help", hi: "तुरंत सहायता के लिए दबाएँ" },
+  "home.journey": { en: "Journey Sharing", hi: "यात्रा साझा करना" },
+  "home.journeySub": { en: "Share live location while you travel", hi: "यात्रा के दौरान लाइव लोकेशन शेयर करें" },
+  "home.startSharing": { en: "Start Sharing", hi: "साझा करना शुरू करें" },
+  "home.sharingLive": { en: "Sharing live", hi: "लाइव साझा हो रहा है" },
+  "home.arrivedSafely": { en: "I've Arrived Safely", hi: "मैं सुरक्षित पहुँच गई" },
+  "home.trustedContacts": { en: "Trusted Contacts", hi: "विश्वसनीय संपर्क" },
+  "home.quickActions": { en: "Quick Actions", hi: "त्वरित क्रियाएँ" },
+  "home.manage": { en: "Manage", hi: "प्रबंधित करें" },
+  "home.noContacts": { en: "Add someone you trust", hi: "किसी विश्वसनीय व्यक्ति को जोड़ें" },
+  "home.minutes": { en: "min", hi: "मिनट" },
+
+  // SOS
+  "sos.sent": { en: "SOS Alert Sent!", hi: "SOS अलर्ट भेजा गया!" },
+  "sos.helpComing": { en: "Help is on its way", hi: "सहायता आपकी ओर आ रही है" },
+  "sos.elapsed": { en: "Elapsed time", hi: "बीता हुआ समय" },
+  "sos.liveLocation": { en: "Live location shared", hi: "लाइव लोकेशन साझा" },
+  "sos.alertedContacts": { en: "Alerted contacts", hi: "सूचित संपर्क" },
+  "sos.delivered": { en: "Notified", hi: "सूचित" },
+  "sos.sending": { en: "Sending…", hi: "भेज रहे हैं…" },
+  "sos.call112": { en: "Call Emergency 112", hi: "आपातकाल 112 पर कॉल करें" },
+  "sos.shareLocation": { en: "Share live location", hi: "लाइव लोकेशन साझा करें" },
+  "sos.imSafe": { en: "I'm Safe — Cancel Alert", hi: "मैं सुरक्षित हूँ — अलर्ट रद्द करें" },
+  "sos.gettingLocation": { en: "Getting your location…", hi: "आपकी लोकेशन ले रहे हैं…" },
+
+  // Map
+  "map.title": { en: "Safety Map", hi: "सुरक्षा नक्शा" },
+  "map.sub": { en: "Find safe places nearby", hi: "आस-पास सुरक्षित स्थान खोजें" },
+  "map.all": { en: "All", hi: "सभी" },
+  "map.police": { en: "Police", hi: "पुलिस" },
+  "map.hospital": { en: "Hospital", hi: "अस्पताल" },
+  "map.shelter": { en: "Shelter", hi: "आश्रय" },
+  "map.shops": { en: "Shops", hi: "दुकानें" },
+  "map.safe": { en: "Safe", hi: "सुरक्षित" },
+  "map.callNow": { en: "Call Now", hi: "अभी कॉल करें" },
+  "map.navigate": { en: "Navigate", hi: "रास्ता" },
+
+  // Rights
+  "rights.title": { en: "Know Your Rights", hi: "अपने अधिकार जानें" },
+  "rights.sub": { en: "Laws that protect you", hi: "कानून जो आपकी रक्षा करते हैं" },
+  "rights.legalProtections": { en: "Legal Protections", hi: "कानूनी सुरक्षा" },
+  "rights.stepsToTake": { en: "Steps to take", hi: "क्या करें" },
+
+  // Sakhi
+  "sakhi.title": { en: "Sakhi", hi: "सखी" },
+  "sakhi.sub": { en: "Your private safety companion", hi: "आपकी निजी सुरक्षा साथी" },
+  "sakhi.online": { en: "Always here for you", hi: "हमेशा आपके लिए" },
+  "sakhi.placeholder": { en: "Ask me anything…", hi: "मुझसे कुछ भी पूछें…" },
+  "sakhi.greeting": {
+    en: "Hi, I'm Sakhi 💜 I'm here for you — ask me about your safety, your rights, or anything on your mind.",
+    hi: "नमस्ते, मैं सखी हूँ 💜 मैं आपके लिए हूँ — अपनी सुरक्षा, अधिकारों या मन की किसी भी बात के बारे में पूछें।",
+  },
+  "sakhi.thinking": { en: "Sakhi is typing…", hi: "सखी लिख रही है…" },
+  "sakhi.error": { en: "I couldn't reach you just now. Please try again.", hi: "अभी संपर्क नहीं हो सका। कृपया फिर प्रयास करें।" },
+  "sakhi.suggest1": { en: "I feel unsafe walking home", hi: "घर जाते हुए असुरक्षित महसूस कर रही हूँ" },
+  "sakhi.suggest2": { en: "How do I file an FIR?", hi: "FIR कैसे दर्ज करूँ?" },
+  "sakhi.suggest3": { en: "Help me make a safety plan", hi: "सुरक्षा योजना बनाने में मदद करें" },
+  "sakhi.disclaimer": { en: "Sakhi offers guidance, not legal or medical advice. In an emergency, call 112.", hi: "सखी मार्गदर्शन देती है, कानूनी या चिकित्सकीय सलाह नहीं। आपात में 112 पर कॉल करें।" },
+
+  // Contacts
+  "contacts.title": { en: "Trusted Contacts", hi: "विश्वसनीय संपर्क" },
+  "contacts.sub": { en: "They get alerted on SOS", hi: "SOS पर इन्हें सूचित किया जाता है" },
+  "contacts.addNew": { en: "Add a new contact", hi: "नया संपर्क जोड़ें" },
+  "contacts.fullName": { en: "Full name", hi: "पूरा नाम" },
+  "contacts.phone": { en: "Phone number", hi: "फ़ोन नंबर" },
+  "contacts.add": { en: "Add Contact", hi: "संपर्क जोड़ें" },
+  "contacts.import": { en: "Import from phone", hi: "फ़ोन से आयात करें" },
+  "contacts.info": { en: "When you trigger SOS, every contact below instantly gets your live location and a call alert.", hi: "SOS पर नीचे दिया हर संपर्क तुरंत आपकी लाइव लोकेशन और कॉल अलर्ट पाता है।" },
+  "contacts.empty": { en: "No contacts yet — add someone you trust.", hi: "अभी कोई संपर्क नहीं — किसी विश्वसनीय व्यक्ति को जोड़ें।" },
+  "contacts.added": { en: "Contact added", hi: "संपर्क जोड़ा गया" },
+  "contacts.removed": { en: "Contact removed", hi: "संपर्क हटाया गया" },
+
+  // Helpline
+  "helpline.title": { en: "Emergency Helplines", hi: "आपातकालीन हेल्पलाइन" },
+  "helpline.sub": { en: "Tap any number to call", hi: "कॉल करने के लिए नंबर पर टैप करें" },
+
+  // Fake call
+  "fake.title": { en: "Fake Call", hi: "नकली कॉल" },
+  "fake.sub": { en: "Schedule a call to exit unsafe situations", hi: "असुरक्षित स्थिति से निकलने हेतु कॉल शेड्यूल करें" },
+  "fake.callerName": { en: "Caller name", hi: "कॉल करने वाले का नाम" },
+  "fake.ringIn": { en: "Ring in", hi: "कॉल आएगी" },
+  "fake.schedule": { en: "Schedule Fake Call", hi: "नकली कॉल शेड्यूल करें" },
+  "fake.scheduled": { en: "Fake call scheduled", hi: "नकली कॉल शेड्यूल हुई" },
+  "fake.cancel": { en: "Cancel scheduled call", hi: "शेड्यूल की गई कॉल रद्द करें" },
+  "fake.incoming": { en: "Incoming call", hi: "आ रही कॉल" },
+  "fake.decline": { en: "Decline", hi: "अस्वीकार" },
+  "fake.accept": { en: "Accept", hi: "स्वीकार" },
+  "fake.seconds": { en: "seconds", hi: "सेकंड" },
+
+  // Report
+  "report.title": { en: "Community Reports", hi: "सामुदायिक रिपोर्ट" },
+  "report.sub": { en: "Help keep others safe", hi: "दूसरों को सुरक्षित रखने में मदद करें" },
+  "report.newReport": { en: "Report an incident", hi: "घटना की रिपोर्ट करें" },
+  "report.category": { en: "Category", hi: "श्रेणी" },
+  "report.description": { en: "What happened?", hi: "क्या हुआ?" },
+  "report.addPhoto": { en: "Add photo", hi: "फ़ोटो जोड़ें" },
+  "report.attachLocation": { en: "Attach my location", hi: "मेरी लोकेशन जोड़ें" },
+  "report.submit": { en: "Submit Report", hi: "रिपोर्ट भेजें" },
+  "report.submitted": { en: "Report submitted — thank you", hi: "रिपोर्ट भेजी गई — धन्यवाद" },
+  "report.recent": { en: "Recent reports", hi: "हाल की रिपोर्ट" },
+  "report.empty": { en: "No reports yet.", hi: "अभी कोई रिपोर्ट नहीं।" },
+  "report.anonymous": { en: "Reports are stored privately on your device.", hi: "रिपोर्ट आपके डिवाइस पर निजी रूप से सुरक्षित रहती हैं।" },
+
+  // Profile
+  "profile.premiumMember": { en: "Premium Member", hi: "प्रीमियम सदस्य" },
+  "profile.appearance": { en: "Appearance", hi: "रूप-रंग" },
+  "profile.colorTheme": { en: "Color theme", hi: "रंग थीम" },
+  "profile.darkMode": { en: "Dark mode", hi: "डार्क मोड" },
+  "profile.settings": { en: "Settings", hi: "सेटिंग्स" },
+  "profile.notifications": { en: "Notifications", hi: "सूचनाएं" },
+  "profile.bgLocation": { en: "Background Location", hi: "बैकग्राउंड लोकेशन" },
+  "profile.language": { en: "App Language", hi: "भाषा" },
+  "profile.account": { en: "Account", hi: "खाता" },
+  "profile.privacy": { en: "Privacy Policy", hi: "गोपनीयता नीति" },
+  "profile.about": { en: "About Suraksha", hi: "सुरक्षा के बारे में" },
+  "profile.support": { en: "Contact Support", hi: "सहायता से संपर्क करें" },
+  "profile.premium": { en: "Suraksha Premium", hi: "सुरक्षा प्रीमियम" },
+  "profile.editName": { en: "Edit profile", hi: "प्रोफ़ाइल संपादित करें" },
+
+  // Premium
+  "premium.title": { en: "Suraksha Premium", hi: "सुरक्षा प्रीमियम" },
+  "premium.sub": { en: "Extra protection for total peace of mind", hi: "पूर्ण मन की शांति हेतु अतिरिक्त सुरक्षा" },
+  "premium.choosePlan": { en: "Choose a plan", hi: "योजना चुनें" },
+  "premium.subscribe": { en: "Subscribe", hi: "सदस्यता लें" },
+  "premium.currentPlan": { en: "Your current plan", hi: "आपकी वर्तमान योजना" },
+  "premium.note": { en: "Billing is not enabled in this version.", hi: "इस संस्करण में बिलिंग सक्षम नहीं है।" },
+
+  // Common
+  "common.save": { en: "Save", hi: "सहेजें" },
+  "common.cancel": { en: "Cancel", hi: "रद्द करें" },
+  "common.done": { en: "Done", hi: "पूर्ण" },
+  "common.calling": { en: "Calling", hi: "कॉल कर रहे हैं" },
+  "common.navigatingTo": { en: "Navigating to", hi: "रास्ता दिखा रहे हैं" },
+  "common.send": { en: "Send", hi: "भेजें" },
+  "common.name": { en: "Name", hi: "नाम" },
+};
+
+
+########################################################################
+# FILE: artifacts/suraksha/context/AppContext.tsx
+########################################################################
+
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+const KEY = "suraksha.app.v1";
+
+export interface Contact {
+  id: string;
+  name: string;
+  phone: string;
+}
+
+export interface ReportItem {
+  id: string;
+  category: string;
+  description: string;
+  photoUri?: string;
+  location?: string;
+  createdAt: number;
+}
+
+export interface Profile {
+  name: string;
+  phone: string;
+  premium: boolean;
+}
+
+interface Settings {
+  notifications: boolean;
+  bgLocation: boolean;
+}
+
+interface PersistShape {
+  contacts: Contact[];
+  reports: ReportItem[];
+  profile: Profile;
+  settings: Settings;
+  onboarded: boolean;
+}
+
+const DEFAULTS: PersistShape = {
+  contacts: [
+    { id: "seed-1", name: "Priya Sharma", phone: "+91 98765 43210" },
+    { id: "seed-2", name: "Anita Reddy", phone: "+91 91234 56789" },
+    { id: "seed-3", name: "Mom (Lakshmi)", phone: "+91 99887 76655" },
+  ],
+  reports: [],
+  profile: { name: "Ananya Rao", phone: "+91 98765 12345", premium: true },
+  settings: { notifications: true, bgLocation: true },
+  onboarded: false,
+};
+
+function uid() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+interface AppContextValue extends PersistShape {
+  ready: boolean;
+  addContact: (name: string, phone: string) => void;
+  addContacts: (items: { name: string; phone: string }[]) => number;
+  deleteContact: (id: string) => void;
+  addReport: (r: Omit<ReportItem, "id" | "createdAt">) => void;
+  deleteReport: (id: string) => void;
+  setProfile: (p: Partial<Profile>) => void;
+  setSettings: (s: Partial<Settings>) => void;
+  completeOnboarding: () => void;
+}
+
+const AppContext = createContext<AppContextValue | null>(null);
+
+export function AppProvider({ children }: { children: React.ReactNode }) {
+  const [state, setState] = useState<PersistShape>(DEFAULTS);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as Partial<PersistShape>;
+          setState((prev) => ({
+            ...prev,
+            ...parsed,
+            profile: { ...prev.profile, ...parsed.profile },
+            settings: { ...prev.settings, ...parsed.settings },
+            contacts: parsed.contacts ?? prev.contacts,
+            reports: parsed.reports ?? prev.reports,
+          }));
+        }
+      } catch {
+        // ignore — use defaults
+      } finally {
+        setReady(true);
+      }
+    })();
+  }, []);
+
+  const persist = useCallback((next: PersistShape) => {
+    setState(next);
+    AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
+  }, []);
+
+  const addContact = useCallback(
+    (name: string, phone: string) => {
+      if (!name.trim() || !phone.trim()) return;
+      setState((prev) => {
+        const next = {
+          ...prev,
+          contacts: [...prev.contacts, { id: uid(), name: name.trim(), phone: phone.trim() }],
+        };
+        AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
+        return next;
+      });
+    },
+    [],
+  );
+
+  const addContacts = useCallback((items: { name: string; phone: string }[]) => {
+    let added = 0;
+    setState((prev) => {
+      const existing = new Set(prev.contacts.map((c) => c.phone.replace(/\s+/g, "")));
+      const fresh = items
+        .filter((i) => i.name.trim() && i.phone.trim())
+        .filter((i) => {
+          const norm = i.phone.replace(/\s+/g, "");
+          if (existing.has(norm)) return false;
+          existing.add(norm);
+          return true;
+        })
+        .map((i) => ({ id: uid(), name: i.name.trim(), phone: i.phone.trim() }));
+      added = fresh.length;
+      const next = { ...prev, contacts: [...prev.contacts, ...fresh] };
+      AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+    return added;
+  }, []);
+
+  const deleteContact = useCallback((id: string) => {
+    setState((prev) => {
+      const next = { ...prev, contacts: prev.contacts.filter((c) => c.id !== id) };
+      AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
+  const addReport = useCallback((r: Omit<ReportItem, "id" | "createdAt">) => {
+    setState((prev) => {
+      const next = {
+        ...prev,
+        reports: [{ ...r, id: uid(), createdAt: Date.now() }, ...prev.reports],
+      };
+      AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
+  const deleteReport = useCallback((id: string) => {
+    setState((prev) => {
+      const next = { ...prev, reports: prev.reports.filter((r) => r.id !== id) };
+      AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
+  const setProfile = useCallback((p: Partial<Profile>) => {
+    setState((prev) => {
+      const next = { ...prev, profile: { ...prev.profile, ...p } };
+      AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
+  const setSettings = useCallback((s: Partial<Settings>) => {
+    setState((prev) => {
+      const next = { ...prev, settings: { ...prev.settings, ...s } };
+      AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
+  const completeOnboarding = useCallback(() => {
+    setState((prev) => {
+      const next = { ...prev, onboarded: true };
+      AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
+  const value = useMemo<AppContextValue>(
+    () => ({
+      ...state,
+      ready,
+      addContact,
+      addContacts,
+      deleteContact,
+      addReport,
+      deleteReport,
+      setProfile,
+      setSettings,
+      completeOnboarding,
+    }),
+    [
+      state,
+      ready,
+      addContact,
+      addContacts,
+      deleteContact,
+      addReport,
+      deleteReport,
+      setProfile,
+      setSettings,
+      completeOnboarding,
+    ],
+  );
+
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+}
+
+export function useApp(): AppContextValue {
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error("useApp must be used within AppProvider");
+  return ctx;
+}
+
+
+########################################################################
+# FILE: artifacts/suraksha/context/LanguageContext.tsx
+########################################################################
+
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import { type Language, STRINGS } from "@/constants/i18n";
+
+const LANG_KEY = "suraksha.lang.v1";
+
+interface LanguageContextValue {
+  lang: Language;
+  setLang: (l: Language) => void;
+  toggleLang: () => void;
+  t: (key: string) => string;
+  /** Picks the right field from an object carrying `en`/`hi` variants. */
+  pick: <T>(obj: { en: T; hi: T }) => T;
+  ready: boolean;
+}
+
+const LanguageContext = createContext<LanguageContextValue | null>(null);
+
+export function LanguageProvider({ children }: { children: React.ReactNode }) {
+  const [lang, setLangState] = useState<Language>("en");
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const saved = await AsyncStorage.getItem(LANG_KEY);
+        if (saved === "en" || saved === "hi") setLangState(saved);
+      } catch {
+        // ignore
+      } finally {
+        setReady(true);
+      }
+    })();
+  }, []);
+
+  const setLang = useCallback((l: Language) => {
+    setLangState(l);
+    AsyncStorage.setItem(LANG_KEY, l).catch(() => {});
+  }, []);
+
+  const toggleLang = useCallback(() => {
+    setLangState((prev) => {
+      const next = prev === "en" ? "hi" : "en";
+      AsyncStorage.setItem(LANG_KEY, next).catch(() => {});
+      return next;
+    });
+  }, []);
+
+  const t = useCallback(
+    (key: string) => {
+      const entry = STRINGS[key];
+      if (!entry) return key;
+      return entry[lang];
+    },
+    [lang],
+  );
+
+  const pick = useCallback(
+    <T,>(obj: { en: T; hi: T }): T => obj[lang],
+    [lang],
+  );
+
+  const value = useMemo(
+    () => ({ lang, setLang, toggleLang, t, pick, ready }),
+    [lang, setLang, toggleLang, t, pick, ready],
+  );
+
+  return (
+    <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>
+  );
+}
+
+export function useI18n(): LanguageContextValue {
+  const ctx = useContext(LanguageContext);
+  if (!ctx) throw new Error("useI18n must be used within LanguageProvider");
+  return ctx;
+}
+
+
+########################################################################
+# FILE: artifacts/suraksha/context/SafetyContext.tsx
+########################################################################
+
+import * as Location from "expo-location";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+import { SosModal } from "@/components/SosModal";
+
+export interface Coords {
+  lat: number;
+  lng: number;
+  accuracy: number | null;
+}
+
+interface SosState {
+  active: boolean;
+  seconds: number;
+  coords: Coords | null;
+  loading: boolean;
+}
+
+interface JourneyState {
+  active: boolean;
+  seconds: number;
+  duration: number;
+}
+
+interface SafetyContextValue {
+  sos: SosState;
+  triggerSOS: () => void;
+  cancelSOS: () => void;
+  journey: JourneyState;
+  setJourneyDuration: (d: number) => void;
+  startJourney: () => void;
+  endJourney: () => void;
+}
+
+const SafetyContext = createContext<SafetyContextValue | null>(null);
+
+export function SafetyProvider({ children }: { children: React.ReactNode }) {
+  const [sos, setSos] = useState<SosState>({
+    active: false,
+    seconds: 0,
+    coords: null,
+    loading: false,
+  });
+  const [journey, setJourney] = useState<JourneyState>({
+    active: false,
+    seconds: 0,
+    duration: 15,
+  });
+
+  const sosTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const journeyTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchLocation = useCallback(async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        setSos((s) => ({ ...s, loading: false }));
+        return;
+      }
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      setSos((s) => ({
+        ...s,
+        loading: false,
+        coords: {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy ?? null,
+        },
+      }));
+    } catch {
+      setSos((s) => ({ ...s, loading: false }));
+    }
+  }, []);
+
+  const triggerSOS = useCallback(() => {
+    setSos({ active: true, seconds: 0, coords: null, loading: true });
+    fetchLocation();
+  }, [fetchLocation]);
+
+  const cancelSOS = useCallback(() => {
+    setSos({ active: false, seconds: 0, coords: null, loading: false });
+  }, []);
+
+  useEffect(() => {
+    if (sos.active) {
+      sosTimer.current = setInterval(
+        () => setSos((s) => ({ ...s, seconds: s.seconds + 1 })),
+        1000,
+      );
+    } else if (sosTimer.current) {
+      clearInterval(sosTimer.current);
+      sosTimer.current = null;
+    }
+    return () => {
+      if (sosTimer.current) {
+        clearInterval(sosTimer.current);
+        sosTimer.current = null;
+      }
+    };
+  }, [sos.active]);
+
+  const setJourneyDuration = useCallback((d: number) => {
+    setJourney((j) => ({ ...j, duration: d }));
+  }, []);
+
+  const startJourney = useCallback(() => {
+    setJourney((j) => ({ ...j, active: true, seconds: 0 }));
+  }, []);
+
+  const endJourney = useCallback(() => {
+    setJourney((j) => ({ ...j, active: false, seconds: 0 }));
+  }, []);
+
+  useEffect(() => {
+    if (journey.active) {
+      journeyTimer.current = setInterval(
+        () => setJourney((j) => ({ ...j, seconds: j.seconds + 1 })),
+        1000,
+      );
+    } else if (journeyTimer.current) {
+      clearInterval(journeyTimer.current);
+      journeyTimer.current = null;
+    }
+    return () => {
+      if (journeyTimer.current) {
+        clearInterval(journeyTimer.current);
+        journeyTimer.current = null;
+      }
+    };
+  }, [journey.active]);
+
+  const value = useMemo(
+    () => ({
+      sos,
+      triggerSOS,
+      cancelSOS,
+      journey,
+      setJourneyDuration,
+      startJourney,
+      endJourney,
+    }),
+    [sos, triggerSOS, cancelSOS, journey, setJourneyDuration, startJourney, endJourney],
+  );
+
+  return (
+    <SafetyContext.Provider value={value}>
+      {children}
+      {sos.active && <SosModal sos={sos} cancelSOS={cancelSOS} />}
+    </SafetyContext.Provider>
+  );
+}
+
+export function useSafety(): SafetyContextValue {
+  const ctx = useContext(SafetyContext);
+  if (!ctx) throw new Error("useSafety must be used within SafetyProvider");
+  return ctx;
+}
+
+
+########################################################################
+# FILE: artifacts/suraksha/context/ThemeContext.tsx
+########################################################################
+
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { useColorScheme } from "react-native";
+
+import {
+  buildPalette,
+  type ColorMode,
+  type Palette,
+  RADIUS,
+  type ThemeKey,
+} from "@/constants/colors";
+
+const THEME_KEY = "suraksha.theme.v1";
+const MODE_KEY = "suraksha.mode.v1";
+
+interface ThemeContextValue {
+  c: Palette;
+  radius: number;
+  themeKey: ThemeKey;
+  setThemeKey: (k: ThemeKey) => void;
+  mode: ColorMode;
+  setMode: (m: ColorMode) => void;
+  isDark: boolean;
+  ready: boolean;
+}
+
+const ThemeContext = createContext<ThemeContextValue | null>(null);
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const system = useColorScheme();
+  const [themeKey, setThemeKeyState] = useState<ThemeKey>("purple");
+  const [mode, setModeState] = useState<ColorMode>("light");
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [savedTheme, savedMode] = await Promise.all([
+          AsyncStorage.getItem(THEME_KEY),
+          AsyncStorage.getItem(MODE_KEY),
+        ]);
+        if (savedTheme) setThemeKeyState(savedTheme as ThemeKey);
+        if (savedMode) setModeState(savedMode as ColorMode);
+      } catch {
+        // ignore — fall back to defaults
+      } finally {
+        setReady(true);
+      }
+    })();
+  }, []);
+
+  const setThemeKey = useCallback((k: ThemeKey) => {
+    setThemeKeyState(k);
+    AsyncStorage.setItem(THEME_KEY, k).catch(() => {});
+  }, []);
+
+  const setMode = useCallback((m: ColorMode) => {
+    setModeState(m);
+    AsyncStorage.setItem(MODE_KEY, m).catch(() => {});
+  }, []);
+
+  const isDark = mode === "system" ? system === "dark" : mode === "dark";
+  const c = useMemo(() => buildPalette(themeKey, isDark), [themeKey, isDark]);
+
+  const value = useMemo(
+    () => ({ c, radius: RADIUS, themeKey, setThemeKey, mode, setMode, isDark, ready }),
+    [c, themeKey, setThemeKey, mode, setMode, isDark, ready],
+  );
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
+
+export function useTheme(): ThemeContextValue {
+  const ctx = useContext(ThemeContext);
+  if (!ctx) throw new Error("useTheme must be used within ThemeProvider");
+  return ctx;
+}
+
+
+########################################################################
+# FILE: artifacts/suraksha/context/ToastContext.tsx
+########################################################################
+
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { Animated, StyleSheet, Text } from "react-native";
+
+import { useTheme } from "@/context/ThemeContext";
+
+interface ToastContextValue {
+  showToast: (message: string) => void;
+}
+
+const ToastContext = createContext<ToastContextValue | null>(null);
+
+export function ToastProvider({ children }: { children: React.ReactNode }) {
+  const { c } = useTheme();
+  const [message, setMessage] = useState<string | null>(null);
+  const opacity = useRef(new Animated.Value(0)).current;
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    setMessage(msg);
+  }, []);
+
+  useEffect(() => {
+    if (!message) return;
+    Animated.timing(opacity, {
+      toValue: 1,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }).start(() => setMessage(null));
+    }, 2200);
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, [message, opacity]);
+
+  return (
+    <ToastContext.Provider value={{ showToast }}>
+      {children}
+      {message && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.toast,
+            { backgroundColor: c.isDark ? "#000000" : c.text, opacity },
+          ]}
+        >
+          <Text style={styles.text} numberOfLines={2}>
+            {message}
+          </Text>
+        </Animated.View>
+      )}
+    </ToastContext.Provider>
+  );
+}
+
+const styles = StyleSheet.create({
+  toast: {
+    position: "absolute",
+    bottom: 110,
+    alignSelf: "center",
+    maxWidth: "86%",
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 22,
+    zIndex: 999,
+    elevation: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  text: {
+    color: "#fff",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    textAlign: "center",
+  },
+});
+
+export function useToast(): ToastContextValue {
+  const ctx = useContext(ToastContext);
+  if (!ctx) throw new Error("useToast must be used within ToastProvider");
+  return ctx;
+}
+
+
+########################################################################
+# FILE: artifacts/suraksha/hooks/useColors.ts
+########################################################################
+
+import { useColorScheme } from "react-native";
+
+import colors from "@/constants/colors";
+
+/**
+ * Returns the design tokens for the current color scheme.
+ *
+ * The returned object contains all color tokens for the active palette
+ * plus scheme-independent values like `radius`.
+ *
+ * Falls back to the light palette when no dark key is defined in
+ * constants/colors.ts (the scaffold ships light-only by default).
+ * When a sibling web artifact's dark tokens are synced into a `dark`
+ * key, this hook will automatically switch palettes based on the
+ * device's appearance setting.
+ */
+export function useColors() {
+  const scheme = useColorScheme();
+  const palette = scheme === "dark" ? colors.dark : colors.light;
+  return { ...palette, radius: colors.radius };
+}
+
+
+########################################################################
+# FILE: artifacts/suraksha/lib/format.ts
+########################################################################
+
+/** Formats a duration in seconds as M:SS. */
+export function fmtClock(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+export function timeAgo(ts: number, lang: "en" | "hi"): string {
+  const diff = Math.max(0, Date.now() - ts);
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return lang === "hi" ? "अभी" : "just now";
+  if (mins < 60) return lang === "hi" ? `${mins} मिनट पहले` : `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return lang === "hi" ? `${hrs} घंटे पहले` : `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return lang === "hi" ? `${days} दिन पहले` : `${days}d ago`;
+}
+
+
+########################################################################
+# FILE: artifacts/suraksha/lib/native.ts
+########################################################################
+
+import * as Linking from "expo-linking";
+import { Platform, Share } from "react-native";
+
+/** Sanitises a phone number for use in a `tel:` URL. */
+export function sanitizePhone(phone: string): string {
+  return phone.replace(/[^\d+]/g, "");
+}
+
+export async function callNumber(phone: string): Promise<void> {
+  const url = `tel:${sanitizePhone(phone)}`;
+  try {
+    await Linking.openURL(url);
+  } catch {
+    // No dialer available (e.g. web preview) — silently ignore.
+  }
+}
+
+export function mapsUrl(lat: number, lng: number, label?: string): string {
+  const q = label ? encodeURIComponent(label) : `${lat},${lng}`;
+  if (Platform.OS === "ios") {
+    return `https://maps.apple.com/?q=${q}&ll=${lat},${lng}`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+}
+
+export async function navigateTo(
+  lat: number,
+  lng: number,
+  label?: string,
+): Promise<void> {
+  try {
+    await Linking.openURL(mapsUrl(lat, lng, label));
+  } catch {
+    // ignore
+  }
+}
+
+export async function shareLiveLocation(
+  coords: { lat: number; lng: number } | null,
+): Promise<void> {
+  const link = coords
+    ? mapsUrl(coords.lat, coords.lng)
+    : "https://maps.google.com";
+  const message = coords
+    ? `I need help. This is my live location: ${link}`
+    : `I need help. Please call me.`;
+  try {
+    await Share.share({ message });
+  } catch {
+    // ignore
+  }
+}
+
+
+########################################################################
+# FILE: artifacts/suraksha/app.json
+########################################################################
+
+{
+  "expo": {
+    "name": "Suraksha",
+    "slug": "suraksha",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "suraksha",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": false
+    },
+    "android": {},
+    "web": {
+      "favicon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "origin": "https://replit.com/"
+        }
+      ],
+      "expo-font",
+      "expo-web-browser"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
+
+
+########################################################################
+# FILE: artifacts/suraksha/package.json
+########################################################################
+
+{
+  "name": "@workspace/suraksha",
+  "version": "0.0.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "dev": "EXPO_PACKAGER_PROXY_URL=https://$REPLIT_EXPO_DEV_DOMAIN EXPO_PUBLIC_DOMAIN=$REPLIT_DEV_DOMAIN EXPO_PUBLIC_REPL_ID=$REPL_ID REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN pnpm exec expo start --localhost --port $PORT",
+    "build": "node scripts/build.js",
+    "serve": "node server/serve.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@expo-google-fonts/inter": "^0.4.0",
+    "@expo/cli": "54.0.23",
+    "@expo/ngrok": "^4.1.0",
+    "@expo/vector-icons": "^15.0.3",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@stardazed/streams-text-encoding": "^1.0.2",
+    "@tanstack/react-query": "catalog:",
+    "@types/react": "~19.1.10",
+    "@types/react-dom": "~19.1.7",
+    "@ungap/structured-clone": "^1.3.0",
+    "@workspace/api-client-react": "workspace:*",
+    "babel-plugin-react-compiler": "^19.0.0-beta-e993439-20250117",
+    "expo": "~54.0.27",
+    "expo-blur": "~15.0.8",
+    "expo-constants": "~18.0.11",
+    "expo-contacts": "~15.0.11",
+    "expo-font": "~14.0.10",
+    "expo-glass-effect": "~0.1.4",
+    "expo-haptics": "~15.0.8",
+    "expo-image": "~3.0.11",
+    "expo-image-picker": "~17.0.9",
+    "expo-linear-gradient": "~15.0.8",
+    "expo-linking": "~8.0.10",
+    "expo-location": "~19.0.8",
+    "expo-router": "~6.0.17",
+    "expo-splash-screen": "~31.0.12",
+    "expo-status-bar": "~3.0.9",
+    "expo-symbols": "~1.0.8",
+    "expo-system-ui": "~6.0.9",
+    "expo-web-browser": "~15.0.10",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-native": "0.81.5",
+    "react-native-gesture-handler": "~2.28.0",
+    "react-native-keyboard-controller": "1.18.5",
+    "react-native-maps": "1.18.0",
+    "react-native-reanimated": "~4.1.1",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0",
+    "react-native-svg": "15.12.1",
+    "react-native-web": "^0.21.0",
+    "react-native-worklets": "0.5.1",
+    "typescript": "~5.9.2",
+    "zod": "catalog:",
+    "zod-validation-error": "^3.4.0"
+  }
+}
+
+
+########################################################################
+# FILE: artifacts/suraksha/tsconfig.json
+########################################################################
+
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": ".tsbuildinfo",
+    "baseUrl": ".",
+    "strict": true,
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
+  ],
+  "references": [
+    {
+      "path": "../../lib/api-client-react"
+    }
+  ]
+}
+
+
+########################################################################
+# FILE: artifacts/api-server/src/routes/sakhi.ts  (Sakhi AI endpoint)
+########################################################################
+
+import { Router, type IRouter } from "express";
+import { openai } from "@workspace/integrations-openai-ai-server";
+import { SendSakhiMessageBody, SendSakhiMessageResponse } from "@workspace/api-zod";
+
+const router: IRouter = Router();
+
+const SYSTEM_PROMPT = `You are "Sakhi" (सखी, meaning "female friend"), a warm, calm and supportive AI companion inside Suraksha, a women's safety and empowerment app for India.
+
+Your role:
+- Offer practical personal-safety guidance, emotional support, and clear next steps.
+- Help users understand their legal rights in India in plain language (e.g. the POSH Act 2013 for workplace harassment, the POCSO Act 2012 for protection of children, the Protection of Women from Domestic Violence Act 2005, and IPC Section 354 on assault/outraging modesty).
+- Know the key Indian helplines and surface them when relevant: 112 (national emergency), 100 (police), 1091 (women's helpline), 181 (women's helpline / One Stop Centre), 1098 (childline), and AASRA mental-health support 9820466726.
+
+Safety rules:
+- If a user describes immediate danger, an ongoing assault, or a medical emergency, your FIRST priority is to urge them to call 112 (or 100) right now, and remind them the app's SOS button shares their live location with trusted contacts.
+- Be empathetic and non-judgemental. Never blame the user. Never minimise their concerns.
+- You are a supportive companion, not a lawyer, doctor, or replacement for the police. Encourage contacting professionals and authorities for serious matters.
+
+Style:
+- Keep replies concise, warm and actionable. Use short paragraphs or small bullet lists.
+- Mirror the user's language. If the requested language is Hindi, reply in natural Hindi (Devanagari). Otherwise reply in English.`;
+
+router.post("/sakhi/chat", async (req, res) => {
+  const parsed = SendSakhiMessageBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request", details: parsed.error.flatten() });
+    return;
+  }
+
+  const { messages, language } = parsed.data;
+  const langLine =
+    language === "hi"
+      ? "The user's preferred language is Hindi. Reply in natural Hindi (Devanagari script)."
+      : "The user's preferred language is English. Reply in English.";
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-5.4",
+      max_completion_tokens: 8192,
+      messages: [
+        { role: "system", content: `${SYSTEM_PROMPT}\n\n${langLine}` },
+        ...messages.map((m) => ({ role: m.role, content: m.content })),
+      ],
+    });
+
+    const reply =
+      completion.choices[0]?.message?.content?.trim() ||
+      (language === "hi"
+        ? "माफ़ करना, मैं अभी जवाब नहीं दे पाई। कृपया दोबारा कोशिश करें।"
+        : "Sorry, I couldn't respond just now. Please try again.");
+
+    const data = SendSakhiMessageResponse.parse({ reply });
+    res.json(data);
+  } catch (err) {
+    req.log.error({ err }, "Sakhi chat failed");
+    res.status(502).json({
+      error:
+        language === "hi"
+          ? "सखी अभी उपलब्ध नहीं है। कृपया थोड़ी देर बाद कोशिश करें।"
+          : "Sakhi is unavailable right now. Please try again shortly.",
+    });
+  }
+});
+
+export default router;
+
+########################################################################
+# FILE: artifacts/api-server/src/routes/index.ts  (router mount)
+########################################################################
+
+import { Router, type IRouter } from "express";
+import healthRouter from "./health";
+import sakhiRouter from "./sakhi";
+
+const router: IRouter = Router();
+
+router.use(healthRouter);
+router.use(sakhiRouter);
+
+export default router;
