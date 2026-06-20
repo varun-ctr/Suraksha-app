@@ -1,0 +1,610 @@
+BUILD A COMPLETE PRODUCTION-READY MOBILE APPLICATION USING MY EXISTING SURAKSHA JSX PROTOTYPE.
+
+PROJECT NAME:
+SURAKSHA – Women’s Safety & Empowerment Platform
+
+TARGET PLATFORMS:
+
+* Android
+* iOS
+
+FRAMEWORK:
+
+* React Native
+* Expo
+* TypeScript
+
+BACKEND:
+
+* Firebase Authentication
+* Firestore
+* Firebase Storage
+* Firebase Cloud Functions
+* Firebase Cloud Messaging
+* Firebase Analytics
+* Firebase Crashlytics
+
+STATE MANAGEMENT:
+
+* Zustand
+
+MAPS:
+
+* Google Maps SDK
+* Google Places API
+* Google Directions API
+* Google Geocoding API
+
+PAYMENTS:
+
+* Razorpay
+* UPI
+* Google Play Billing
+* Apple In-App Purchases
+
+AI:
+
+* OpenAI Integration
+* Sakhi AI Assistant
+
+====================================================
+APP FLOW
+
+FIRST APP OPEN
+
+Show App Tour:
+
+Screen 1:
+Welcome to Suraksha
+
+Screen 2:
+Emergency SOS
+
+Screen 3:
+Journey Tracking
+
+Screen 4:
+Safety Map
+
+Screen 5:
+Know Your Rights
+
+Screen 6:
+Community Safety
+
+Screen 7:
+Premium Features
+
+Buttons:
+Skip
+Next
+Get Started
+
+Store onboarding completion.
+
+====================================================
+LANGUAGE SELECTION
+
+Before login ask user language.
+
+Supported:
+
+English
+Hindi
+Telugu
+Tamil
+Kannada
+Malayalam
+Marathi
+Gujarati
+Punjabi
+Bengali
+Odia
+Assamese
+Urdu
+
+Allow changing language anytime.
+
+====================================================
+LOGIN & AUTHENTICATION
+
+Support:
+
+Mobile OTP Login
+Google Login
+Apple Login
+
+Firebase Authentication.
+
+====================================================
+PROFILE SETUP
+
+Collect:
+
+Name
+Date of Birth
+Gender
+Blood Group
+Profession
+Organization
+Email
+Address
+City
+State
+Profile Photo
+Medical Conditions
+Emergency Notes
+
+Store in Firestore.
+
+====================================================
+HOME SCREEN
+
+Large Emergency SOS Button.
+
+Quick Actions:
+
+Call Police
+Call Women Helpline
+Call Ambulance
+Call Family
+Journey Sharing
+Safety Map
+Community Reports
+
+====================================================
+SOS SYSTEM
+
+One Tap SOS:
+
+Immediately:
+
+1. Share GPS Location
+2. Send SMS Alerts
+3. Send Push Notifications
+4. Start Live Tracking
+5. Create Incident Record
+6. Start Emergency Audio Recording
+
+Open Dialer Automatically.
+
+Emergency Numbers:
+
+112
+100
+181
+1091
+108
+
+User can configure default.
+
+Use:
+
+tel:112
+
+and
+
+tel:+91XXXXXXXXXX
+
+Dial pad must open instantly.
+
+====================================================
+ADVANCED SOS
+
+Shake Phone SOS
+
+Power Button SOS
+
+Voice SOS
+
+Trigger Phrase:
+
+“Suraksha Help”
+
+Silent SOS
+
+Long Press SOS
+
+====================================================
+EMERGENCY CONTACTS
+
+Add Contact
+
+Edit Contact
+
+Delete Contact
+
+Import Phone Contacts
+
+Priority Contacts
+
+Relationship Type:
+
+Family
+Friend
+Office
+Emergency
+
+====================================================
+LIVE JOURNEY TRACKING
+
+Start Journey
+
+Destination Search
+
+ETA
+
+Guardian Tracking
+
+Auto Check-In
+
+Delayed Arrival Detection
+
+Emergency Escalation
+
+====================================================
+GOOGLE MAPS
+
+Real Google Maps Integration.
+
+Autocomplete Search.
+
+Example:
+
+Typing:
+
+Hyd
+
+Shows:
+
+Hyderabad
+Hyderabad Airport
+Hitech City
+Secunderabad
+
+Use Google Places API.
+
+Nearby Search:
+
+Police Stations
+Hospitals
+Women Help Centres
+Metro Stations
+Pharmacies
+Petrol Pumps
+
+Show:
+
+Distance
+Travel Time
+Navigation
+
+Reverse Geocoding.
+
+====================================================
+SAFE ROUTE AI
+
+Suggest:
+
+Safest Route
+
+Instead of shortest route.
+
+Consider:
+
+Community Reports
+Danger Zones
+Lighting
+Crowd Density
+
+====================================================
+COMMUNITY REPORTING
+
+Report:
+
+Harassment
+Unsafe Area
+Poor Lighting
+Theft
+Stalking
+Violence
+
+Allow:
+
+Photo Upload
+Video Upload
+Audio Upload
+
+Auto Attach:
+
+GPS
+Timestamp
+Address
+
+Moderation Workflow.
+
+====================================================
+CAMERA & MICROPHONE
+
+Permissions:
+
+Camera
+Microphone
+Location
+Contacts
+Notifications
+
+Background Location
+
+====================================================
+BACKGROUND SERVICES
+
+App should continue:
+
+Journey Tracking
+SOS Tracking
+Guardian Tracking
+
+Even when minimized.
+
+Android:
+Foreground Service
+
+iOS:
+Always Location Permission
+
+====================================================
+FAKE CALL FEATURE
+
+Schedule Fake Call.
+
+Custom Name.
+
+Custom Delay.
+
+====================================================
+FAMILY SAFETY CIRCLE
+
+Family Dashboard
+
+Family Tracking
+
+Shared Emergency Contacts
+
+Child Tracking
+
+Elderly Tracking
+
+====================================================
+EMERGENCY RECORDING
+
+Premium Feature.
+
+SOS triggers:
+
+Audio Recording
+
+Optional Video Recording
+
+Upload to Firebase Storage.
+
+Secure Access.
+
+====================================================
+KNOW YOUR RIGHTS
+
+Legal Resources:
+
+POSH Act
+
+Domestic Violence Act
+
+POCSO
+
+Cyber Crime
+
+IPC 354
+
+Workplace Harassment
+
+Offline Support.
+
+====================================================
+SAKHI AI ASSISTANT
+
+AI Chatbot.
+
+Capabilities:
+
+Women’s Rights
+
+Emergency Guidance
+
+Safety Advice
+
+Nearby Resources
+
+OpenAI Integration.
+
+====================================================
+THEME ENGINE
+
+Allow User Themes:
+
+Purple
+Blue
+Green
+Orange
+Pink
+Black
+
+Dark Mode
+
+Light Mode
+
+Store User Preference.
+
+====================================================
+PREMIUM SUBSCRIPTIONS
+
+FREE PLAN
+
+3 Contacts
+
+1 Report Monthly
+
+Basic Features
+
+PREMIUM
+
+₹99 Monthly
+
+Unlimited Contacts
+
+Unlimited Reports
+
+Voice SOS
+
+Fake Call
+
+Safe Route AI
+
+Family Tracking
+
+Emergency Recording
+
+PREMIUM YEARLY
+
+₹999 Yearly
+
+FAMILY PLAN
+
+₹1499 Yearly
+
+====================================================
+PAYMENT INTEGRATION
+
+Razorpay
+
+UPI
+
+Google Pay
+
+PhonePe
+
+Paytm
+
+Google Play Billing
+
+Apple In-App Purchase
+
+Generate Payment History.
+
+====================================================
+REFERRAL SYSTEM
+
+Referral Code
+
+Invite Friends
+
+Reward Premium Days
+
+Track Referrals.
+
+====================================================
+SETTINGS
+
+Language
+
+Theme
+
+Privacy
+
+Contacts
+
+Subscription
+
+Account Deletion
+
+Export Data
+
+====================================================
+ADMIN DASHBOARD
+
+Build Admin Panel using Next.js.
+
+Manage:
+
+Users
+
+Incidents
+
+Reports
+
+Subscriptions
+
+Revenue
+
+Danger Zones
+
+Analytics
+
+====================================================
+DATABASE
+
+Create Firestore Collections:
+
+users
+contacts
+incidents
+journeys
+reports
+subscriptions
+payments
+referrals
+notifications
+rights_content
+
+====================================================
+SECURITY
+
+Firebase App Check
+
+Role Based Access
+
+Secure Storage
+
+Encrypted Data
+
+====================================================
+ANALYTICS
+
+Firebase Analytics
+
+Crashlytics
+
+Performance Monitoring
+
+====================================================
+GENERATE
+
+1. Complete React Native Expo App
+2. TypeScript Source Code
+3. Firebase Setup
+4. Firestore Schema
+5. Cloud Functions
+6. Admin Dashboard
+7. Razorpay Integration
+8. Google Maps Integration
+9. OpenAI Integration
+10. Environment Variables
+11. Android Build Configuration
+12. iOS Build Configuration
+13. Play Store Checklist
+14. App Store Checklist
+15. Privacy Policy
+16. Terms & Conditions
+17. Account Deletion Workflow
+18. Deployment Documentation
+
+Use clean architecture, production standards, scalability, and Play Store/App Store compliance.
