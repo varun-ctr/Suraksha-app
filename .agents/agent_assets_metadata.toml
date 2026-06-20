@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "OvO0scL9uuoX6Q3SiqGpI"
+uri = "file://artifacts/suraksha/assets/images/icon.png"
+type = "image"
+title = "generated_image"
