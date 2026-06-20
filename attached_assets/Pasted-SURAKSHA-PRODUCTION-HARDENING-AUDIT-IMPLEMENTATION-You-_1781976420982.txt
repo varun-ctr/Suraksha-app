@@ -1,0 +1,442 @@
+SURAKSHA PRODUCTION HARDENING AUDIT & IMPLEMENTATION
+
+You are a senior React Native, Expo, Firebase, Security, Payments and Emergency Systems engineer.
+
+The existing Suraksha app UI is mostly complete.
+
+DO NOT redesign the UI.
+
+DO NOT change branding.
+
+DO NOT change navigation structure.
+
+DO NOT remove multilingual support.
+
+Your task is to make every feature truthful and production-ready so the app never claims to perform an action that has not actually happened.
+
+⸻
+
+1. SOS SYSTEM
+
+⸻
+
+Current implementation is misleading.
+
+triggerSOS updates local state only.
+
+Fix end-to-end.
+
+Requirements:
+
+* Get real GPS coordinates.
+* Generate Google Maps live location URL.
+* Create SOS event record in Firestore.
+* Send emergency notifications to trusted contacts.
+
+Supported channels:
+
+Priority 1:
+
+* SMS via MSG91 (India)
+* Twilio SMS (fallback)
+
+Priority 2:
+
+* WhatsApp deep link
+
+Priority 3:
+
+* Push notification
+
+For every contact:
+
+Store:
+
+{
+contactId,
+channel,
+sent,
+delivered,
+failed,
+errorMessage,
+timestamp
+}
+
+Update UI using real delivery status.
+
+Remove all fake timers.
+
+Remove fake “Delivered” badges.
+
+Show:
+
+Pending
+Sent
+Delivered
+Failed
+
+based on actual API response.
+
+If SMS service not configured:
+
+Display:
+
+“SOS created but emergency notifications are not configured.”
+
+Never display:
+
+“Contacts alerted”
+
+unless notification was actually sent.
+
+⸻
+
+2. LIVE JOURNEY SHARING
+
+⸻
+
+Current implementation implies live tracking.
+
+Implement actual tracking.
+
+Requirements:
+
+* Create Journey Session in Firestore.
+* Generate secure tracking URL.
+* Update location every 30 seconds.
+* Allow contacts to view live map.
+
+Tracking page should display:
+
+* Current position
+* Route history
+* Last update timestamp
+* ETA
+
+If tracking backend unavailable:
+
+Rename feature:
+
+Journey Timer
+
+and remove all wording implying others can see location.
+
+Never use “Live Sharing” unless sharing actually exists.
+
+⸻
+
+3. INCIDENT REPORTING
+
+⸻
+
+Current reports only save locally.
+
+Decide one of two modes.
+
+Mode A:
+Local Journal
+
+or
+
+Mode B:
+Community Safety Network
+
+Implementation:
+
+If local only:
+
+Display:
+
+“Saved to your device.”
+
+Remove:
+
+Submitted
+Anonymous report sent
+Community alerted
+
+If backend exists:
+
+Create Firestore collection:
+
+incidentReports
+
+Fields:
+
+{
+id,
+userId,
+category,
+description,
+latitude,
+longitude,
+address,
+images,
+createdAt
+}
+
+Return real success/failure.
+
+Show actual upload status.
+
+⸻
+
+4. LOCATION ACCURACY
+
+⸻
+
+Remove all hardcoded locations.
+
+Including:
+
+Koramangala, Bengaluru
+
+All locations must come from:
+
+expo-location
+
+Then:
+
+Reverse geocode
+
+Store:
+
+{
+latitude,
+longitude,
+address
+}
+
+Use same location service across:
+
+SOS
+Reports
+Journey
+Maps
+
+⸻
+
+5. TRUSTED CONTACTS
+
+⸻
+
+Remove seeded contacts:
+
+Priya Sharma
+Ananya Rao
+
+Remove demo profile data.
+
+New user state:
+
+No contacts configured.
+
+Show onboarding.
+
+Validation:
+
+Indian mobile number validation
+
+Prevent duplicates.
+
+Store securely.
+
+⸻
+
+6. DATA SECURITY
+
+⸻
+
+Sensitive data must never remain in plaintext.
+
+Encrypt:
+
+Trusted Contacts
+Reports
+Profile
+Journey History
+
+Use:
+
+expo-secure-store
+
+or
+
+backend encrypted storage.
+
+Store:
+
+Authentication tokens
+Profile data
+Emergency contacts
+
+inside SecureStore.
+
+Implement:
+
+Firebase Authentication
+
+Required:
+
+OTP Login
+
+before enabling SOS and reporting.
+
+⸻
+
+7. MAPS & PLACES
+
+⸻
+
+Replace hardcoded PLACES array.
+
+Replace fake distance values.
+
+Use:
+
+Google Places API
+
+Fetch nearby:
+
+* Police Stations
+* Hospitals
+* Pharmacies
+* Women Help Centres
+
+Calculate distance from current GPS coordinates.
+
+Show:
+
+Open/Closed
+Distance
+Directions
+
+Implement offline fallback:
+
+Last cached places.
+
+⸻
+
+8. PREMIUM SUBSCRIPTION
+
+⸻
+
+Current premium implementation is mock.
+
+Replace with:
+
+Android:
+Google Play Billing
+
+iOS:
+Apple IAP
+
+India:
+Razorpay Subscription
+
+Store:
+
+subscriptionStatus
+expiryDate
+planType
+
+inside Firestore.
+
+Premium access must be validated.
+
+No local-only premium flags.
+
+⸻
+
+9. PUSH NOTIFICATIONS
+
+⸻
+
+Implement Firebase Cloud Messaging.
+
+Send:
+
+SOS Triggered
+Journey Started
+Journey Ended
+Incident Report Updates
+Subscription Events
+
+Store notification logs.
+
+⸻
+
+10. ADMIN CONSOLE
+
+⸻
+
+Create secure admin dashboard.
+
+Features:
+
+* View incident reports
+* Moderate abuse
+* View SOS events
+* User management
+* Analytics
+
+Role based access.
+
+⸻
+
+11. ANALYTICS
+
+⸻
+
+Integrate Firebase Analytics.
+
+Track:
+
+SOS Usage
+Journey Sessions
+Incident Reports
+Premium Conversion
+Active Users
+
+⸻
+
+12. APP STORE COMPLIANCE
+
+⸻
+
+Generate:
+
+Privacy Policy
+Terms of Service
+Account Deletion Flow
+Data Retention Policy
+
+Comply with:
+
+Google Play Policies
+Apple App Store Review Guidelines
+India DPDP Act
+
+⸻
+
+13. FINAL VALIDATION
+
+⸻
+
+Before marking any action successful:
+
+Verify backend response.
+
+No simulated success messages.
+
+No fake delivery indicators.
+
+No fake GPS data.
+
+No hardcoded locations.
+
+No demo contacts.
+
+No seeded premium users.
+
+The application must be honest, secure, production-ready, and suitable for public release on Android and iOS.
