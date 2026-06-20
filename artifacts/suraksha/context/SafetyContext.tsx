@@ -1,4 +1,3 @@
-import * as Location from "expo-location";
 import React, {
   createContext,
   useCallback,
@@ -10,6 +9,7 @@ import React, {
 } from "react";
 
 import { SosModal } from "@/components/SosModal";
+import { getCurrentLocation, reverseGeocode } from "@/lib/location";
 
 export interface Coords {
   lat: number;
@@ -21,6 +21,7 @@ interface SosState {
   active: boolean;
   seconds: number;
   coords: Coords | null;
+  address: string | null;
   loading: boolean;
 }
 
@@ -47,6 +48,7 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
     active: false,
     seconds: 0,
     coords: null,
+    address: null,
     loading: false,
   });
   const [journey, setJourney] = useState<JourneyState>({
@@ -59,36 +61,23 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
   const journeyTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchLocation = useCallback(async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        setSos((s) => ({ ...s, loading: false }));
-        return;
-      }
-      const pos = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-      setSos((s) => ({
-        ...s,
-        loading: false,
-        coords: {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy ?? null,
-        },
-      }));
-    } catch {
-      setSos((s) => ({ ...s, loading: false }));
+    const point = await getCurrentLocation();
+    if (!point) {
+      setSos((s) => ({ ...s, loading: false, coords: null, address: null }));
+      return;
     }
+    setSos((s) => ({ ...s, loading: false, coords: point }));
+    const addr = await reverseGeocode(point.lat, point.lng);
+    setSos((s) => (s.coords ? { ...s, address: addr } : s));
   }, []);
 
   const triggerSOS = useCallback(() => {
-    setSos({ active: true, seconds: 0, coords: null, loading: true });
+    setSos({ active: true, seconds: 0, coords: null, address: null, loading: true });
     fetchLocation();
   }, [fetchLocation]);
 
   const cancelSOS = useCallback(() => {
-    setSos({ active: false, seconds: 0, coords: null, loading: false });
+    setSos({ active: false, seconds: 0, coords: null, address: null, loading: false });
   }, []);
 
   useEffect(() => {

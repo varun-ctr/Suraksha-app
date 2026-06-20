@@ -1,23 +1,25 @@
 import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
-import { StyleSheet, View } from "react-native";
-import Svg, { Circle, Path } from "react-native-svg";
+import { StyleSheet, Text, View } from "react-native";
 
-import type { Place } from "@/constants/data";
+import { useI18n } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
+import type { GeoPoint, LocationStatus } from "@/lib/location";
 
 /**
  * Web fallback: react-native-maps has no web implementation, so we render a
- * stylised faux-map (matching the prototype) with pins positioned by percent.
+ * stylised faux-map. It only ever shows the user's own position — no fake
+ * places — and surfaces an honest message when location is unavailable.
  */
 export function MapPreview({
-  places,
-  colorFor,
+  point,
+  status,
 }: {
-  places: Place[];
-  colorFor: (cat: Place["category"]) => string;
+  point: GeoPoint | null;
+  status: LocationStatus;
 }) {
   const { c, radius } = useTheme();
+  const { t } = useI18n();
   return (
     <View style={[styles.wrap, { borderRadius: radius + 2, borderColor: c.border }]}>
       <LinearGradient
@@ -29,22 +31,18 @@ export function MapPreview({
       <View style={[styles.road, { top: "46%", left: 0, right: 0, height: 6 }]} />
       <View style={[styles.road, { left: "40%", top: 0, bottom: 0, width: 6 }]} />
 
-      <View style={[styles.userWrap, { left: "45%", top: "48%" }]}>
-        <View style={[styles.userRing, { borderColor: c.primary }]} />
-        <View style={[styles.userDot, { backgroundColor: c.primary }]} />
-      </View>
-
-      {places.map((p) => (
-        <View key={p.id} style={[styles.pin, { left: `${p.x}%`, top: `${p.y}%` }]}>
-          <Svg width={26} height={32} viewBox="0 0 24 30">
-            <Path
-              d="M12 0C5.4 0 0 5.3 0 11.8 0 20.5 12 30 12 30s12-9.5 12-18.2C24 5.3 18.6 0 12 0Z"
-              fill={colorFor(p.category)}
-            />
-            <Circle cx="12" cy="11.5" r="5" fill="#fff" />
-          </Svg>
+      {point ? (
+        <View style={[styles.userWrap, { left: "45%", top: "48%" }]}>
+          <View style={[styles.userRing, { borderColor: c.primary }]} />
+          <View style={[styles.userDot, { backgroundColor: c.primary }]} />
         </View>
-      ))}
+      ) : (
+        <View style={styles.overlay} pointerEvents="none">
+          <Text style={[styles.overlayText, { color: c.text, backgroundColor: c.card, borderColor: c.border }]}>
+            {status === "loading" ? t("home.locating") : t("map.locationOff")}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -68,5 +66,14 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   userDot: { width: 14, height: 14, borderRadius: 7, borderWidth: 3, borderColor: "#fff" },
-  pin: { position: "absolute", marginLeft: -13, marginTop: -32 },
+  overlay: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
+  overlayText: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
 });

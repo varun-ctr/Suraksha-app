@@ -1,59 +1,61 @@
 import React from "react";
-import { StyleSheet, View } from "react-native";
-import MapView, { Marker } from "react-native-maps";
+import { StyleSheet, Text, View } from "react-native";
+import MapView from "react-native-maps";
 
-import type { Place } from "@/constants/data";
+import { useI18n } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
+import type { GeoPoint, LocationStatus } from "@/lib/location";
 
-const CENTER = { latitude: 12.9352, longitude: 77.6245 };
+/** Neutral fallback region (India) used only until the real location is known. */
+const INDIA = { latitude: 20.5937, longitude: 78.9629, latitudeDelta: 24, longitudeDelta: 24 };
 
 export function MapPreview({
-  places,
-  colorFor,
+  point,
+  status,
 }: {
-  places: Place[];
-  colorFor: (cat: Place["category"]) => string;
+  point: GeoPoint | null;
+  status: LocationStatus;
 }) {
-  const { radius } = useTheme();
+  const { c, radius } = useTheme();
+  const { t } = useI18n();
   return (
     <View style={[styles.wrap, { borderRadius: radius + 2 }]}>
       <MapView
         style={StyleSheet.absoluteFill}
         showsUserLocation
         showsMyLocationButton={false}
-        initialRegion={{
-          ...CENTER,
-          latitudeDelta: 0.025,
-          longitudeDelta: 0.025,
-        }}
-      >
-        {places.map((p) => (
-          <Marker
-            key={p.id}
-            coordinate={{ latitude: p.lat, longitude: p.lng }}
-            title={p.name}
-            description={p.address}
-          >
-            <View style={[styles.pin, { backgroundColor: colorFor(p.category) }]}>
-              <View style={styles.pinDot} />
-            </View>
-          </Marker>
-        ))}
-      </MapView>
+        region={
+          point
+            ? {
+                latitude: point.lat,
+                longitude: point.lng,
+                latitudeDelta: 0.02,
+                longitudeDelta: 0.02,
+              }
+            : INDIA
+        }
+      />
+      {!point && (
+        <View style={styles.overlay} pointerEvents="none">
+          <Text style={[styles.overlayText, { color: c.text, backgroundColor: c.card, borderColor: c.border }]}>
+            {status === "loading" ? t("home.locating") : t("map.locationOff")}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { height: 230, overflow: "hidden", marginHorizontal: 18, marginBottom: 14 },
-  pin: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "#fff",
+  overlay: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
+  overlayText: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    overflow: "hidden",
   },
-  pinDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: "#fff" },
 });

@@ -1,6 +1,8 @@
 import * as Linking from "expo-linking";
 import { Platform, Share } from "react-native";
 
+import { toWhatsAppNumber } from "@/lib/validate";
+
 /** Sanitises a phone number for use in a `tel:` URL. */
 export function sanitizePhone(phone: string): string {
   return phone.replace(/[^\d+]/g, "");
@@ -23,6 +25,11 @@ export function mapsUrl(lat: number, lng: number, label?: string): string {
   return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 }
 
+/** A plain shareable link to a coordinate that opens in any maps app. */
+export function locationLink(lat: number, lng: number): string {
+  return `https://maps.google.com/?q=${lat},${lng}`;
+}
+
 export async function navigateTo(
   lat: number,
   lng: number,
@@ -35,14 +42,60 @@ export async function navigateTo(
   }
 }
 
+/** Opens the device SMS composer pre-filled with a recipient and message body. */
+export async function sendSms(phone: string, body: string): Promise<void> {
+  const sep = Platform.OS === "ios" ? "&" : "?";
+  const url = `sms:${sanitizePhone(phone)}${sep}body=${encodeURIComponent(body)}`;
+  try {
+    await Linking.openURL(url);
+  } catch {
+    // ignore
+  }
+}
+
+/** Opens WhatsApp (via wa.me) pre-filled with a message to the contact. */
+export async function openWhatsApp(phone: string, body: string): Promise<void> {
+  const intl = toWhatsAppNumber(phone);
+  const url = intl
+    ? `https://wa.me/${intl}?text=${encodeURIComponent(body)}`
+    : `https://wa.me/?text=${encodeURIComponent(body)}`;
+  try {
+    await Linking.openURL(url);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Opens the device maps app with a category search near the given coordinates.
+ * Honest: results come from the maps provider, not a baked-in list.
+ */
+export async function searchNearby(
+  query: string,
+  coords: { lat: number; lng: number } | null,
+): Promise<void> {
+  let url: string;
+  if (Platform.OS === "ios") {
+    url = coords
+      ? `https://maps.apple.com/?q=${encodeURIComponent(query)}&sll=${coords.lat},${coords.lng}`
+      : `https://maps.apple.com/?q=${encodeURIComponent(query)}`;
+  } else {
+    url = coords
+      ? `https://www.google.com/maps/search/${encodeURIComponent(query)}/@${coords.lat},${coords.lng},15z`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  }
+  try {
+    await Linking.openURL(url);
+  } catch {
+    // ignore
+  }
+}
+
 export async function shareLiveLocation(
   coords: { lat: number; lng: number } | null,
 ): Promise<void> {
-  const link = coords
-    ? mapsUrl(coords.lat, coords.lng)
-    : "https://maps.google.com";
   const message = coords
-    ? `I need help. This is my live location: ${link}`
+    ? `I need help. This is my current location: ${locationLink(coords.lat, coords.lng)}`
     : `I need help. Please call me.`;
   try {
     await Share.share({ message });

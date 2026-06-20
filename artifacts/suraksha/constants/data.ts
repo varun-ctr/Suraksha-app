@@ -50,23 +50,6 @@ export type IconName =
   | "logOut"
   | "bellRing";
 
-export type PlaceCategory = "Police" | "Hospital" | "Shelter" | "Shops";
-
-export interface Place {
-  id: number;
-  name: string;
-  category: PlaceCategory;
-  address: string;
-  distance: string;
-  /** Percent offsets used by the web faux-map fallback. */
-  x: number;
-  y: number;
-  /** Real coordinates used by react-native-maps on device. */
-  lat: number;
-  lng: number;
-  phone: string;
-}
-
 export interface QuickAction {
   key: "safe" | "rights" | "addcontact" | "helpline" | "sakhi" | "fakecall";
   en: string;
@@ -103,17 +86,6 @@ export const QUICK_ACTIONS: QuickAction[] = [
   { key: "helpline", en: "Helpline", hi: "हेल्पलाइन", icon: "phone", color: (c) => c.accent, route: "/helpline" },
   { key: "sakhi", en: "Ask Sakhi", hi: "सखी से पूछें", icon: "message", color: (c) => c.primaryLight, route: "/(tabs)/sakhi" },
   { key: "fakecall", en: "Fake Call", hi: "नकली कॉल", icon: "phoneCall", color: (c) => c.warning, route: "/fakecall" },
-];
-
-export const PLACES: Place[] = [
-  { id: 1, name: "Koramangala Police Station", category: "Police", address: "80 Feet Rd, Koramangala 4th Block", distance: "0.4 km", x: 32, y: 36, lat: 12.9352, lng: 77.6245, phone: "100" },
-  { id: 2, name: "St. John's Medical College Hospital", category: "Hospital", address: "Sarjapur Road, Koramangala", distance: "1.2 km", x: 64, y: 24, lat: 12.9279, lng: 77.6217, phone: "08022065000" },
-  { id: 3, name: "Sakhi One Stop Centre", category: "Shelter", address: "Near BDA Complex, Koramangala", distance: "2.1 km", x: 50, y: 64, lat: 12.9337, lng: 77.6195, phone: "181" },
-  { id: 4, name: "Forum Mall Koramangala", category: "Shops", address: "Hosur Road, Koramangala", distance: "0.8 km", x: 74, y: 56, lat: 12.9345, lng: 77.6112, phone: "08049065000" },
-  { id: 5, name: "Jyoti Nivas Police Outpost", category: "Police", address: "5th Block, Koramangala", distance: "1.5 km", x: 18, y: 66, lat: 12.9368, lng: 77.6258, phone: "100" },
-  { id: 6, name: "Cloudnine Hospital", category: "Hospital", address: "Old Airport Road", distance: "2.4 km", x: 82, y: 36, lat: 12.9412, lng: 77.6286, phone: "08049072904" },
-  { id: 7, name: "Swadhar Greh Shelter Home", category: "Shelter", address: "Ejipura, Bengaluru", distance: "3.0 km", x: 34, y: 82, lat: 12.9412, lng: 77.6312, phone: "181" },
-  { id: 8, name: "5th Block Market", category: "Shops", address: "5th Block, Koramangala", distance: "0.6 km", x: 56, y: 16, lat: 12.9311, lng: 77.6271, phone: "100" },
 ];
 
 export const RIGHTS: RightItem[] = [

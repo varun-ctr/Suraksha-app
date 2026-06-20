@@ -5,10 +5,18 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
-const KEY = "suraksha.app.v1";
+import { secureDelete, secureGet, secureSet } from "@/lib/secureStore";
+import { normalizeIndianMobile } from "@/lib/validate";
+
+/** Sensitive data (PII) lives in the OS keystore; the rest in plain storage. */
+const SECURE_KEY = "suraksha.secure.v1";
+const PLAIN_KEY = "suraksha.app.v2";
+/** Keys written by older builds; cleared on reset so "delete all" is truthful. */
+const LEGACY_PLAIN_KEYS = ["suraksha.app.v1"];
 
 export interface Contact {
   id: string;
@@ -45,14 +53,10 @@ interface PersistShape {
 }
 
 const DEFAULTS: PersistShape = {
-  contacts: [
-    { id: "seed-1", name: "Priya Sharma", phone: "+91 98765 43210" },
-    { id: "seed-2", name: "Anita Reddy", phone: "+91 91234 56789" },
-    { id: "seed-3", name: "Mom (Lakshmi)", phone: "+91 99887 76655" },
-  ],
+  contacts: [],
   reports: [],
-  profile: { name: "Ananya Rao", phone: "+91 98765 12345", premium: true },
-  settings: { notifications: true, bgLocation: true },
+  profile: { name: "", phone: "", premium: false },
+  settings: { notifications: true, bgLocation: false },
   onboarded: false,
 };
 
@@ -60,9 +64,11 @@ function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+export type AddContactResult = { ok: true } | { ok: false; error: "invalid" | "duplicate" };
+
 interface AppContextValue extends PersistShape {
   ready: boolean;
-  addContact: (name: string, phone: string) => void;
+  addContact: (name: string, phone: string) => AddContactResult;
   addContacts: (items: { name: string; phone: string }[]) => number;
   deleteContact: (id: string) => void;
   addReport: (r: Omit<ReportItem, "id" | "createdAt">) => void;
@@ -70,29 +76,54 @@ interface AppContextValue extends PersistShape {
   setProfile: (p: Partial<Profile>) => void;
   setSettings: (s: Partial<Settings>) => void;
   completeOnboarding: () => void;
+  resetAllData: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
 
+function persist(next: PersistShape) {
+  secureSet(
+    SECURE_KEY,
+    JSON.stringify({ contacts: next.contacts, profile: next.profile }),
+  );
+  AsyncStorage.setItem(
+    PLAIN_KEY,
+    JSON.stringify({
+      reports: next.reports,
+      settings: next.settings,
+      onboarded: next.onboarded,
+    }),
+  ).catch(() => {});
+}
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<PersistShape>(DEFAULTS);
   const [ready, setReady] = useState(false);
+  /** Mirrors the latest committed state so handlers can read it synchronously. */
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   useEffect(() => {
     (async () => {
       try {
-        const raw = await AsyncStorage.getItem(KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw) as Partial<PersistShape>;
-          setState((prev) => ({
-            ...prev,
-            ...parsed,
-            profile: { ...prev.profile, ...parsed.profile },
-            settings: { ...prev.settings, ...parsed.settings },
-            contacts: parsed.contacts ?? prev.contacts,
-            reports: parsed.reports ?? prev.reports,
-          }));
-        }
+        const [secureRaw, plainRaw] = await Promise.all([
+          secureGet(SECURE_KEY),
+          AsyncStorage.getItem(PLAIN_KEY),
+        ]);
+        const secure = secureRaw
+          ? (JSON.parse(secureRaw) as Partial<Pick<PersistShape, "contacts" | "profile">>)
+          : {};
+        const plain = plainRaw
+          ? (JSON.parse(plainRaw) as Partial<Pick<PersistShape, "reports" | "settings" | "onboarded">>)
+          : {};
+        setState((prev) => ({
+          ...prev,
+          contacts: secure.contacts ?? prev.contacts,
+          profile: { ...prev.profile, ...secure.profile },
+          reports: plain.reports ?? prev.reports,
+          settings: { ...prev.settings, ...plain.settings },
+          onboarded: plain.onboarded ?? prev.onboarded,
+        }));
       } catch {
         // ignore — use defaults
       } finally {
@@ -101,22 +132,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  const persist = useCallback((next: PersistShape) => {
-    setState(next);
-    AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
-  }, []);
-
   const addContact = useCallback(
-    (name: string, phone: string) => {
-      if (!name.trim() || !phone.trim()) return;
-      setState((prev) => {
-        const next = {
-          ...prev,
-          contacts: [...prev.contacts, { id: uid(), name: name.trim(), phone: phone.trim() }],
-        };
-        AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
-        return next;
-      });
+    (name: string, phone: string): AddContactResult => {
+      const trimmedName = name.trim();
+      const normalized = normalizeIndianMobile(phone);
+      if (!trimmedName || !normalized) return { ok: false, error: "invalid" };
+      const prev = stateRef.current;
+      const exists = prev.contacts.some(
+        (c) => normalizeIndianMobile(c.phone) === normalized,
+      );
+      if (exists) return { ok: false, error: "duplicate" };
+      const next = {
+        ...prev,
+        contacts: [...prev.contacts, { id: uid(), name: trimmedName, phone: normalized }],
+      };
+      stateRef.current = next;
+      setState(next);
+      persist(next);
+      return { ok: true };
     },
     [],
   );
@@ -124,19 +157,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addContacts = useCallback((items: { name: string; phone: string }[]) => {
     let added = 0;
     setState((prev) => {
-      const existing = new Set(prev.contacts.map((c) => c.phone.replace(/\s+/g, "")));
+      const existing = new Set(
+        prev.contacts
+          .map((c) => normalizeIndianMobile(c.phone))
+          .filter((v): v is string => Boolean(v)),
+      );
       const fresh = items
-        .filter((i) => i.name.trim() && i.phone.trim())
+        .map((i) => ({ name: i.name.trim(), normalized: normalizeIndianMobile(i.phone) }))
+        .filter((i): i is { name: string; normalized: string } => Boolean(i.name) && Boolean(i.normalized))
         .filter((i) => {
-          const norm = i.phone.replace(/\s+/g, "");
-          if (existing.has(norm)) return false;
-          existing.add(norm);
+          if (existing.has(i.normalized)) return false;
+          existing.add(i.normalized);
           return true;
         })
-        .map((i) => ({ id: uid(), name: i.name.trim(), phone: i.phone.trim() }));
+        .map((i) => ({ id: uid(), name: i.name, phone: i.normalized }));
       added = fresh.length;
+      if (added === 0) return prev;
       const next = { ...prev, contacts: [...prev.contacts, ...fresh] };
-      AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
+      persist(next);
       return next;
     });
     return added;
@@ -145,7 +183,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const deleteContact = useCallback((id: string) => {
     setState((prev) => {
       const next = { ...prev, contacts: prev.contacts.filter((c) => c.id !== id) };
-      AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
+      persist(next);
       return next;
     });
   }, []);
@@ -156,7 +194,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ...prev,
         reports: [{ ...r, id: uid(), createdAt: Date.now() }, ...prev.reports],
       };
-      AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
+      persist(next);
       return next;
     });
   }, []);
@@ -164,7 +202,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const deleteReport = useCallback((id: string) => {
     setState((prev) => {
       const next = { ...prev, reports: prev.reports.filter((r) => r.id !== id) };
-      AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
+      persist(next);
       return next;
     });
   }, []);
@@ -172,7 +210,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setProfile = useCallback((p: Partial<Profile>) => {
     setState((prev) => {
       const next = { ...prev, profile: { ...prev.profile, ...p } };
-      AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
+      persist(next);
       return next;
     });
   }, []);
@@ -180,7 +218,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setSettings = useCallback((s: Partial<Settings>) => {
     setState((prev) => {
       const next = { ...prev, settings: { ...prev.settings, ...s } };
-      AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
+      persist(next);
       return next;
     });
   }, []);
@@ -188,9 +226,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const completeOnboarding = useCallback(() => {
     setState((prev) => {
       const next = { ...prev, onboarded: true };
-      AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
+      persist(next);
       return next;
     });
+  }, []);
+
+  const resetAllData = useCallback(async () => {
+    await Promise.all([
+      secureDelete(SECURE_KEY),
+      AsyncStorage.removeItem(PLAIN_KEY).catch(() => {}),
+      ...LEGACY_PLAIN_KEYS.map((k) => AsyncStorage.removeItem(k).catch(() => {})),
+    ]);
+    stateRef.current = DEFAULTS;
+    setState(DEFAULTS);
   }, []);
 
   const value = useMemo<AppContextValue>(
@@ -205,6 +253,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setProfile,
       setSettings,
       completeOnboarding,
+      resetAllData,
     }),
     [
       state,
@@ -217,6 +266,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setProfile,
       setSettings,
       completeOnboarding,
+      resetAllData,
     ],
   );
 

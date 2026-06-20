@@ -1,2 +1,3 @@
 - [Suraksha Expo ↔ api-server wiring](suraksha-expo-api-wiring.md) — Expo app hits `https://${EXPO_PUBLIC_DOMAIN}/api/...` (no protocol in env); api-server doesn't hot-reload, restart its workflow after route edits.
 - [Expo Go "Failed to load all assets"](expo-go-failed-to-load-assets.md) — Expo Go native error = bundle/asset download failure on device, not your code; verify manifest/bundle/splash serve from `$REPLIT_EXPO_DEV_DOMAIN` before debugging code.
+- [Suraksha truthfulness invariants](suraksha-truthfulness-invariants.md) — safety app must never lie: legal copy must match real data/network behavior, delete-all must clear legacy versioned keys, no fake success/GPS/places.

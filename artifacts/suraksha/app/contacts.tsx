@@ -31,7 +31,11 @@ export default function ContactsScreen() {
 
   const onAdd = () => {
     if (!name.trim() || !phone.trim()) return;
-    addContact(name, phone);
+    const res = addContact(name, phone);
+    if (!res.ok) {
+      showToast(res.error === "duplicate" ? t("contacts.duplicate") : t("contacts.invalid"));
+      return;
+    }
     setName("");
     setPhone("");
     showToast(t("contacts.added"));

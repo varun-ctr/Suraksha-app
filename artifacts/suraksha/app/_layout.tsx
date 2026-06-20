@@ -41,6 +41,9 @@ function RootLayoutNav() {
       <Stack.Screen name="fakecall" />
       <Stack.Screen name="report" />
       <Stack.Screen name="premium" />
+      <Stack.Screen name="privacy" />
+      <Stack.Screen name="terms" />
+      <Stack.Screen name="data" />
     </Stack>
   );
 }

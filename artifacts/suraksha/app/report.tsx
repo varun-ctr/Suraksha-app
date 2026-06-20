@@ -11,7 +11,9 @@ import { useApp } from "@/context/AppContext";
 import { useI18n } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useToast } from "@/context/ToastContext";
+import { useLocation } from "@/hooks/useLocation";
 import { timeAgo } from "@/lib/format";
+import { formatCoords } from "@/lib/location";
 
 export default function ReportScreen() {
   const { c } = useTheme();
@@ -23,6 +25,8 @@ export default function ReportScreen() {
   const [description, setDescription] = useState("");
   const [photoUri, setPhotoUri] = useState<string | undefined>();
   const [attachLocation, setAttachLocation] = useState(true);
+  const { point, address, status } = useLocation();
+  const locationLabel = address ?? (point ? formatCoords(point) : null);
 
   const pickPhoto = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -45,7 +49,7 @@ export default function ReportScreen() {
       category,
       description: description.trim(),
       photoUri,
-      location: attachLocation ? "Koramangala, Bengaluru" : undefined,
+      location: attachLocation ? locationLabel ?? undefined : undefined,
     });
     setDescription("");
     setPhotoUri(undefined);
@@ -133,6 +137,11 @@ export default function ReportScreen() {
             <Icon name="mapPin" size={14} color={c.textMuted} />
             <Text style={{ fontSize: 12.5, color: c.text }}>{t("report.attachLocation")}</Text>
           </Pressable>
+          {attachLocation && (
+            <Text style={{ fontSize: 11.5, color: c.textMuted, marginTop: 6, marginLeft: 28 }}>
+              {locationLabel ?? (status === "loading" ? t("home.locating") : t("report.locationUnavailable"))}
+            </Text>
+          )}
 
           <Pressable
             onPress={submit}

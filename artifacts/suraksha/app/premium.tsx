@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BackHeader } from "@/components/Headers";
 import { Icon } from "@/components/Icon";
+import { withAlpha } from "@/constants/colors";
 import type { IconName } from "@/constants/data";
 import { useApp } from "@/context/AppContext";
 import { useI18n } from "@/context/LanguageContext";
@@ -18,11 +19,11 @@ const PLANS = [
 ];
 
 const FEATURES: { icon: IconName; en: string; hi: string }[] = [
-  { icon: "navigation", en: "Unlimited journey sharing", hi: "असीमित यात्रा साझाकरण" },
+  { icon: "navigation", en: "Unlimited journey timers", hi: "असीमित यात्रा टाइमर" },
   { icon: "users", en: "Up to 10 trusted contacts", hi: "10 तक विश्वसनीय संपर्क" },
   { icon: "bell", en: "Priority SOS alerts", hi: "प्राथमिकता SOS अलर्ट" },
   { icon: "message", en: "Unlimited Sakhi conversations", hi: "असीमित सखी बातचीत" },
-  { icon: "shield", en: "Live safety monitoring", hi: "लाइव सुरक्षा निगरानी" },
+  { icon: "shield", en: "Safety check-in reminders", hi: "सुरक्षा चेक-इन रिमाइंडर" },
 ];
 
 export default function PremiumScreen() {
@@ -64,6 +65,15 @@ export default function PremiumScreen() {
         </LinearGradient>
 
         <View style={{ padding: 18 }}>
+          <View
+            style={[
+              styles.comingSoon,
+              { backgroundColor: withAlpha(c.accent, 0.1), borderColor: withAlpha(c.accent, 0.25) },
+            ]}
+          >
+            <Icon name="info" size={15} color={c.accent} />
+            <Text style={{ flex: 1, fontSize: 11.5, color: c.text, lineHeight: 17 }}>{t("premium.comingSoon")}</Text>
+          </View>
           <View style={[styles.featureCard, { backgroundColor: c.card, borderColor: c.border }]}>
             {FEATURES.map((f, i) => (
               <View
@@ -133,7 +143,7 @@ export default function PremiumScreen() {
             );
           })}
 
-          <Pressable onPress={() => showToast(t("premium.note"))} style={{ marginTop: 18 }}>
+          <Pressable onPress={() => showToast(t("premium.comingSoon"))} style={{ marginTop: 18 }}>
             <LinearGradient
               colors={[c.accent, c.accentDark]}
               start={{ x: 0, y: 0 }}
@@ -171,6 +181,15 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 20,
     marginTop: 12,
+  },
+  comingSoon: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
   },
   featureCard: { borderWidth: 1, borderRadius: 16, padding: 14 },
   featureIcon: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },

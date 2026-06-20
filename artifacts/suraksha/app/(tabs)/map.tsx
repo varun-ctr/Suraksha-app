@@ -1,46 +1,39 @@
-import React, { useMemo, useState } from "react";
+import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "@/components/Icon";
 import { MapPreview } from "@/components/MapPreview";
-import { Card, Chip, IconBadge } from "@/components/ui";
-import { type IconName, type Place, type PlaceCategory, PLACES } from "@/constants/data";
+import { withAlpha } from "@/constants/colors";
+import type { IconName } from "@/constants/data";
 import { useI18n } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
-import { useToast } from "@/context/ToastContext";
-import { callNumber, navigateTo } from "@/lib/native";
+import { useLocation } from "@/hooks/useLocation";
+import { searchNearby } from "@/lib/native";
 
-const FILTERS: { key: PlaceCategory | "All"; labelKey: string }[] = [
-  { key: "All", labelKey: "map.all" },
-  { key: "Police", labelKey: "map.police" },
-  { key: "Hospital", labelKey: "map.hospital" },
-  { key: "Shelter", labelKey: "map.shelter" },
-  { key: "Shops", labelKey: "map.shops" },
+interface CategoryDef {
+  key: string;
+  labelKey: string;
+  /** English search term passed to the maps provider. */
+  query: string;
+  icon: IconName;
+  color: (c: ReturnType<typeof useTheme>["c"]) => string;
+}
+
+const CATEGORIES: CategoryDef[] = [
+  { key: "police", labelKey: "map.police", query: "police station", icon: "shield", color: (c) => c.police },
+  { key: "hospital", labelKey: "map.hospital", query: "hospital", icon: "hospital", color: (c) => c.hospital },
+  { key: "pharmacy", labelKey: "map.pharmacy", query: "pharmacy", icon: "store", color: (c) => c.shops },
+  { key: "shelter", labelKey: "map.shelter", query: "women shelter", icon: "home", color: (c) => c.shelter },
 ];
-
-const CAT_ICON: Record<PlaceCategory, IconName> = {
-  Police: "shield",
-  Hospital: "hospital",
-  Shelter: "home",
-  Shops: "store",
-};
 
 export default function MapScreen() {
   const { c } = useTheme();
   const { t } = useI18n();
-  const { showToast } = useToast();
   const insets = useSafeAreaInsets();
-  const [filter, setFilter] = useState<PlaceCategory | "All">("All");
-  const [expanded, setExpanded] = useState<number | null>(null);
+  const { point, status } = useLocation();
 
-  const colorFor = (cat: PlaceCategory) =>
-    ({ Police: c.police, Hospital: c.hospital, Shelter: c.shelter, Shops: c.shops })[cat];
-
-  const filtered = useMemo(
-    () => (filter === "All" ? PLACES : PLACES.filter((p) => p.category === filter)),
-    [filter],
-  );
+  const coords = point ? { lat: point.lat, lng: point.lng } : null;
 
   return (
     <ScrollView
@@ -53,76 +46,45 @@ export default function MapScreen() {
         <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>{t("map.sub")}</Text>
       </View>
 
-      <MapPreview places={filtered} colorFor={colorFor} />
+      <MapPreview point={point} status={status} />
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: 8, paddingHorizontal: 18, paddingBottom: 14 }}
+      {status === "denied" && (
+        <View
+          style={[
+            styles.notice,
+            { backgroundColor: withAlpha(c.warning, 0.1), borderColor: withAlpha(c.warning, 0.25) },
+          ]}
+        >
+          <Icon name="info" size={14} color={c.warning} />
+          <Text style={{ flex: 1, fontSize: 11.5, color: c.text, lineHeight: 17 }}>{t("map.locationOff")}</Text>
+        </View>
+      )}
+
+      <View
+        style={[
+          styles.notice,
+          { backgroundColor: withAlpha(c.primary, 0.08), borderColor: withAlpha(c.primary, 0.2) },
+        ]}
       >
-        {FILTERS.map((f) => (
-          <Chip
-            key={f.key}
-            label={t(f.labelKey)}
-            active={filter === f.key}
-            onPress={() => setFilter(f.key)}
-          />
-        ))}
-      </ScrollView>
+        <Icon name="search" size={14} color={c.primary} />
+        <Text style={{ flex: 1, fontSize: 11.5, color: c.text, lineHeight: 17 }}>{t("map.note")}</Text>
+      </View>
 
-      <View style={{ paddingHorizontal: 18 }}>
-        {filtered.map((p: Place) => {
-          const isOpen = expanded === p.id;
-          const color = colorFor(p.category);
+      <View style={styles.grid}>
+        {CATEGORIES.map((cat) => {
+          const color = cat.color(c);
           return (
-            <Card key={p.id} style={{ marginBottom: 10, padding: 14 }}>
-              <Pressable
-                onPress={() => setExpanded(isOpen ? null : p.id)}
-                style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
-              >
-                <IconBadge name={CAT_ICON[p.category]} color={color} size={17} box={38} />
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontSize: 13.5, fontFamily: "Inter_700Bold", color: c.text }}>{p.name}</Text>
-                  <Text style={{ fontSize: 11.5, color: c.textMuted, marginTop: 1 }}>{p.address}</Text>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 5 }}>
-                    <Text style={{ fontSize: 11, color: c.textMuted }}>{p.distance}</Text>
-                    <View style={[styles.safeBadge, { backgroundColor: c.successSoft }]}>
-                      <Text style={{ fontSize: 10.5, fontFamily: "Inter_700Bold", color: c.success }}>
-                        ✓ {t("map.safe")}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-                <View style={{ transform: [{ rotate: isOpen ? "180deg" : "0deg" }] }}>
-                  <Icon name="chevronDown" size={16} color={c.textFaint} />
-                </View>
-              </Pressable>
-
-              {isOpen && (
-                <View style={{ flexDirection: "row", gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: c.border }}>
-                  <Pressable
-                    onPress={() => {
-                      showToast(`${t("common.calling")} ${p.name}…`);
-                      callNumber(p.phone);
-                    }}
-                    style={[styles.actBtn, { backgroundColor: c.success }]}
-                  >
-                    <Icon name="phone" size={14} color="#fff" />
-                    <Text style={styles.actText}>{t("map.callNow")}</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => {
-                      showToast(`${t("common.navigatingTo")} ${p.name}…`);
-                      navigateTo(p.lat, p.lng, p.name);
-                    }}
-                    style={[styles.actBtn, { backgroundColor: c.primary }]}
-                  >
-                    <Icon name="navigation" size={14} color="#fff" />
-                    <Text style={styles.actText}>{t("map.navigate")}</Text>
-                  </Pressable>
-                </View>
-              )}
-            </Card>
+            <Pressable
+              key={cat.key}
+              onPress={() => searchNearby(cat.query, coords)}
+              style={[styles.catCard, { backgroundColor: c.card, borderColor: c.border }]}
+            >
+              <View style={[styles.catIcon, { backgroundColor: withAlpha(color, 0.12) }]}>
+                <Icon name={cat.icon} size={20} color={color} />
+              </View>
+              <Text style={{ flex: 1, fontSize: 13.5, fontFamily: "Inter_700Bold", color: c.text }}>{t(cat.labelKey)}</Text>
+              <Icon name="navigation" size={16} color={c.textFaint} />
+            </Pressable>
           );
         })}
       </View>
@@ -131,15 +93,24 @@ export default function MapScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
-  actBtn: {
-    flex: 1,
+  notice: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginHorizontal: 18,
+    marginBottom: 12,
+  },
+  grid: { paddingHorizontal: 18, gap: 10 },
+  catCard: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 9,
-    borderRadius: 10,
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
   },
-  actText: { color: "#fff", fontSize: 12.5, fontFamily: "Inter_700Bold" },
+  catIcon: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center" },
 });

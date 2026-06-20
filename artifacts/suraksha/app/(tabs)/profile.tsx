@@ -75,6 +75,8 @@ export default function ProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+  const displayName = profile.name.trim() || t("profile.guest");
+
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(profile.name);
   const [draftPhone, setDraftPhone] = useState(profile.phone);
@@ -100,12 +102,12 @@ export default function ProfileScreen() {
         <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
           <View style={styles.bigAvatar}>
             <Text style={{ color: "#fff", fontSize: 26, fontFamily: "Inter_700Bold" }}>
-              {profile.name.charAt(0)}
+              {displayName.charAt(0).toUpperCase()}
             </Text>
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ color: "#fff", fontSize: 20, fontFamily: "Inter_700Bold" }} numberOfLines={1}>
-              {profile.name}
+              {displayName}
             </Text>
             <Text style={{ color: "rgba(255,255,255,0.85)", fontSize: 12.5, marginTop: 1 }}>
               {profile.phone}
@@ -282,7 +284,11 @@ export default function ProfileScreen() {
 
         <Text style={[styles.section, { marginTop: 16 }]}>{t("profile.account")}</Text>
         <Card style={{ paddingVertical: 6 }}>
-          <Row icon="lock" color={c.police} label={t("profile.privacy")} onPress={() => showToast(t("report.anonymous"))} />
+          <Row icon="lock" color={c.police} label={t("profile.privacy")} onPress={() => router.push("/privacy")} />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row icon="fileText" color={c.accent} label={t("profile.terms")} onPress={() => router.push("/terms")} />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row icon="shield" color={c.success} label={t("profile.data")} onPress={() => router.push("/data")} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
           <Row icon="info" color={c.primary} label={t("profile.about")} onPress={() => showToast("Suraksha v1.0")} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />

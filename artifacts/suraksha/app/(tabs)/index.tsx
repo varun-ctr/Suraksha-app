@@ -21,8 +21,10 @@ import { useI18n } from "@/context/LanguageContext";
 import { useSafety } from "@/context/SafetyContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useToast } from "@/context/ToastContext";
+import { useLocation } from "@/hooks/useLocation";
 import { fmtClock } from "@/lib/format";
-import { callNumber } from "@/lib/native";
+import { formatCoords } from "@/lib/location";
+import { callNumber, shareLiveLocation } from "@/lib/native";
 
 function SosButton({ onPress }: { onPress: () => void }) {
   const { c } = useTheme();
@@ -80,6 +82,16 @@ export default function HomeScreen() {
   const { contacts, profile } = useApp();
   const { triggerSOS, journey, setJourneyDuration, startJourney, endJourney } = useSafety();
   const { showToast } = useToast();
+  const { point, address, status } = useLocation();
+
+  const displayName = profile.name.trim() || t("home.guest");
+  const locLabel =
+    status === "loading"
+      ? t("home.locating")
+      : status === "denied"
+        ? t("home.locationOff")
+        : address ?? (point ? formatCoords(point) : t("home.locating"));
+  const overdue = journey.active && journey.seconds >= journey.duration * 60;
 
   return (
     <ScrollView
@@ -97,12 +109,12 @@ export default function HomeScreen() {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
             <View style={styles.headerAvatar}>
               <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 17 }}>
-                {profile.name.charAt(0)}
+                {displayName.charAt(0).toUpperCase()}
               </Text>
             </View>
             <View>
               <Text style={styles.greeting}>{t("home.greeting")}</Text>
-              <Text style={styles.name}>{profile.name}</Text>
+              <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
             </View>
           </View>
           <Pressable style={styles.bellBtn} onPress={() => router.push("/helpline")}>
@@ -112,9 +124,7 @@ export default function HomeScreen() {
 
         <View style={styles.locPill}>
           <Icon name="mapPin" size={13} color="#fff" />
-          <Text style={styles.locText}>Koramangala, Bengaluru</Text>
-          <Text style={{ color: "rgba(255,255,255,0.7)" }}>·</Text>
-          <Text style={styles.safeZone}>{t("home.safeZone")}</Text>
+          <Text style={styles.locText} numberOfLines={1}>{locLabel}</Text>
         </View>
       </LinearGradient>
 
@@ -193,15 +203,39 @@ export default function HomeScreen() {
             </>
           ) : (
             <>
-              <View style={[styles.liveRow, { backgroundColor: c.successSoft }]}>
-                <View style={[styles.dot, { backgroundColor: c.success }]} />
-                <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: c.success }}>
-                  {t("home.sharingLive")} · {fmtClock(journey.seconds)}
+              <View style={[styles.liveRow, { backgroundColor: overdue ? c.dangerSoft : c.successSoft }]}>
+                <View style={[styles.dot, { backgroundColor: overdue ? c.danger : c.success }]} />
+                <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: overdue ? c.danger : c.success }}>
+                  {fmtClock(journey.seconds)}
                 </Text>
                 <Text style={{ fontSize: 11, color: c.textMuted, marginLeft: "auto" }}>
                   / {journey.duration} {t("home.minutes")}
                 </Text>
               </View>
+              {overdue && (
+                <Text style={{ fontSize: 11.5, color: c.danger, fontFamily: "Inter_600SemiBold", marginBottom: 12 }}>
+                  {t("home.overdue")}
+                </Text>
+              )}
+              <Pressable
+                onPress={() => shareLiveLocation(point ? { lat: point.lat, lng: point.lng } : null)}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 7,
+                  borderWidth: 1.5,
+                  borderColor: c.primary,
+                  borderRadius: 10,
+                  paddingVertical: 10,
+                  marginBottom: 10,
+                }}
+              >
+                <Icon name="share" size={14} color={c.primary} />
+                <Text style={{ color: c.primary, fontFamily: "Inter_700Bold", fontSize: 13 }}>
+                  {t("home.shareLocation")}
+                </Text>
+              </Pressable>
               <Pressable
                 onPress={() => {
                   endJourney();
@@ -283,8 +317,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
   },
-  locText: { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" },
-  safeZone: { color: "#BFF4DC", fontSize: 12, fontFamily: "Inter_700Bold" },
+  locText: { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold", maxWidth: 260 },
   sosCircle: {
     width: 140,
     height: 140,

@@ -1,18 +1,20 @@
 import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "@/components/Icon";
-import type { Coords } from "@/context/SafetyContext";
 import { useApp } from "@/context/AppContext";
 import { useI18n } from "@/context/LanguageContext";
+import type { Coords } from "@/context/SafetyContext";
 import { useTheme } from "@/context/ThemeContext";
 import { fmtClock } from "@/lib/format";
-import { callNumber, shareLiveLocation } from "@/lib/native";
+import { formatCoords } from "@/lib/location";
+import { callNumber, locationLink, openWhatsApp, sendSms, shareLiveLocation } from "@/lib/native";
 
 interface SosModalProps {
-  sos: { active: boolean; seconds: number; coords: Coords | null; loading: boolean };
+  sos: { active: boolean; seconds: number; coords: Coords | null; address: string | null; loading: boolean };
   cancelSOS: () => void;
 }
 
@@ -20,17 +22,16 @@ export function SosModal({ sos, cancelSOS }: SosModalProps) {
   const { c } = useTheme();
   const { t } = useI18n();
   const { contacts } = useApp();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const delivered = Math.min(contacts.length, Math.floor(sos.seconds / 1.4) + 1);
+  const link = sos.coords ? locationLink(sos.coords.lat, sos.coords.lng) : null;
+  const messageBody = link ? t("sos.smsBody").replace("{link}", link) : t("sos.smsNoLoc");
 
-  const locationText = sos.loading
-    ? t("sos.gettingLocation")
-    : sos.coords
-      ? `Lat ${sos.coords.lat.toFixed(5)}, Lng ${sos.coords.lng.toFixed(5)}${
-          sos.coords.accuracy ? ` · ±${Math.round(sos.coords.accuracy)}m` : ""
-        }`
-      : "Koramangala, Bengaluru";
+  const goAddContacts = () => {
+    cancelSOS();
+    router.push("/contacts");
+  };
 
   return (
     <View style={[StyleSheet.absoluteFill, styles.root]}>
@@ -52,42 +53,77 @@ export function SosModal({ sos, cancelSOS }: SosModalProps) {
         <Text style={styles.clock}>{fmtClock(sos.seconds)}</Text>
         <Text style={styles.elapsed}>{t("sos.elapsed")}</Text>
 
+        <View style={styles.notice}>
+          <Icon name="info" size={14} color="#fff" />
+          <Text style={styles.noticeText}>{t("sos.notConfigured")}</Text>
+        </View>
+
         <View style={styles.panel}>
           <View style={styles.panelRow}>
             <Icon name="mapPin" size={15} color="#fff" />
             <Text style={styles.panelTitle}>{t("sos.liveLocation")}</Text>
           </View>
-          <Text style={styles.panelBody}>{locationText}</Text>
+          {sos.loading ? (
+            <Text style={styles.panelBody}>{t("sos.gettingLocation")}</Text>
+          ) : sos.coords ? (
+            <Text style={styles.panelBody}>
+              {sos.address ? `${sos.address}\n` : ""}
+              {formatCoords(sos.coords)}
+            </Text>
+          ) : (
+            <Text style={styles.panelBody}>{t("sos.locationUnavailable")}</Text>
+          )}
         </View>
 
         <View style={styles.panel}>
           <Text style={[styles.panelTitle, { marginBottom: 10 }]}>{t("sos.alertedContacts")}</Text>
-          {contacts.map((contact, i) => (
-            <View
-              key={contact.id}
-              style={[
-                styles.contactRow,
-                {
-                  borderBottomWidth: i < contacts.length - 1 ? StyleSheet.hairlineWidth : 0,
-                },
-              ]}
-            >
-              <View style={styles.contactAvatar}>
-                <Text style={styles.contactAvatarText}>{contact.name.charAt(0)}</Text>
-              </View>
-              <Text style={styles.contactName} numberOfLines={1}>
-                {contact.name}
-              </Text>
-              {i < delivered ? (
-                <View style={styles.deliveredRow}>
-                  <Icon name="check" size={13} color="#7CF0B5" />
-                  <Text style={styles.deliveredText}>{t("sos.delivered")}</Text>
+          {contacts.length === 0 ? (
+            <>
+              <Text style={[styles.panelBody, { marginBottom: 12 }]}>{t("sos.noContacts")}</Text>
+              <Pressable style={styles.addContactsBtn} onPress={goAddContacts}>
+                <Icon name="plus" size={15} color="#fff" />
+                <Text style={styles.addContactsText}>{t("sos.addContacts")}</Text>
+              </Pressable>
+            </>
+          ) : (
+            contacts.map((contact, i) => (
+              <View
+                key={contact.id}
+                style={[
+                  styles.contactBlock,
+                  { borderBottomWidth: i < contacts.length - 1 ? StyleSheet.hairlineWidth : 0 },
+                ]}
+              >
+                <View style={styles.contactHeader}>
+                  <View style={styles.contactAvatar}>
+                    <Text style={styles.contactAvatarText}>{contact.name.charAt(0)}</Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.contactName} numberOfLines={1}>
+                      {contact.name}
+                    </Text>
+                    <Text style={styles.contactPhone} numberOfLines={1}>
+                      {contact.phone}
+                    </Text>
+                  </View>
                 </View>
-              ) : (
-                <Text style={styles.sendingText}>{t("sos.sending")}</Text>
-              )}
-            </View>
-          ))}
+                <View style={styles.contactActions}>
+                  <Pressable style={styles.miniBtn} onPress={() => callNumber(contact.phone)}>
+                    <Icon name="phone" size={14} color="#fff" />
+                    <Text style={styles.miniText}>{t("sos.call")}</Text>
+                  </Pressable>
+                  <Pressable style={styles.miniBtn} onPress={() => sendSms(contact.phone, messageBody)}>
+                    <Icon name="message" size={14} color="#fff" />
+                    <Text style={styles.miniText}>{t("sos.sms")}</Text>
+                  </Pressable>
+                  <Pressable style={styles.miniBtn} onPress={() => openWhatsApp(contact.phone, messageBody)}>
+                    <Icon name="send" size={14} color="#fff" />
+                    <Text style={styles.miniText}>{t("sos.whatsapp")}</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ))
+          )}
         </View>
 
         <View style={{ width: "100%", gap: 10, marginTop: 4 }}>
@@ -126,7 +162,18 @@ const styles = StyleSheet.create({
   heading: { color: "#fff", fontSize: 21, fontFamily: "Inter_700Bold" },
   sub: { color: "rgba(255,255,255,0.85)", fontSize: 13, marginTop: 3, fontFamily: "Inter_500Medium" },
   clock: { color: "#fff", fontSize: 32, fontFamily: "Inter_700Bold", marginTop: 14, letterSpacing: 1 },
-  elapsed: { color: "rgba(255,255,255,0.7)", fontSize: 11.5, marginBottom: 18 },
+  elapsed: { color: "rgba(255,255,255,0.7)", fontSize: 11.5, marginBottom: 16 },
+  notice: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
+  },
+  noticeText: { flex: 1, color: "rgba(255,255,255,0.92)", fontSize: 11.5, lineHeight: 17, fontFamily: "Inter_500Medium" },
   panel: {
     width: "100%",
     backgroundColor: "rgba(255,255,255,0.1)",
@@ -137,13 +184,11 @@ const styles = StyleSheet.create({
   panelRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
   panelTitle: { color: "#fff", fontSize: 12.5, fontFamily: "Inter_700Bold" },
   panelBody: { color: "rgba(255,255,255,0.8)", fontSize: 11.5, lineHeight: 17 },
-  contactRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 7,
+  contactBlock: {
+    paddingVertical: 10,
     borderBottomColor: "rgba(255,255,255,0.12)",
   },
+  contactHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 },
   contactAvatar: {
     width: 30,
     height: 30,
@@ -153,10 +198,30 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   contactAvatarText: { color: "#fff", fontSize: 12, fontFamily: "Inter_700Bold" },
-  contactName: { flex: 1, color: "#fff", fontSize: 12.5, fontFamily: "Inter_600SemiBold" },
-  deliveredRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  deliveredText: { color: "#7CF0B5", fontSize: 10.5, fontFamily: "Inter_700Bold" },
-  sendingText: { color: "rgba(255,255,255,0.6)", fontSize: 10.5 },
+  contactName: { color: "#fff", fontSize: 13, fontFamily: "Inter_700Bold" },
+  contactPhone: { color: "rgba(255,255,255,0.7)", fontSize: 11 },
+  contactActions: { flexDirection: "row", gap: 8 },
+  miniBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.16)",
+  },
+  miniText: { color: "#fff", fontSize: 11.5, fontFamily: "Inter_700Bold" },
+  addContactsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    paddingVertical: 11,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+  addContactsText: { color: "#fff", fontSize: 13, fontFamily: "Inter_700Bold" },
   actionBtn: {
     width: "100%",
     flexDirection: "row",
