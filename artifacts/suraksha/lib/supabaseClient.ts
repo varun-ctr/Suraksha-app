@@ -58,8 +58,13 @@ export const db = {
   },
 
   sosEvents: {
-    insert: (row: SosEventInsert) =>
-      supabase.from("sos_events").insert(row).select<"*", SosEventRow>("*").single(),
+    // userId is always required — user_id NOT NULL in schema + RLS enforces ownership
+    insert: (userId: string, row: SosEventInsert) =>
+      supabase
+        .from("sos_events")
+        .insert({ ...row, user_id: userId })
+        .select<"*", SosEventRow>("*")
+        .single(),
 
     resolve: (id: string, patch: SosEventUpdate) =>
       supabase.from("sos_events").update(patch).eq("id", id),
@@ -73,8 +78,13 @@ export const db = {
   },
 
   journeys: {
-    insert: (row: JourneyInsert) =>
-      supabase.from("journeys").insert(row).select<"*", JourneyRow>("*").single(),
+    // userId is always required — user_id NOT NULL in schema + RLS enforces ownership
+    insert: (userId: string, row: JourneyInsert) =>
+      supabase
+        .from("journeys")
+        .insert({ ...row, user_id: userId })
+        .select<"*", JourneyRow>("*")
+        .single(),
 
     end: (id: string, patch: JourneyUpdate) =>
       supabase.from("journeys").update(patch).eq("id", id),
@@ -88,10 +98,11 @@ export const db = {
   },
 
   communityReports: {
-    insert: (row: CommunityReportInsert) =>
+    // userId is always required — user_id NOT NULL in schema + RLS enforces ownership
+    insert: (userId: string, row: CommunityReportInsert) =>
       supabase
         .from("community_reports")
-        .insert(row)
+        .insert({ ...row, user_id: userId })
         .select<"*", CommunityReportRow>("*")
         .single(),
 
@@ -153,10 +164,13 @@ export const db = {
   },
 
   liveSessions: {
-    insert: (row: LiveSessionInsert) =>
+    // userId is always required — user_id NOT NULL in schema + RLS enforces ownership
+    // Share-link reads (public tracker page) must go through the api-server
+    // using the service-role key, NOT the anon client, to avoid leaking all sessions.
+    insert: (userId: string, row: LiveSessionInsert) =>
       supabase
         .from("live_sessions")
-        .insert(row)
+        .insert({ ...row, user_id: userId })
         .select<"*", LiveSessionRow>("*")
         .single(),
 

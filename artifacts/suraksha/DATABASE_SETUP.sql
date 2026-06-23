@@ -242,12 +242,15 @@ CREATE TRIGGER live_sessions_updated_at
   FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
 ALTER TABLE public.live_sessions ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "live_sessions: owner write" ON public.live_sessions;
-CREATE POLICY "live_sessions: owner write" ON public.live_sessions FOR ALL USING (auth.uid() = user_id);
-DROP POLICY IF EXISTS "live_sessions: public read by share_id" ON public.live_sessions;
-CREATE POLICY "live_sessions: public read by share_id"
-  ON public.live_sessions FOR SELECT
-  USING (is_active = TRUE);
+-- Owner can read and write their own sessions.
+DROP POLICY IF EXISTS "live_sessions: owner all" ON public.live_sessions;
+CREATE POLICY "live_sessions: owner all" ON public.live_sessions FOR ALL USING (auth.uid() = user_id);
+-- NOTE: Share-link reads (public tracker page) must go through the api-server
+-- using the Supabase service-role key via a backend RPC / REST call — NOT
+-- via the anon key. This prevents leaking all active sessions to any client.
+-- The old "public read by share_id" policy (USING is_active = TRUE) has been
+-- intentionally removed because it exposed every active session, not just the
+-- one matching a specific share token.
 
 
 -- ----------------------------------------------------------
