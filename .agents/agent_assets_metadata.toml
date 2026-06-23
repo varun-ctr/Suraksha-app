@@ -29,3 +29,9 @@ id = "sdtFKYE9scZpg_x8saXvW"
 uri = "file://suraksha_code_review.txt"
 type = "text"
 title = "Suraksha — All Changed Files (8 files, 1371 lines)"
+
+[[outputs]]
+id = "BstyBNESvfK_PkmF_FLKI"
+uri = "file://suraksha-source.tar.gz"
+type = "unspecified"
+title = "Suraksha — Full Source Code"
