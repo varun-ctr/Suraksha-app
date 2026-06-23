@@ -18,10 +18,13 @@ const PLAIN_KEY = "suraksha.app.v2";
 /** Keys written by older builds; cleared on reset so "delete all" is truthful. */
 const LEGACY_PLAIN_KEYS = ["suraksha.app.v1"];
 
+const MAX_CONTACTS = 10;
+
 export interface Contact {
   id: string;
   name: string;
   phone: string;
+  avatarUrl?: string;
 }
 
 export interface ReportItem {
@@ -65,12 +68,16 @@ function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export type AddContactResult = { ok: true } | { ok: false; error: "invalid" | "duplicate" };
+export type AddContactResult =
+  | { ok: true }
+  | { ok: false; error: "invalid" | "duplicate" | "limit" };
 
 interface AppContextValue extends PersistShape {
   ready: boolean;
+  maxContacts: number;
   addContact: (name: string, phone: string) => AddContactResult;
   addContacts: (items: { name: string; phone: string }[]) => number;
+  editContact: (id: string, patch: Partial<Pick<Contact, "name" | "phone" | "avatarUrl">>) => AddContactResult;
   deleteContact: (id: string) => void;
   addReport: (r: Omit<ReportItem, "id" | "createdAt">) => void;
   deleteReport: (id: string) => void;
@@ -139,6 +146,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const normalized = normalizeIndianMobile(phone);
       if (!trimmedName || !normalized) return { ok: false, error: "invalid" };
       const prev = stateRef.current;
+      if (prev.contacts.length >= MAX_CONTACTS) return { ok: false, error: "limit" };
       const exists = prev.contacts.some(
         (c) => normalizeIndianMobile(c.phone) === normalized,
       );
@@ -163,6 +171,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           .map((c) => normalizeIndianMobile(c.phone))
           .filter((v): v is string => Boolean(v)),
       );
+      const slots = MAX_CONTACTS - prev.contacts.length;
       const fresh = items
         .map((i) => ({ name: i.name.trim(), normalized: normalizeIndianMobile(i.phone) }))
         .filter((i): i is { name: string; normalized: string } => Boolean(i.name) && Boolean(i.normalized))
@@ -171,6 +180,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           existing.add(i.normalized);
           return true;
         })
+        .slice(0, slots)
         .map((i) => ({ id: uid(), name: i.name, phone: i.normalized }));
       added = fresh.length;
       if (added === 0) return prev;
@@ -180,6 +190,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
     return added;
   }, []);
+
+  const editContact = useCallback(
+    (id: string, patch: Partial<Pick<Contact, "name" | "phone" | "avatarUrl">>): AddContactResult => {
+      const prev = stateRef.current;
+      const target = prev.contacts.find((c) => c.id === id);
+      if (!target) return { ok: false, error: "invalid" };
+
+      let normalized = target.phone;
+      if (patch.phone !== undefined) {
+        const n = normalizeIndianMobile(patch.phone);
+        if (!n) return { ok: false, error: "invalid" };
+        const dupe = prev.contacts.some((c) => c.id !== id && normalizeIndianMobile(c.phone) === n);
+        if (dupe) return { ok: false, error: "duplicate" };
+        normalized = n;
+      }
+
+      const trimmedName = patch.name !== undefined ? patch.name.trim() : target.name;
+      if (!trimmedName) return { ok: false, error: "invalid" };
+
+      const next = {
+        ...prev,
+        contacts: prev.contacts.map((c) =>
+          c.id === id
+            ? { ...c, name: trimmedName, phone: normalized, avatarUrl: patch.avatarUrl ?? c.avatarUrl }
+            : c,
+        ),
+      };
+      stateRef.current = next;
+      setState(next);
+      persist(next);
+      return { ok: true };
+    },
+    [],
+  );
 
   const deleteContact = useCallback((id: string) => {
     setState((prev) => {
@@ -246,8 +290,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     () => ({
       ...state,
       ready,
+      maxContacts: MAX_CONTACTS,
       addContact,
       addContacts,
+      editContact,
       deleteContact,
       addReport,
       deleteReport,
@@ -261,6 +307,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ready,
       addContact,
       addContacts,
+      editContact,
       deleteContact,
       addReport,
       deleteReport,

@@ -334,6 +334,8 @@ export default function ProfileScreen() {
         {/* ── Account ── */}
         <Text style={[styles.section, { marginTop: 16 }]}>{t("profile.account")}</Text>
         <Card style={{ paddingVertical: 6 }}>
+          <Row icon="flag"       color={c.accent}  label={t("profile.myReports")} onPress={() => router.push("/my-reports" as never)} />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
           <Row icon="lock"       color={c.police}  label={t("profile.privacy")} onPress={() => router.push("/privacy")} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
           <Row icon="fileText"   color={c.accent}  label={t("profile.terms")}   onPress={() => router.push("/terms")} />

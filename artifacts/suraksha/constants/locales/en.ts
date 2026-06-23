@@ -13,7 +13,7 @@ const en: Record<string, string> = {
   "onb.title2": "Share Your Location Live",
   "onb.body2": "Start a journey timer and share your location with someone you trust. Mark yourself safe when you arrive.",
   "onb.title3": "Trusted Contacts",
-  "onb.body3": "Add up to 5 people you trust. Reach them instantly with one tap when you need help most.",
+  "onb.body3": "Add up to 10 people you trust. Reach them instantly with one tap when you need help most.",
   "onb.title4": "Know Your Rights",
   "onb.body4": "Understand the laws that protect you and get guidance from Sakhi, your private safety companion.",
   "onb.langTitle": "Choose Your Language",
@@ -105,6 +105,12 @@ const en: Record<string, string> = {
   "contacts.removed": "Contact removed",
   "contacts.invalid": "Enter a valid 10-digit Indian mobile number.",
   "contacts.duplicate": "This contact is already added.",
+  "contacts.limit": "You can add up to 10 trusted contacts.",
+  "contacts.limitReached": "Limit reached — remove a contact to add another.",
+  "contacts.editContact": "Edit Contact",
+  "contacts.changePhoto": "Change photo",
+  "contacts.saved": "Contact updated",
+  "contacts.removeConfirm": "Remove this contact?",
 
   "helpline.title": "Emergency Helplines",
   "helpline.sub": "Tap any number to call",
@@ -135,6 +141,36 @@ const en: Record<string, string> = {
   "report.empty": "No entries yet.",
   "report.anonymous": "Entries are saved only on this device. Nothing is uploaded.",
 
+  "community.title": "Community Reports",
+  "community.sub": "Flag unsafe areas and incidents near you",
+  "community.comingSoon": "Coming Soon",
+  "community.comingSoonSub": "Community safety reports let you see and share safety incidents in your area. This feature is coming in the next update.",
+  "community.typeLabel": "Type of incident",
+  "community.unsafeArea": "Unsafe Area",
+  "community.harassment": "Harassment",
+  "community.stalking": "Stalking",
+  "community.suspiciousActivity": "Suspicious Activity",
+  "community.descLabel": "What happened? (optional)",
+  "community.descPlaceholder": "Describe what you observed…",
+  "community.locationLabel": "Your location",
+  "community.photoLabel": "Attach photo (optional)",
+  "community.photoPick": "Choose photo",
+  "community.submit": "Submit Report",
+  "community.submitting": "Submitting…",
+  "community.submitted": "Thank you — your report has been submitted.",
+  "community.error": "Could not submit. Please check your connection and try again.",
+  "community.noLocation": "Location unavailable",
+  "community.loginRequired": "Sign in to submit community reports.",
+  "community.loginBtn": "Sign In",
+  "community.note": "Reports are reviewed before appearing on the community map.",
+
+  "myReports.title": "My Reports",
+  "myReports.sub": "Community reports you've submitted",
+  "myReports.empty": "You haven't submitted any reports yet.",
+  "myReports.pending": "Pending review",
+  "myReports.reviewed": "Reviewed",
+  "myReports.removed": "Removed",
+
   "profile.premiumMember": "Premium Member",
   "profile.appearance": "Appearance",
   "profile.colorTheme": "Color theme",
@@ -152,6 +188,7 @@ const en: Record<string, string> = {
   "profile.premium": "Suraksha Premium",
   "profile.editName": "Edit profile",
   "profile.guest": "Set up your profile",
+  "profile.myReports": "My Reports",
 
   "premium.title": "Suraksha Premium",
   "premium.sub": "Extra protection for total peace of mind",
@@ -230,6 +267,8 @@ const en: Record<string, string> = {
   "common.send": "Send",
   "common.name": "Name",
   "common.goBack": "Go Back",
+  "common.retry": "Retry",
+  "common.remove": "Remove",
 
   "sos.countdownTitle": "Preparing SOS…",
   "sos.countdownSub": "Tap cancel if this was a mistake.",
@@ -244,11 +283,6 @@ const en: Record<string, string> = {
 
   "weather.label": "Weather",
   "weather.loading": "Fetching weather…",
-
-  "community.title": "Community Reports",
-  "community.sub": "Safety incidents reported near you",
-  "community.comingSoon": "Coming Soon",
-  "community.comingSoonSub": "Community safety reports let you see and share safety incidents in your area. This feature is coming in the next update.",
 };
 
 export default en;

@@ -33,6 +33,7 @@ function RootLayoutNav() {
       <Stack.Screen name="fakecall" />
       <Stack.Screen name="report" />
       <Stack.Screen name="community-report" />
+      <Stack.Screen name="my-reports" />
       <Stack.Screen name="premium" />
       <Stack.Screen name="privacy" />
       <Stack.Screen name="terms" />

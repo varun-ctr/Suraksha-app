@@ -1,6 +1,7 @@
 import React from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -49,8 +50,30 @@ export function SectionTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function Avatar({ label, size = 38, color }: { label: string; size?: number; color?: string }) {
+export function Avatar({
+  label,
+  uri,
+  size = 38,
+  color,
+}: {
+  label: string;
+  uri?: string;
+  size?: number;
+  color?: string;
+}) {
   const { c } = useTheme();
+  if (uri) {
+    return (
+      <Image
+        source={{ uri }}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+        }}
+      />
+    );
+  }
   return (
     <View
       style={{
