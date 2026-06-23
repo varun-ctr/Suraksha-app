@@ -21,14 +21,14 @@ interface CategoryDef {
 }
 
 const CATEGORIES: CategoryDef[] = [
-  { key: "police", labelKey: "map.police", query: "police station", icon: "shield", color: (c) => c.police },
-  { key: "hospital", labelKey: "map.hospital", query: "hospital", icon: "hospital", color: (c) => c.hospital },
-  { key: "pharmacy", labelKey: "map.pharmacy", query: "pharmacy", icon: "store", color: (c) => c.shops },
-  { key: "shelter", labelKey: "map.shelter", query: "women shelter", icon: "home", color: (c) => c.shelter },
+  { key: "police",   labelKey: "map.police",   query: "police station", icon: "shield",   color: (c) => c.police   },
+  { key: "hospital", labelKey: "map.hospital", query: "hospital",       icon: "hospital", color: (c) => c.hospital },
+  { key: "pharmacy", labelKey: "map.pharmacy", query: "pharmacy",       icon: "store",    color: (c) => c.shops    },
+  { key: "shelter",  labelKey: "map.shelter",  query: "women shelter",  icon: "home",     color: (c) => c.shelter  },
 ];
 
 export default function MapScreen() {
-  const { c } = useTheme();
+  const { c, isDark } = useTheme();
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const { point, status } = useLocation();
@@ -41,8 +41,11 @@ export default function MapScreen() {
   const coords = point ? { lat: point.lat, lng: point.lng } : null;
 
   const handleCategoryTap = async (cat: CategoryDef) => {
-    void searchNearby(cat.query, coords);
-    if (!coords) return;
+    // No location yet — fall back to opening the maps app externally
+    if (!coords) {
+      void searchNearby(cat.query, null);
+      return;
+    }
 
     setLoadingCategory(cat.key);
     setNoResults(false);
@@ -110,7 +113,7 @@ export default function MapScreen() {
     );
   }
 
-  // ── Native: live MapView with place markers ─────────────────────────────────
+  // ── Native: Google Maps SDK with live GPS + place markers ───────────────────
   const markers = places.map((p) => ({
     id: p.id,
     lat: p.lat,
@@ -118,13 +121,17 @@ export default function MapScreen() {
     name: p.name,
     address: p.address,
     pinColor: activeCatDef ? activeCatDef.color(c) : c.primary,
-    onPress: () => navigateTo(p.lat, p.lng, p.name),
-    navigateTip: t("map.navigateTip"),
+    onNavigate: () => { void navigateTo(p.lat, p.lng, p.name); },
   }));
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <NativeMap lat={point?.lat} lng={point?.lng} markers={markers} />
+      <NativeMap
+        lat={point?.lat}
+        lng={point?.lng}
+        markers={markers}
+        isDark={isDark}
+      />
 
       {/* Header overlay */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
@@ -175,7 +182,7 @@ export default function MapScreen() {
             return (
               <Pressable
                 key={cat.key}
-                onPress={() => handleCategoryTap(cat)}
+                onPress={() => { void handleCategoryTap(cat); }}
                 style={[
                   styles.chipCard,
                   {

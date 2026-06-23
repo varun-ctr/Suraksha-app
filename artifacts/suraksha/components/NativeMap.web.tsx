@@ -1,6 +1,7 @@
 /**
  * Web stub — react-native-maps is not available on web.
  * Renders nothing; the map.tsx route shows the web-only ScrollView UI instead.
+ * Type signatures must stay in sync with NativeMap.tsx.
  */
 import React from "react";
 import { View } from "react-native";
@@ -12,8 +13,7 @@ export interface MarkerData {
   name: string;
   address: string;
   pinColor?: string;
-  onPress?: () => void;
-  navigateTip?: string;
+  onNavigate?: () => void;
 }
 
 interface NativeMapProps {
@@ -21,6 +21,8 @@ interface NativeMapProps {
   lng?: number;
   markers?: MarkerData[];
   showsUserLocation?: boolean;
+  isDark?: boolean;
+  onLocationUpdate?: (lat: number, lng: number) => void;
 }
 
 export function NativeMap(_: NativeMapProps) {

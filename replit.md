@@ -1,36 +1,49 @@
-# [Project name]
+# Suraksha — Women's Safety App
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A React Native / Expo mobile app (iOS + Android) that helps women stay safe: SOS alerts, live location sharing, nearby safe places, an incident journal, and legal-rights guides.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/suraksha run dev` — run the Expo dev server
+- `pnpm --filter @workspace/api-server run dev` — run the Express API server (port from `PORT` env)
 - `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+
+## Required environment variables
+
+| Variable | Where | Purpose |
+|---|---|---|
+| `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` | Replit Secret | Google Maps SDK key for Android + iOS native map tiles and Places API. Restrict this key to your app's package/bundle identifier in Google Cloud Console. Scopes needed: Maps SDK for Android, Maps SDK for iOS, Places API (New). |
+| `GOOGLE_PLACES_API_KEY` | Replit Secret (server-side) | Server-side Google Places API (New) key used by the `/nearby-places` endpoint in `artifacts/api-server`. |
+| `SUPABASE_URL` | Replit Secret | Supabase project URL |
+| `SUPABASE_PUBLISHABLE_KEY` | Replit Secret | Supabase anon/publishable key |
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
+- pnpm workspaces, Node.js 24, TypeScript 5.9 (strict)
+- Mobile: Expo SDK 54, React Native 0.81.5, Expo Router v4
 - API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- DB: Supabase (PostgreSQL)
+- Maps: `react-native-maps` with `PROVIDER_GOOGLE`
+- Build: EAS Build
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/suraksha/` — Expo mobile app
+- `artifacts/suraksha/app/(tabs)/` — tab screens (home, map, report, contacts, profile)
+- `artifacts/suraksha/components/` — shared UI components
+- `artifacts/suraksha/context/` — React contexts (AppContext, SafetyContext, ThemeContext, LanguageContext)
+- `artifacts/suraksha/lib/` — services (location, nearbyPlaces, native, sosEvents, secureStore)
+- `artifacts/suraksha/constants/` — colors/themes, i18n strings, data
+- `artifacts/api-server/src/routes/` — Express API routes
+- `artifacts/suraksha/app.config.ts` — dynamic Expo config (reads EXPO_PUBLIC_GOOGLE_MAPS_API_KEY)
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
-
-## Product
-
-_Describe the high-level user-facing capabilities of this app once they exist._
+- `NativeMap.tsx` / `NativeMap.web.tsx` pattern: react-native-maps is excluded from the web bundle via the `.web.tsx` extension stub — prevents the bundler crash.
+- `PROVIDER_GOOGLE` used on all native builds; falls back to `undefined` on web (no-op stub).
+- App config is `app.config.ts` (dynamic) rather than static `app.json` so env vars can be injected at EAS build time.
+- Dark map style (`lib/mapStyle.ts`) is a static JSON array applied via `customMapStyle` — avoids a runtime fetch.
+- `/nearby-places` backend endpoint uses a 5-minute in-memory cache keyed on category + lat/lng to stay within Google Places quota.
 
 ## User preferences
 
@@ -38,8 +51,5 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- `EXPO_PUBLIC_*` vars are embedded at **build time** by Metro, not at runtime — set them before starting an EAS build, not just at dev server startup.
+- Google Maps API key must be restricted in Google Cloud Console to the app's bundle identifier (`com.sakhisuraksha.app`) to prevent abuse after publishing.
