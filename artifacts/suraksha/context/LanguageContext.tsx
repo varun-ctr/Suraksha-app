@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Updates from "expo-updates";
 import React, {
   createContext,
   useCallback,
@@ -102,9 +103,14 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     };
     void init();
 
+    // Reconcile language for users who are already signed in on first mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.id) void syncWithProfile(session.user.id);
+    });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        if (event === "SIGNED_IN" && session?.user?.id) {
+        if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session?.user?.id) {
           void syncWithProfile(session.user.id);
         }
       },
@@ -145,10 +151,21 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     void loadLocale(code);
     if (needsRtl !== currentlyRtl) {
       I18nManager.forceRTL(needsRtl);
+      const dir = needsRtl ? "right-to-left" : "left-to-right";
       Alert.alert(
         "Restart required",
-        `${meta?.englishName ?? code} uses a ${needsRtl ? "right-to-left" : "left-to-right"} layout. Please close and reopen the app to apply the change.`,
-        [{ text: "OK" }],
+        `${meta?.englishName ?? code} uses a ${dir} layout. Restart now to apply the change.`,
+        [
+          { text: "Later", style: "cancel" },
+          {
+            text: "Restart now",
+            onPress: () => {
+              Updates.reloadAsync().catch(() => {
+                // reloadAsync is unavailable in Expo Go / dev client — silently skip
+              });
+            },
+          },
+        ],
       );
     }
   }, []);

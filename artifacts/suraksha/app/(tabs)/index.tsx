@@ -4,6 +4,7 @@ import React, { useEffect, useRef } from "react";
 import {
   Animated,
   Easing,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,9 +14,12 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "@/components/Icon";
+import { LanguagePicker } from "@/components/LanguagePicker";
 import { Avatar, Card, IconBadge } from "@/components/ui";
 import { withAlpha } from "@/constants/colors";
 import { QUICK_ACTIONS } from "@/constants/data";
+import { LANG_BY_CODE } from "@/constants/languages";
+import type { LangCode } from "@/constants/languages";
 import { useApp } from "@/context/AppContext";
 import { useI18n } from "@/context/LanguageContext";
 import { useSafety } from "@/context/SafetyContext";
@@ -119,15 +123,13 @@ export default function HomeScreen() {
             </View>
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            {/* Language toggle — tap to cycle EN ↔ HI */}
+            {/* Language button — opens full 28-language picker */}
             <Pressable
-              style={[styles.bellBtn, { paddingHorizontal: 10 }]}
+              style={[styles.bellBtn, { paddingHorizontal: 8 }]}
               onPress={() => setShowLangPicker(true)}
               hitSlop={8}
             >
-              <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12, letterSpacing: 0.5 }}>
-                {lang.toUpperCase()}
-              </Text>
+              <Text style={{ fontSize: 16 }}>{LANG_BY_CODE[lang]?.flag ?? "🌐"}</Text>
             </Pressable>
             <Pressable style={styles.bellBtn} onPress={() => router.push("/helpline")}>
               <Icon name="bell" size={18} color="#fff" />
@@ -141,47 +143,39 @@ export default function HomeScreen() {
         </View>
       </LinearGradient>
 
-      {/* Language Picker Sheet */}
-      {showLangPicker && (
+      {/* Language Picker Modal — full 28-language searchable list */}
+      <Modal
+        visible={showLangPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowLangPicker(false)}
+      >
         <Pressable
-          style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(0,0,0,0.45)", zIndex: 100, justifyContent: "flex-end" }]}
+          style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.45)" }}
           onPress={() => setShowLangPicker(false)}
         >
-          <Pressable onPress={() => {}} style={{ backgroundColor: c.card, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 24, paddingBottom: 36 }}>
-            <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 4 }}>
-              {t("home.selectLanguage")}
-            </Text>
-            <Text style={{ fontSize: 13, color: c.textMuted, marginBottom: 20 }}>
-              {t("home.selectLanguageSub")}
-            </Text>
-            {(["en", "hi"] as const).map((l) => {
-              const active = lang === l;
-              return (
-                <Pressable
-                  key={l}
-                  onPress={() => { setLang(l); setShowLangPicker(false); }}
-                  style={{
-                    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-                    paddingVertical: 14, paddingHorizontal: 16, borderRadius: 14, marginBottom: 10,
-                    backgroundColor: active ? withAlpha(c.primary, 0.12) : c.bg,
-                    borderWidth: 1.5, borderColor: active ? c.primary : c.border,
-                  }}
-                >
-                  <View>
-                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: active ? c.primary : c.text }}>
-                      {l === "en" ? "English" : "हिन्दी"}
-                    </Text>
-                    <Text style={{ fontSize: 12, color: c.textMuted }}>
-                      {l === "en" ? "English" : "Hindi"}
-                    </Text>
-                  </View>
-                  {active && <Icon name="check" size={18} color={c.primary} />}
-                </Pressable>
-              );
-            })}
+          <Pressable
+            style={{ backgroundColor: c.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 22, paddingBottom: 36, maxHeight: "85%" }}
+            onPress={() => {}}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}>
+              <Text style={{ flex: 1, fontSize: 16, fontFamily: "Inter_700Bold", color: c.text }}>
+                {t("home.selectLanguage")}
+              </Text>
+              <Pressable onPress={() => setShowLangPicker(false)} hitSlop={10}>
+                <Icon name="x" size={20} color={c.textMuted} />
+              </Pressable>
+            </View>
+            <LanguagePicker
+              selected={lang}
+              onSelect={(code: LangCode) => {
+                setLang(code);
+                setShowLangPicker(false);
+              }}
+            />
           </Pressable>
         </Pressable>
-      )}
+      </Modal>
 
       <View style={{ alignItems: "center", marginTop: -48, marginBottom: 6 }}>
         <SosButton onPress={triggerSOS} />
