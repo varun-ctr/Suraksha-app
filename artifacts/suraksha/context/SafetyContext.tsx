@@ -13,6 +13,10 @@ import React, {
 import { SosBottomSheet } from "@/components/SosBottomSheet";
 import { getCurrentLocation, reverseGeocode } from "@/lib/location";
 import { endLiveSession, startLiveSession, updateLiveSession } from "@/lib/liveSession";
+import {
+  cancelAllScheduledNotifications,
+  scheduleLocalNotification,
+} from "@/lib/notifications";
 import { insertSosEvent, resolveSosEvent } from "@/lib/sosEvents";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -301,6 +305,23 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
     return () => {
       if (journeyTimer.current) { clearInterval(journeyTimer.current); journeyTimer.current = null; }
     };
+  }, [journey.active]);
+
+  // ── Journey local notification ────────────────────────────────────
+  // Fires "are you safe?" after the journey duration expires.
+  // Cancelled immediately when the user ends the journey.
+
+  useEffect(() => {
+    if (journey.active) {
+      void scheduleLocalNotification(
+        "Journey Timer Ended",
+        "Your journey timer has ended — are you safe?",
+        journey.duration * 60,
+      );
+    } else {
+      void cancelAllScheduledNotifications();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [journey.active]);
 
   // ── Derived safety status ─────────────────────────────────────────

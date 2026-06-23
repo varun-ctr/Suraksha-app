@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "@/components/Icon";
 import { LanguagePicker } from "@/components/LanguagePicker";
-import * as ExpoNotifications from "expo-notifications";
+import { registerForPushNotifications } from "@/lib/notifications";
 import { Card, SectionTitle } from "@/components/ui";
 import {
   ACCENTS,
@@ -158,19 +158,22 @@ export default function ProfileScreen() {
 
   const handleNotificationsToggle = async (v: boolean) => {
     if (v) {
-      const result = await ExpoNotifications.requestPermissionsAsync() as unknown as { granted: boolean };
-      if (!result.granted) {
+      const result = await registerForPushNotifications();
+      if (!result.ok && result.denied) {
         showToast(t("profile.notificationDenied"));
         return;
       }
-      try {
-        const tokenData = await ExpoNotifications.getExpoPushTokenAsync();
-        await AsyncStorage.setItem(NOTIF_TOKEN_KEY, tokenData.data);
-      } catch {
-        // Token fetch may fail in dev/simulator — proceed with enabling notifications anyway
+      if (result.ok) {
+        await AsyncStorage.setItem(NOTIF_TOKEN_KEY, result.token).catch(() => {});
       }
     } else {
       await AsyncStorage.removeItem(NOTIF_TOKEN_KEY).catch(() => {});
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) await db.notificationTokens.deleteForUser(user.id);
+      } catch {
+        // Non-critical
+      }
     }
     setSettings({ notifications: v });
   };

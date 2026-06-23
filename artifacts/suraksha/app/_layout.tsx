@@ -5,6 +5,7 @@ import {
   Inter_700Bold,
   useFonts,
 } from "@expo-google-fonts/inter";
+import * as Notifications from "expo-notifications";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useState } from "react";
@@ -18,7 +19,8 @@ import { BookmarksProvider } from "@/context/BookmarksContext";
 import { LanguageProvider, useI18n } from "@/context/LanguageContext";
 import { SafetyProvider } from "@/context/SafetyContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
-import { ToastProvider } from "@/context/ToastContext";
+import { ToastProvider, useToast } from "@/context/ToastContext";
+import { registerForPushNotifications } from "@/lib/notifications";
 import { supabase } from "@/lib/supabaseClient";
 
 SplashScreen.preventAutoHideAsync();
@@ -49,6 +51,7 @@ function Gate() {
   const { ready: appReady, onboarded } = useApp();
   const { ready: themeReady } = useTheme();
   const { ready: langReady } = useI18n();
+  const { showToast } = useToast();
   const router = useRouter();
   const segments = useSegments();
 
@@ -61,10 +64,46 @@ function Gate() {
       setAuthChecked(true);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_, session) => setAuthed(!!session),
+      (event, session) => {
+        setAuthed(!!session);
+        if (event === "SIGNED_IN") {
+          void registerForPushNotifications();
+        }
+      },
     );
     return () => subscription.unsubscribe();
   }, []);
+
+  // ── Push token refresh: upsert new token to Supabase ─────────────
+  useEffect(() => {
+    const sub = Notifications.addPushTokenListener(async ({ data: token }) => {
+      if (!token) return;
+      await registerForPushNotifications();
+    });
+    return () => sub.remove();
+  }, []);
+
+  // ── Foreground notification handler: show in-app toast ────────────
+  useEffect(() => {
+    const sub = Notifications.addNotificationReceivedListener((notification) => {
+      const title = notification.request.content.title ?? "";
+      const body = notification.request.content.body ?? "";
+      const msg = [title, body].filter(Boolean).join(" — ");
+      if (msg) showToast(msg);
+    });
+    return () => sub.remove();
+  }, [showToast]);
+
+  // ── Tap handler: deep-link to data.route if provided ─────────────
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const route = (response.notification.request.content.data as Record<string, unknown>)?.route;
+      if (typeof route === "string" && route) {
+        router.push(route as never);
+      }
+    });
+    return () => sub.remove();
+  }, [router]);
 
   const allReady = appReady && themeReady && langReady && authChecked;
 
