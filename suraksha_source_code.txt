@@ -1,0 +1,3479 @@
+================================================================================
+SURAKSHA — Production Hardened Source Code
+Bilingual (EN/HI) Women's Safety App · Expo / React Native / TypeScript
+Bucket A: on-device only, truthful, no external accounts
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: lib/secureStore.ts
+────────────────────────────────────────────────────────────────────────────────
+/**
+ * Thin storage wrapper used for sensitive data (trusted contacts, profile).
+ *
+ * On a real device we use the OS-backed encrypted keystore via
+ * `expo-secure-store`. On web (the Replit preview) SecureStore is unavailable,
+ * so we fall back to AsyncStorage — web is preview-only and cannot offer a true
+ * secure enclave.
+ */
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
+
+const isWeb = Platform.OS === "web";
+
+export async function secureGet(key: string): Promise<string | null> {
+  if (isWeb) {
+    try {
+      return await AsyncStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+  try {
+    return await SecureStore.getItemAsync(key);
+  } catch {
+    return null;
+  }
+}
+
+export async function secureSet(key: string, value: string): Promise<void> {
+  if (isWeb) {
+    try {
+      await AsyncStorage.setItem(key, value);
+    } catch {
+      // ignore
+    }
+    return;
+  }
+  try {
+    await SecureStore.setItemAsync(key, value);
+  } catch {
+    // ignore
+  }
+}
+
+export async function secureDelete(key: string): Promise<void> {
+  if (isWeb) {
+    try {
+      await AsyncStorage.removeItem(key);
+    } catch {
+      // ignore
+    }
+    return;
+  }
+  try {
+    await SecureStore.deleteItemAsync(key);
+  } catch {
+    // ignore
+  }
+}
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: lib/location.ts
+────────────────────────────────────────────────────────────────────────────────
+/**
+ * Shared, real location helpers built on `expo-location`.
+ *
+ * Every screen that needs the user's position goes through here so the app
+ * never falls back to a hardcoded/fake place. Reverse geocoding uses the
+ * operating system's geocoder (which may use a network service); it is
+ * unavailable on web, where we surface raw coordinates instead.
+ */
+import * as Location from "expo-location";
+import { Platform } from "react-native";
+
+export interface GeoPoint {
+  lat: number;
+  lng: number;
+  accuracy: number | null;
+}
+
+export type LocationStatus = "idle" | "loading" | "ready" | "denied" | "error";
+
+/** Requests foreground permission and returns the current position, or null. */
+export async function getCurrentLocation(): Promise<GeoPoint | null> {
+  try {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== "granted") return null;
+    const pos = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.High,
+    });
+    return {
+      lat: pos.coords.latitude,
+      lng: pos.coords.longitude,
+      accuracy: pos.coords.accuracy ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Best-effort reverse geocode to a short human address. Null on web/failure. */
+export async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
+  if (Platform.OS === "web") return null;
+  try {
+    const results = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+    const r = results[0];
+    if (!r) return null;
+    const parts = [r.name, r.district ?? r.subregion, r.city ?? r.region]
+      .filter((v): v is string => Boolean(v))
+      .filter((v, i, arr) => arr.indexOf(v) === i);
+    return parts.join(", ") || null;
+  } catch {
+    return null;
+  }
+}
+
+export function formatCoords(p: GeoPoint): string {
+  const acc = p.accuracy ? ` · ±${Math.round(p.accuracy)}m` : "";
+  return `Lat ${p.lat.toFixed(5)}, Lng ${p.lng.toFixed(5)}${acc}`;
+}
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: lib/validate.ts
+────────────────────────────────────────────────────────────────────────────────
+/**
+ * Validation helpers. India-focused mobile-number checks so the app only stores
+ * numbers it can actually call/text.
+ */
+
+/**
+ * Normalises an Indian mobile number to its 10-digit form, or null if invalid.
+ * Accepts inputs with +91 / 91 / leading-0 prefixes and spacing.
+ */
+export function normalizeIndianMobile(raw: string): string | null {
+  let d = raw.replace(/\D/g, "");
+  if (d.length === 12 && d.startsWith("91")) d = d.slice(2);
+  else if (d.length === 11 && d.startsWith("0")) d = d.slice(1);
+  if (d.length === 10 && /^[6-9]/.test(d)) return d;
+  return null;
+}
+
+export function isValidIndianMobile(raw: string): boolean {
+  return normalizeIndianMobile(raw) !== null;
+}
+
+/** International form (with country code, no +) suitable for wa.me links. */
+export function toWhatsAppNumber(raw: string): string | null {
+  const local = normalizeIndianMobile(raw);
+  if (local) return `91${local}`;
+  const digits = raw.replace(/\D/g, "");
+  return digits.length >= 10 ? digits : null;
+}
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: lib/native.ts
+────────────────────────────────────────────────────────────────────────────────
+import * as Linking from "expo-linking";
+import { Platform, Share } from "react-native";
+
+import { toWhatsAppNumber } from "@/lib/validate";
+
+/** Sanitises a phone number for use in a `tel:` URL. */
+export function sanitizePhone(phone: string): string {
+  return phone.replace(/[^\d+]/g, "");
+}
+
+export async function callNumber(phone: string): Promise<void> {
+  const url = `tel:${sanitizePhone(phone)}`;
+  try {
+    await Linking.openURL(url);
+  } catch {
+    // No dialer available (e.g. web preview) — silently ignore.
+  }
+}
+
+export function mapsUrl(lat: number, lng: number, label?: string): string {
+  const q = label ? encodeURIComponent(label) : `${lat},${lng}`;
+  if (Platform.OS === "ios") {
+    return `https://maps.apple.com/?q=${q}&ll=${lat},${lng}`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+}
+
+/** A plain shareable link to a coordinate that opens in any maps app. */
+export function locationLink(lat: number, lng: number): string {
+  return `https://maps.google.com/?q=${lat},${lng}`;
+}
+
+export async function navigateTo(
+  lat: number,
+  lng: number,
+  label?: string,
+): Promise<void> {
+  try {
+    await Linking.openURL(mapsUrl(lat, lng, label));
+  } catch {
+    // ignore
+  }
+}
+
+/** Opens the device SMS composer pre-filled with a recipient and message body. */
+export async function sendSms(phone: string, body: string): Promise<void> {
+  const sep = Platform.OS === "ios" ? "&" : "?";
+  const url = `sms:${sanitizePhone(phone)}${sep}body=${encodeURIComponent(body)}`;
+  try {
+    await Linking.openURL(url);
+  } catch {
+    // ignore
+  }
+}
+
+/** Opens WhatsApp (via wa.me) pre-filled with a message to the contact. */
+export async function openWhatsApp(phone: string, body: string): Promise<void> {
+  const intl = toWhatsAppNumber(phone);
+  const url = intl
+    ? `https://wa.me/${intl}?text=${encodeURIComponent(body)}`
+    : `https://wa.me/?text=${encodeURIComponent(body)}`;
+  try {
+    await Linking.openURL(url);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Opens the device maps app with a category search near the given coordinates.
+ * Honest: results come from the maps provider, not a baked-in list.
+ */
+export async function searchNearby(
+  query: string,
+  coords: { lat: number; lng: number } | null,
+): Promise<void> {
+  let url: string;
+  if (Platform.OS === "ios") {
+    url = coords
+      ? `https://maps.apple.com/?q=${encodeURIComponent(query)}&sll=${coords.lat},${coords.lng}`
+      : `https://maps.apple.com/?q=${encodeURIComponent(query)}`;
+  } else {
+    url = coords
+      ? `https://www.google.com/maps/search/${encodeURIComponent(query)}/@${coords.lat},${coords.lng},15z`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  }
+  try {
+    await Linking.openURL(url);
+  } catch {
+    // ignore
+  }
+}
+
+export async function shareLiveLocation(
+  coords: { lat: number; lng: number } | null,
+): Promise<void> {
+  const message = coords
+    ? `I need help. This is my current location: ${locationLink(coords.lat, coords.lng)}`
+    : `I need help. Please call me.`;
+  try {
+    await Share.share({ message });
+  } catch {
+    // ignore
+  }
+}
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: hooks/useLocation.ts
+────────────────────────────────────────────────────────────────────────────────
+import { useCallback, useEffect, useState } from "react";
+
+import {
+  type GeoPoint,
+  type LocationStatus,
+  getCurrentLocation,
+  reverseGeocode,
+} from "@/lib/location";
+
+export interface LocationState {
+  point: GeoPoint | null;
+  address: string | null;
+  status: LocationStatus;
+  refresh: () => Promise<void>;
+}
+
+/**
+ * React hook that fetches the device's real location (and a reverse-geocoded
+ * address where supported). Returns an honest status the UI can reflect instead
+ * of pretending a position is known.
+ */
+export function useLocation(auto = true): LocationState {
+  const [point, setPoint] = useState<GeoPoint | null>(null);
+  const [address, setAddress] = useState<string | null>(null);
+  const [status, setStatus] = useState<LocationStatus>("idle");
+
+  const refresh = useCallback(async () => {
+    setStatus("loading");
+    const p = await getCurrentLocation();
+    if (!p) {
+      setPoint(null);
+      setAddress(null);
+      setStatus("denied");
+      return;
+    }
+    setPoint(p);
+    setStatus("ready");
+    const addr = await reverseGeocode(p.lat, p.lng);
+    setAddress(addr);
+  }, []);
+
+  useEffect(() => {
+    if (auto) void refresh();
+  }, [auto, refresh]);
+
+  return { point, address, status, refresh };
+}
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: context/AppContext.tsx
+────────────────────────────────────────────────────────────────────────────────
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+import { secureDelete, secureGet, secureSet } from "@/lib/secureStore";
+import { normalizeIndianMobile } from "@/lib/validate";
+
+/** Sensitive data (PII) lives in the OS keystore; the rest in plain storage. */
+const SECURE_KEY = "suraksha.secure.v1";
+const PLAIN_KEY = "suraksha.app.v2";
+/** Keys written by older builds; cleared on reset so "delete all" is truthful. */
+const LEGACY_PLAIN_KEYS = ["suraksha.app.v1"];
+
+export interface Contact {
+  id: string;
+  name: string;
+  phone: string;
+}
+
+export interface ReportItem {
+  id: string;
+  category: string;
+  description: string;
+  photoUri?: string;
+  location?: string;
+  createdAt: number;
+}
+
+export interface Profile {
+  name: string;
+  phone: string;
+  premium: boolean;
+}
+
+interface Settings {
+  notifications: boolean;
+  bgLocation: boolean;
+}
+
+interface PersistShape {
+  contacts: Contact[];
+  reports: ReportItem[];
+  profile: Profile;
+  settings: Settings;
+  onboarded: boolean;
+}
+
+const DEFAULTS: PersistShape = {
+  contacts: [],
+  reports: [],
+  profile: { name: "", phone: "", premium: false },
+  settings: { notifications: true, bgLocation: false },
+  onboarded: false,
+};
+
+function uid() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export type AddContactResult = { ok: true } | { ok: false; error: "invalid" | "duplicate" };
+
+interface AppContextValue extends PersistShape {
+  ready: boolean;
+  addContact: (name: string, phone: string) => AddContactResult;
+  addContacts: (items: { name: string; phone: string }[]) => number;
+  deleteContact: (id: string) => void;
+  addReport: (r: Omit<ReportItem, "id" | "createdAt">) => void;
+  deleteReport: (id: string) => void;
+  setProfile: (p: Partial<Profile>) => void;
+  setSettings: (s: Partial<Settings>) => void;
+  completeOnboarding: () => void;
+  resetAllData: () => Promise<void>;
+}
+
+const AppContext = createContext<AppContextValue | null>(null);
+
+function persist(next: PersistShape) {
+  secureSet(
+    SECURE_KEY,
+    JSON.stringify({ contacts: next.contacts, profile: next.profile }),
+  );
+  AsyncStorage.setItem(
+    PLAIN_KEY,
+    JSON.stringify({
+      reports: next.reports,
+      settings: next.settings,
+      onboarded: next.onboarded,
+    }),
+  ).catch(() => {});
+}
+
+export function AppProvider({ children }: { children: React.ReactNode }) {
+  const [state, setState] = useState<PersistShape>(DEFAULTS);
+  const [ready, setReady] = useState(false);
+  /** Mirrors the latest committed state so handlers can read it synchronously. */
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [secureRaw, plainRaw] = await Promise.all([
+          secureGet(SECURE_KEY),
+          AsyncStorage.getItem(PLAIN_KEY),
+        ]);
+        const secure = secureRaw
+          ? (JSON.parse(secureRaw) as Partial<Pick<PersistShape, "contacts" | "profile">>)
+          : {};
+        const plain = plainRaw
+          ? (JSON.parse(plainRaw) as Partial<Pick<PersistShape, "reports" | "settings" | "onboarded">>)
+          : {};
+        setState((prev) => ({
+          ...prev,
+          contacts: secure.contacts ?? prev.contacts,
+          profile: { ...prev.profile, ...secure.profile },
+          reports: plain.reports ?? prev.reports,
+          settings: { ...prev.settings, ...plain.settings },
+          onboarded: plain.onboarded ?? prev.onboarded,
+        }));
+      } catch {
+        // ignore — use defaults
+      } finally {
+        setReady(true);
+      }
+    })();
+  }, []);
+
+  const addContact = useCallback(
+    (name: string, phone: string): AddContactResult => {
+      const trimmedName = name.trim();
+      const normalized = normalizeIndianMobile(phone);
+      if (!trimmedName || !normalized) return { ok: false, error: "invalid" };
+      const prev = stateRef.current;
+      const exists = prev.contacts.some(
+        (c) => normalizeIndianMobile(c.phone) === normalized,
+      );
+      if (exists) return { ok: false, error: "duplicate" };
+      const next = {
+        ...prev,
+        contacts: [...prev.contacts, { id: uid(), name: trimmedName, phone: normalized }],
+      };
+      stateRef.current = next;
+      setState(next);
+      persist(next);
+      return { ok: true };
+    },
+    [],
+  );
+
+  const addContacts = useCallback((items: { name: string; phone: string }[]) => {
+    let added = 0;
+    setState((prev) => {
+      const existing = new Set(
+        prev.contacts
+          .map((c) => normalizeIndianMobile(c.phone))
+          .filter((v): v is string => Boolean(v)),
+      );
+      const fresh = items
+        .map((i) => ({ name: i.name.trim(), normalized: normalizeIndianMobile(i.phone) }))
+        .filter((i): i is { name: string; normalized: string } => Boolean(i.name) && Boolean(i.normalized))
+        .filter((i) => {
+          if (existing.has(i.normalized)) return false;
+          existing.add(i.normalized);
+          return true;
+        })
+        .map((i) => ({ id: uid(), name: i.name, phone: i.normalized }));
+      added = fresh.length;
+      if (added === 0) return prev;
+      const next = { ...prev, contacts: [...prev.contacts, ...fresh] };
+      persist(next);
+      return next;
+    });
+    return added;
+  }, []);
+
+  const deleteContact = useCallback((id: string) => {
+    setState((prev) => {
+      const next = { ...prev, contacts: prev.contacts.filter((c) => c.id !== id) };
+      persist(next);
+      return next;
+    });
+  }, []);
+
+  const addReport = useCallback((r: Omit<ReportItem, "id" | "createdAt">) => {
+    setState((prev) => {
+      const next = {
+        ...prev,
+        reports: [{ ...r, id: uid(), createdAt: Date.now() }, ...prev.reports],
+      };
+      persist(next);
+      return next;
+    });
+  }, []);
+
+  const deleteReport = useCallback((id: string) => {
+    setState((prev) => {
+      const next = { ...prev, reports: prev.reports.filter((r) => r.id !== id) };
+      persist(next);
+      return next;
+    });
+  }, []);
+
+  const setProfile = useCallback((p: Partial<Profile>) => {
+    setState((prev) => {
+      const next = { ...prev, profile: { ...prev.profile, ...p } };
+      persist(next);
+      return next;
+    });
+  }, []);
+
+  const setSettings = useCallback((s: Partial<Settings>) => {
+    setState((prev) => {
+      const next = { ...prev, settings: { ...prev.settings, ...s } };
+      persist(next);
+      return next;
+    });
+  }, []);
+
+  const completeOnboarding = useCallback(() => {
+    setState((prev) => {
+      const next = { ...prev, onboarded: true };
+      persist(next);
+      return next;
+    });
+  }, []);
+
+  const resetAllData = useCallback(async () => {
+    await Promise.all([
+      secureDelete(SECURE_KEY),
+      AsyncStorage.removeItem(PLAIN_KEY).catch(() => {}),
+      ...LEGACY_PLAIN_KEYS.map((k) => AsyncStorage.removeItem(k).catch(() => {})),
+    ]);
+    stateRef.current = DEFAULTS;
+    setState(DEFAULTS);
+  }, []);
+
+  const value = useMemo<AppContextValue>(
+    () => ({
+      ...state,
+      ready,
+      addContact,
+      addContacts,
+      deleteContact,
+      addReport,
+      deleteReport,
+      setProfile,
+      setSettings,
+      completeOnboarding,
+      resetAllData,
+    }),
+    [
+      state,
+      ready,
+      addContact,
+      addContacts,
+      deleteContact,
+      addReport,
+      deleteReport,
+      setProfile,
+      setSettings,
+      completeOnboarding,
+      resetAllData,
+    ],
+  );
+
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+}
+
+export function useApp(): AppContextValue {
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error("useApp must be used within AppProvider");
+  return ctx;
+}
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: context/SafetyContext.tsx
+────────────────────────────────────────────────────────────────────────────────
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+import { SosModal } from "@/components/SosModal";
+import { getCurrentLocation, reverseGeocode } from "@/lib/location";
+
+export interface Coords {
+  lat: number;
+  lng: number;
+  accuracy: number | null;
+}
+
+interface SosState {
+  active: boolean;
+  seconds: number;
+  coords: Coords | null;
+  address: string | null;
+  loading: boolean;
+}
+
+interface JourneyState {
+  active: boolean;
+  seconds: number;
+  duration: number;
+}
+
+interface SafetyContextValue {
+  sos: SosState;
+  triggerSOS: () => void;
+  cancelSOS: () => void;
+  journey: JourneyState;
+  setJourneyDuration: (d: number) => void;
+  startJourney: () => void;
+  endJourney: () => void;
+}
+
+const SafetyContext = createContext<SafetyContextValue | null>(null);
+
+export function SafetyProvider({ children }: { children: React.ReactNode }) {
+  const [sos, setSos] = useState<SosState>({
+    active: false,
+    seconds: 0,
+    coords: null,
+    address: null,
+    loading: false,
+  });
+  const [journey, setJourney] = useState<JourneyState>({
+    active: false,
+    seconds: 0,
+    duration: 15,
+  });
+
+  const sosTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const journeyTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchLocation = useCallback(async () => {
+    const point = await getCurrentLocation();
+    if (!point) {
+      setSos((s) => ({ ...s, loading: false, coords: null, address: null }));
+      return;
+    }
+    setSos((s) => ({ ...s, loading: false, coords: point }));
+    const addr = await reverseGeocode(point.lat, point.lng);
+    setSos((s) => (s.coords ? { ...s, address: addr } : s));
+  }, []);
+
+  const triggerSOS = useCallback(() => {
+    setSos({ active: true, seconds: 0, coords: null, address: null, loading: true });
+    fetchLocation();
+  }, [fetchLocation]);
+
+  const cancelSOS = useCallback(() => {
+    setSos({ active: false, seconds: 0, coords: null, address: null, loading: false });
+  }, []);
+
+  useEffect(() => {
+    if (sos.active) {
+      sosTimer.current = setInterval(
+        () => setSos((s) => ({ ...s, seconds: s.seconds + 1 })),
+        1000,
+      );
+    } else if (sosTimer.current) {
+      clearInterval(sosTimer.current);
+      sosTimer.current = null;
+    }
+    return () => {
+      if (sosTimer.current) {
+        clearInterval(sosTimer.current);
+        sosTimer.current = null;
+      }
+    };
+  }, [sos.active]);
+
+  const setJourneyDuration = useCallback((d: number) => {
+    setJourney((j) => ({ ...j, duration: d }));
+  }, []);
+
+  const startJourney = useCallback(() => {
+    setJourney((j) => ({ ...j, active: true, seconds: 0 }));
+  }, []);
+
+  const endJourney = useCallback(() => {
+    setJourney((j) => ({ ...j, active: false, seconds: 0 }));
+  }, []);
+
+  useEffect(() => {
+    if (journey.active) {
+      journeyTimer.current = setInterval(
+        () => setJourney((j) => ({ ...j, seconds: j.seconds + 1 })),
+        1000,
+      );
+    } else if (journeyTimer.current) {
+      clearInterval(journeyTimer.current);
+      journeyTimer.current = null;
+    }
+    return () => {
+      if (journeyTimer.current) {
+        clearInterval(journeyTimer.current);
+        journeyTimer.current = null;
+      }
+    };
+  }, [journey.active]);
+
+  const value = useMemo(
+    () => ({
+      sos,
+      triggerSOS,
+      cancelSOS,
+      journey,
+      setJourneyDuration,
+      startJourney,
+      endJourney,
+    }),
+    [sos, triggerSOS, cancelSOS, journey, setJourneyDuration, startJourney, endJourney],
+  );
+
+  return (
+    <SafetyContext.Provider value={value}>
+      {children}
+      {sos.active && <SosModal sos={sos} cancelSOS={cancelSOS} />}
+    </SafetyContext.Provider>
+  );
+}
+
+export function useSafety(): SafetyContextValue {
+  const ctx = useContext(SafetyContext);
+  if (!ctx) throw new Error("useSafety must be used within SafetyProvider");
+  return ctx;
+}
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: components/SosModal.tsx
+────────────────────────────────────────────────────────────────────────────────
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
+import React from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { Icon } from "@/components/Icon";
+import { useApp } from "@/context/AppContext";
+import { useI18n } from "@/context/LanguageContext";
+import type { Coords } from "@/context/SafetyContext";
+import { useTheme } from "@/context/ThemeContext";
+import { fmtClock } from "@/lib/format";
+import { formatCoords } from "@/lib/location";
+import { callNumber, locationLink, openWhatsApp, sendSms, shareLiveLocation } from "@/lib/native";
+
+interface SosModalProps {
+  sos: { active: boolean; seconds: number; coords: Coords | null; address: string | null; loading: boolean };
+  cancelSOS: () => void;
+}
+
+export function SosModal({ sos, cancelSOS }: SosModalProps) {
+  const { c } = useTheme();
+  const { t } = useI18n();
+  const { contacts } = useApp();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+
+  const link = sos.coords ? locationLink(sos.coords.lat, sos.coords.lng) : null;
+  const messageBody = link ? t("sos.smsBody").replace("{link}", link) : t("sos.smsNoLoc");
+
+  const goAddContacts = () => {
+    cancelSOS();
+    router.push("/contacts");
+  };
+
+  return (
+    <View style={[StyleSheet.absoluteFill, styles.root]}>
+      <LinearGradient colors={[c.accentDark, "#1A0820"]} style={StyleSheet.absoluteFill} />
+      <ScrollView
+        contentContainerStyle={{
+          paddingTop: insets.top + 28,
+          paddingHorizontal: 22,
+          paddingBottom: insets.bottom + 22,
+          alignItems: "center",
+          flexGrow: 1,
+        }}
+      >
+        <View style={styles.iconWrap}>
+          <Icon name="alert" size={36} color="#fff" />
+        </View>
+        <Text style={styles.heading}>{t("sos.sent")}</Text>
+        <Text style={styles.sub}>{t("sos.helpComing")}</Text>
+        <Text style={styles.clock}>{fmtClock(sos.seconds)}</Text>
+        <Text style={styles.elapsed}>{t("sos.elapsed")}</Text>
+
+        <View style={styles.notice}>
+          <Icon name="info" size={14} color="#fff" />
+          <Text style={styles.noticeText}>{t("sos.notConfigured")}</Text>
+        </View>
+
+        <View style={styles.panel}>
+          <View style={styles.panelRow}>
+            <Icon name="mapPin" size={15} color="#fff" />
+            <Text style={styles.panelTitle}>{t("sos.liveLocation")}</Text>
+          </View>
+          {sos.loading ? (
+            <Text style={styles.panelBody}>{t("sos.gettingLocation")}</Text>
+          ) : sos.coords ? (
+            <Text style={styles.panelBody}>
+              {sos.address ? `${sos.address}\n` : ""}
+              {formatCoords(sos.coords)}
+            </Text>
+          ) : (
+            <Text style={styles.panelBody}>{t("sos.locationUnavailable")}</Text>
+          )}
+        </View>
+
+        <View style={styles.panel}>
+          <Text style={[styles.panelTitle, { marginBottom: 10 }]}>{t("sos.alertedContacts")}</Text>
+          {contacts.length === 0 ? (
+            <>
+              <Text style={[styles.panelBody, { marginBottom: 12 }]}>{t("sos.noContacts")}</Text>
+              <Pressable style={styles.addContactsBtn} onPress={goAddContacts}>
+                <Icon name="plus" size={15} color="#fff" />
+                <Text style={styles.addContactsText}>{t("sos.addContacts")}</Text>
+              </Pressable>
+            </>
+          ) : (
+            contacts.map((contact, i) => (
+              <View
+                key={contact.id}
+                style={[
+                  styles.contactBlock,
+                  { borderBottomWidth: i < contacts.length - 1 ? StyleSheet.hairlineWidth : 0 },
+                ]}
+              >
+                <View style={styles.contactHeader}>
+                  <View style={styles.contactAvatar}>
+                    <Text style={styles.contactAvatarText}>{contact.name.charAt(0)}</Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.contactName} numberOfLines={1}>
+                      {contact.name}
+                    </Text>
+                    <Text style={styles.contactPhone} numberOfLines={1}>
+                      {contact.phone}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.contactActions}>
+                  <Pressable style={styles.miniBtn} onPress={() => callNumber(contact.phone)}>
+                    <Icon name="phone" size={14} color="#fff" />
+                    <Text style={styles.miniText}>{t("sos.call")}</Text>
+                  </Pressable>
+                  <Pressable style={styles.miniBtn} onPress={() => sendSms(contact.phone, messageBody)}>
+                    <Icon name="message" size={14} color="#fff" />
+                    <Text style={styles.miniText}>{t("sos.sms")}</Text>
+                  </Pressable>
+                  <Pressable style={styles.miniBtn} onPress={() => openWhatsApp(contact.phone, messageBody)}>
+                    <Icon name="send" size={14} color="#fff" />
+                    <Text style={styles.miniText}>{t("sos.whatsapp")}</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+
+        <View style={{ width: "100%", gap: 10, marginTop: 4 }}>
+          <Pressable style={[styles.actionBtn, { backgroundColor: "rgba(255,255,255,0.16)" }]} onPress={() => callNumber("112")}>
+            <Icon name="phone" size={16} color="#fff" />
+            <Text style={styles.actionText}>{t("sos.call112")}</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.actionBtn, { backgroundColor: "rgba(255,255,255,0.16)" }]}
+            onPress={() => shareLiveLocation(sos.coords)}
+          >
+            <Icon name="share" size={16} color="#fff" />
+            <Text style={styles.actionText}>{t("sos.shareLocation")}</Text>
+          </Pressable>
+          <Pressable style={[styles.actionBtn, { backgroundColor: c.success }]} onPress={cancelSOS}>
+            <Icon name="check" size={16} color="#fff" />
+            <Text style={[styles.actionText, { fontFamily: "Inter_700Bold" }]}>{t("sos.imSafe")}</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { zIndex: 1000, elevation: 1000 },
+  iconWrap: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
+  },
+  heading: { color: "#fff", fontSize: 21, fontFamily: "Inter_700Bold" },
+  sub: { color: "rgba(255,255,255,0.85)", fontSize: 13, marginTop: 3, fontFamily: "Inter_500Medium" },
+  clock: { color: "#fff", fontSize: 32, fontFamily: "Inter_700Bold", marginTop: 14, letterSpacing: 1 },
+  elapsed: { color: "rgba(255,255,255,0.7)", fontSize: 11.5, marginBottom: 16 },
+  notice: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
+  },
+  noticeText: { flex: 1, color: "rgba(255,255,255,0.92)", fontSize: 11.5, lineHeight: 17, fontFamily: "Inter_500Medium" },
+  panel: {
+    width: "100%",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 14,
+  },
+  panelRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
+  panelTitle: { color: "#fff", fontSize: 12.5, fontFamily: "Inter_700Bold" },
+  panelBody: { color: "rgba(255,255,255,0.8)", fontSize: 11.5, lineHeight: 17 },
+  contactBlock: {
+    paddingVertical: 10,
+    borderBottomColor: "rgba(255,255,255,0.12)",
+  },
+  contactHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 },
+  contactAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  contactAvatarText: { color: "#fff", fontSize: 12, fontFamily: "Inter_700Bold" },
+  contactName: { color: "#fff", fontSize: 13, fontFamily: "Inter_700Bold" },
+  contactPhone: { color: "rgba(255,255,255,0.7)", fontSize: 11 },
+  contactActions: { flexDirection: "row", gap: 8 },
+  miniBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.16)",
+  },
+  miniText: { color: "#fff", fontSize: 11.5, fontFamily: "Inter_700Bold" },
+  addContactsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    paddingVertical: 11,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+  addContactsText: { color: "#fff", fontSize: 13, fontFamily: "Inter_700Bold" },
+  actionBtn: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 13,
+    borderRadius: 12,
+  },
+  actionText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+});
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: components/MapPreview.tsx
+────────────────────────────────────────────────────────────────────────────────
+import React from "react";
+import { StyleSheet, Text, View } from "react-native";
+import MapView from "react-native-maps";
+
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+import type { GeoPoint, LocationStatus } from "@/lib/location";
+
+/** Neutral fallback region (India) used only until the real location is known. */
+const INDIA = { latitude: 20.5937, longitude: 78.9629, latitudeDelta: 24, longitudeDelta: 24 };
+
+export function MapPreview({
+  point,
+  status,
+}: {
+  point: GeoPoint | null;
+  status: LocationStatus;
+}) {
+  const { c, radius } = useTheme();
+  const { t } = useI18n();
+  return (
+    <View style={[styles.wrap, { borderRadius: radius + 2 }]}>
+      <MapView
+        style={StyleSheet.absoluteFill}
+        showsUserLocation
+        showsMyLocationButton={false}
+        region={
+          point
+            ? {
+                latitude: point.lat,
+                longitude: point.lng,
+                latitudeDelta: 0.02,
+                longitudeDelta: 0.02,
+              }
+            : INDIA
+        }
+      />
+      {!point && (
+        <View style={styles.overlay} pointerEvents="none">
+          <Text style={[styles.overlayText, { color: c.text, backgroundColor: c.card, borderColor: c.border }]}>
+            {status === "loading" ? t("home.locating") : t("map.locationOff")}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: { height: 230, overflow: "hidden", marginHorizontal: 18, marginBottom: 14 },
+  overlay: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
+  overlayText: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+});
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: components/MapPreview.web.tsx
+────────────────────────────────────────────────────────────────────────────────
+import { LinearGradient } from "expo-linear-gradient";
+import React from "react";
+import { StyleSheet, Text, View } from "react-native";
+
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+import type { GeoPoint, LocationStatus } from "@/lib/location";
+
+/**
+ * Web fallback: react-native-maps has no web implementation, so we render a
+ * stylised faux-map. It only ever shows the user's own position — no fake
+ * places — and surfaces an honest message when location is unavailable.
+ */
+export function MapPreview({
+  point,
+  status,
+}: {
+  point: GeoPoint | null;
+  status: LocationStatus;
+}) {
+  const { c, radius } = useTheme();
+  const { t } = useI18n();
+  return (
+    <View style={[styles.wrap, { borderRadius: radius + 2, borderColor: c.border }]}>
+      <LinearGradient
+        colors={["#CFE8D6", "#BFE0DB", "#D9E7C8", "#CFE0CF"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0.4, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={[styles.road, { top: "46%", left: 0, right: 0, height: 6 }]} />
+      <View style={[styles.road, { left: "40%", top: 0, bottom: 0, width: 6 }]} />
+
+      {point ? (
+        <View style={[styles.userWrap, { left: "45%", top: "48%" }]}>
+          <View style={[styles.userRing, { borderColor: c.primary }]} />
+          <View style={[styles.userDot, { backgroundColor: c.primary }]} />
+        </View>
+      ) : (
+        <View style={styles.overlay} pointerEvents="none">
+          <Text style={[styles.overlayText, { color: c.text, backgroundColor: c.card, borderColor: c.border }]}>
+            {status === "loading" ? t("home.locating") : t("map.locationOff")}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: {
+    height: 230,
+    overflow: "hidden",
+    marginHorizontal: 18,
+    marginBottom: 14,
+    borderWidth: 1,
+  },
+  road: { position: "absolute", backgroundColor: "rgba(255,255,255,0.65)" },
+  userWrap: { position: "absolute", alignItems: "center", justifyContent: "center" },
+  userRing: {
+    position: "absolute",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    opacity: 0.5,
+  },
+  userDot: { width: 14, height: 14, borderRadius: 7, borderWidth: 3, borderColor: "#fff" },
+  overlay: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
+  overlayText: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+});
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: app/_layout.tsx
+────────────────────────────────────────────────────────────────────────────────
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  useFonts,
+} from "@expo-google-fonts/inter";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { setBaseUrl } from "@workspace/api-client-react";
+import { Stack, useRouter, useSegments } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import React, { useEffect } from "react";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { AppProvider, useApp } from "@/context/AppContext";
+import { LanguageProvider, useI18n } from "@/context/LanguageContext";
+import { SafetyProvider } from "@/context/SafetyContext";
+import { ThemeProvider, useTheme } from "@/context/ThemeContext";
+import { ToastProvider } from "@/context/ToastContext";
+
+// Prevent the splash screen from auto-hiding before asset loading is complete.
+SplashScreen.preventAutoHideAsync();
+
+const domain = process.env.EXPO_PUBLIC_DOMAIN;
+if (domain) {
+  setBaseUrl(`https://${domain}`);
+}
+
+const queryClient = new QueryClient();
+
+function RootLayoutNav() {
+  return (
+    <Stack screenOptions={{ headerShown: false, headerBackTitle: "Back" }}>
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="onboarding" />
+      <Stack.Screen name="contacts" />
+      <Stack.Screen name="helpline" />
+      <Stack.Screen name="fakecall" />
+      <Stack.Screen name="report" />
+      <Stack.Screen name="premium" />
+      <Stack.Screen name="privacy" />
+      <Stack.Screen name="terms" />
+      <Stack.Screen name="data" />
+    </Stack>
+  );
+}
+
+function Gate() {
+  const { ready: appReady, onboarded } = useApp();
+  const { ready: themeReady } = useTheme();
+  const { ready: langReady } = useI18n();
+  const router = useRouter();
+  const segments = useSegments();
+
+  const allReady = appReady && themeReady && langReady;
+
+  useEffect(() => {
+    if (allReady) SplashScreen.hideAsync();
+  }, [allReady]);
+
+  useEffect(() => {
+    if (!allReady) return;
+    const inOnboarding = segments[0] === "onboarding";
+    if (!onboarded && !inOnboarding) {
+      router.replace("/onboarding");
+    } else if (onboarded && inOnboarding) {
+      router.replace("/(tabs)");
+    }
+  }, [allReady, onboarded, segments, router]);
+
+  if (!allReady) return null;
+
+  return <RootLayoutNav />;
+}
+
+export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+  });
+
+  if (!fontsLoaded && !fontError) return null;
+
+  return (
+    <SafeAreaProvider>
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <KeyboardProvider>
+              <ThemeProvider>
+                <LanguageProvider>
+                  <AppProvider>
+                    <SafetyProvider>
+                      <ToastProvider>
+                        <Gate />
+                      </ToastProvider>
+                    </SafetyProvider>
+                  </AppProvider>
+                </LanguageProvider>
+              </ThemeProvider>
+            </KeyboardProvider>
+          </GestureHandlerRootView>
+        </QueryClientProvider>
+      </ErrorBoundary>
+    </SafeAreaProvider>
+  );
+}
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: app/(tabs)/index.tsx
+────────────────────────────────────────────────────────────────────────────────
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
+import React, { useEffect, useRef } from "react";
+import {
+  Animated,
+  Easing,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { Icon } from "@/components/Icon";
+import { Avatar, Card, IconBadge } from "@/components/ui";
+import { withAlpha } from "@/constants/colors";
+import { QUICK_ACTIONS } from "@/constants/data";
+import { useApp } from "@/context/AppContext";
+import { useI18n } from "@/context/LanguageContext";
+import { useSafety } from "@/context/SafetyContext";
+import { useTheme } from "@/context/ThemeContext";
+import { useToast } from "@/context/ToastContext";
+import { useLocation } from "@/hooks/useLocation";
+import { fmtClock } from "@/lib/format";
+import { formatCoords } from "@/lib/location";
+import { callNumber, shareLiveLocation } from "@/lib/native";
+
+function SosButton({ onPress }: { onPress: () => void }) {
+  const { c } = useTheme();
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(pulse, {
+        toValue: 1,
+        duration: 2000,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.7] });
+  const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0] });
+
+  return (
+    <View style={{ width: 168, height: 168, alignItems: "center", justifyContent: "center" }}>
+      <Animated.View
+        style={{
+          position: "absolute",
+          width: 140,
+          height: 140,
+          borderRadius: 70,
+          backgroundColor: c.accent,
+          transform: [{ scale }],
+          opacity,
+        }}
+      />
+      <Pressable onPress={onPress} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.96 : 1 }] })}>
+        <LinearGradient
+          colors={[c.accent, c.accentDark]}
+          start={{ x: 0.2, y: 0.1 }}
+          end={{ x: 0.9, y: 1 }}
+          style={styles.sosCircle}
+        >
+          <Icon name="bell" size={38} color="#fff" />
+          <Text style={styles.sosText}>SOS</Text>
+        </LinearGradient>
+      </Pressable>
+    </View>
+  );
+}
+
+export default function HomeScreen() {
+  const { c } = useTheme();
+  const { t, pick, lang } = useI18n();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { contacts, profile } = useApp();
+  const { triggerSOS, journey, setJourneyDuration, startJourney, endJourney } = useSafety();
+  const { showToast } = useToast();
+  const { point, address, status } = useLocation();
+
+  const displayName = profile.name.trim() || t("home.guest");
+  const locLabel =
+    status === "loading"
+      ? t("home.locating")
+      : status === "denied"
+        ? t("home.locationOff")
+        : address ?? (point ? formatCoords(point) : t("home.locating"));
+  const overdue = journey.active && journey.seconds >= journey.duration * 60;
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: c.bg }}
+      contentContainerStyle={{ paddingBottom: 110 }}
+      showsVerticalScrollIndicator={false}
+    >
+      <LinearGradient
+        colors={[c.primary, c.primaryDark]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{ paddingTop: insets.top + 14, paddingHorizontal: 18, paddingBottom: 54 }}
+      >
+        <View style={styles.headerRow}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View style={styles.headerAvatar}>
+              <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 17 }}>
+                {displayName.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+            <View>
+              <Text style={styles.greeting}>{t("home.greeting")}</Text>
+              <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
+            </View>
+          </View>
+          <Pressable style={styles.bellBtn} onPress={() => router.push("/helpline")}>
+            <Icon name="bell" size={18} color="#fff" />
+          </Pressable>
+        </View>
+
+        <View style={styles.locPill}>
+          <Icon name="mapPin" size={13} color="#fff" />
+          <Text style={styles.locText} numberOfLines={1}>{locLabel}</Text>
+        </View>
+      </LinearGradient>
+
+      <View style={{ alignItems: "center", marginTop: -48, marginBottom: 6 }}>
+        <SosButton onPress={triggerSOS} />
+        <Text style={{ fontSize: 12.5, color: c.textMuted, fontFamily: "Inter_500Medium", marginTop: 2 }}>
+          {t("home.tapForHelp")}
+        </Text>
+      </View>
+
+      <View style={{ paddingHorizontal: 18, marginTop: 18 }}>
+        <View style={styles.grid}>
+          {QUICK_ACTIONS.map((qa) => (
+            <Pressable
+              key={qa.key}
+              onPress={() => router.push(qa.route as never)}
+              style={[styles.qaCard, { backgroundColor: c.card, borderColor: c.border }]}
+            >
+              <IconBadge name={qa.icon} color={qa.color(c)} box={36} size={18} />
+              <Text style={[styles.qaLabel, { color: c.text }]}>{pick(qa)}</Text>
+              <Text style={[styles.qaSub, { color: c.textMuted }]}>{lang === "en" ? qa.hi : qa.en}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <Card style={{ marginBottom: 20 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 3 }}>
+            <Icon name="navigation" size={16} color={c.primary} />
+            <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text }}>
+              {t("home.journey")}
+            </Text>
+          </View>
+          <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 12 }}>{t("home.journeySub")}</Text>
+
+          {!journey.active ? (
+            <>
+              <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+                {[15, 30, 60].map((d) => {
+                  const active = journey.duration === d;
+                  return (
+                    <Pressable
+                      key={d}
+                      onPress={() => setJourneyDuration(d)}
+                      style={{
+                        flex: 1,
+                        alignItems: "center",
+                        paddingVertical: 9,
+                        borderRadius: 10,
+                        backgroundColor: active ? c.primary : c.cardAlt,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontFamily: "Inter_700Bold",
+                          color: active ? "#fff" : c.primary,
+                        }}
+                      >
+                        {d} {t("home.minutes")}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Pressable
+                onPress={() => {
+                  startJourney();
+                  showToast(t("home.sharingLive"));
+                }}
+                style={{ backgroundColor: c.primary, borderRadius: 10, paddingVertical: 11, alignItems: "center" }}
+              >
+                <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>
+                  {t("home.startSharing")}
+                </Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <View style={[styles.liveRow, { backgroundColor: overdue ? c.dangerSoft : c.successSoft }]}>
+                <View style={[styles.dot, { backgroundColor: overdue ? c.danger : c.success }]} />
+                <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: overdue ? c.danger : c.success }}>
+                  {fmtClock(journey.seconds)}
+                </Text>
+                <Text style={{ fontSize: 11, color: c.textMuted, marginLeft: "auto" }}>
+                  / {journey.duration} {t("home.minutes")}
+                </Text>
+              </View>
+              {overdue && (
+                <Text style={{ fontSize: 11.5, color: c.danger, fontFamily: "Inter_600SemiBold", marginBottom: 12 }}>
+                  {t("home.overdue")}
+                </Text>
+              )}
+              <Pressable
+                onPress={() => shareLiveLocation(point ? { lat: point.lat, lng: point.lng } : null)}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 7,
+                  borderWidth: 1.5,
+                  borderColor: c.primary,
+                  borderRadius: 10,
+                  paddingVertical: 10,
+                  marginBottom: 10,
+                }}
+              >
+                <Icon name="share" size={14} color={c.primary} />
+                <Text style={{ color: c.primary, fontFamily: "Inter_700Bold", fontSize: 13 }}>
+                  {t("home.shareLocation")}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  endJourney();
+                  showToast(t("home.arrivedSafely"));
+                }}
+                style={{ backgroundColor: c.success, borderRadius: 10, paddingVertical: 11, alignItems: "center" }}
+              >
+                <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>
+                  {t("home.arrivedSafely")}
+                </Text>
+              </Pressable>
+            </>
+          )}
+        </Card>
+
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+          <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text }}>
+            {t("home.trustedContacts")}
+          </Text>
+          <Pressable style={{ marginLeft: "auto" }} onPress={() => router.push("/contacts")}>
+            <Text style={{ fontSize: 12.5, fontFamily: "Inter_600SemiBold", color: c.primary }}>
+              {t("home.manage")}
+            </Text>
+          </Pressable>
+        </View>
+
+        {contacts.slice(0, 4).map((contact) => (
+          <View key={contact.id} style={[styles.contactRow, { backgroundColor: c.card, borderColor: c.border }]}>
+            <Avatar label={contact.name} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ fontSize: 13.5, fontFamily: "Inter_700Bold", color: c.text }} numberOfLines={1}>
+                {contact.name}
+              </Text>
+              <Text style={{ fontSize: 11.5, color: c.textMuted }}>{contact.phone}</Text>
+            </View>
+            <Pressable
+              onPress={() => {
+                showToast(`${t("common.calling")} ${contact.name}…`);
+                callNumber(contact.phone);
+              }}
+              style={[styles.callBtn, { backgroundColor: c.successSoft }]}
+            >
+              <Icon name="phone" size={15} color={c.success} />
+            </Pressable>
+          </View>
+        ))}
+      </View>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
+  headerAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  greeting: { color: "rgba(255,255,255,0.85)", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  name: { color: "#fff", fontSize: 18, fontFamily: "Inter_700Bold" },
+  bellBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  locPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255,255,255,0.16)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  locText: { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold", maxWidth: 260 },
+  sosCircle: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 5,
+    borderColor: "#fff",
+  },
+  sosText: { color: "#fff", fontFamily: "Inter_700Bold", fontSize: 17, marginTop: 4, letterSpacing: 1 },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 20 },
+  qaCard: {
+    width: "47.5%",
+    flexGrow: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+  },
+  qaLabel: { fontSize: 13.5, fontFamily: "Inter_700Bold", marginTop: 10 },
+  qaSub: { fontSize: 11.5, marginTop: 2 },
+  liveRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  dot: { width: 9, height: 9, borderRadius: 4.5 },
+  contactRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 10,
+    marginBottom: 8,
+  },
+  callBtn: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+});
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: app/(tabs)/map.tsx
+────────────────────────────────────────────────────────────────────────────────
+import React from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { Icon } from "@/components/Icon";
+import { MapPreview } from "@/components/MapPreview";
+import { withAlpha } from "@/constants/colors";
+import type { IconName } from "@/constants/data";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+import { useLocation } from "@/hooks/useLocation";
+import { searchNearby } from "@/lib/native";
+
+interface CategoryDef {
+  key: string;
+  labelKey: string;
+  /** English search term passed to the maps provider. */
+  query: string;
+  icon: IconName;
+  color: (c: ReturnType<typeof useTheme>["c"]) => string;
+}
+
+const CATEGORIES: CategoryDef[] = [
+  { key: "police", labelKey: "map.police", query: "police station", icon: "shield", color: (c) => c.police },
+  { key: "hospital", labelKey: "map.hospital", query: "hospital", icon: "hospital", color: (c) => c.hospital },
+  { key: "pharmacy", labelKey: "map.pharmacy", query: "pharmacy", icon: "store", color: (c) => c.shops },
+  { key: "shelter", labelKey: "map.shelter", query: "women shelter", icon: "home", color: (c) => c.shelter },
+];
+
+export default function MapScreen() {
+  const { c } = useTheme();
+  const { t } = useI18n();
+  const insets = useSafeAreaInsets();
+  const { point, status } = useLocation();
+
+  const coords = point ? { lat: point.lat, lng: point.lng } : null;
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: c.bg }}
+      contentContainerStyle={{ paddingBottom: 110 }}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={{ paddingTop: insets.top + 14, paddingHorizontal: 18, paddingBottom: 10 }}>
+        <Text style={{ fontSize: 19, fontFamily: "Inter_700Bold", color: c.text }}>{t("map.title")}</Text>
+        <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>{t("map.sub")}</Text>
+      </View>
+
+      <MapPreview point={point} status={status} />
+
+      {status === "denied" && (
+        <View
+          style={[
+            styles.notice,
+            { backgroundColor: withAlpha(c.warning, 0.1), borderColor: withAlpha(c.warning, 0.25) },
+          ]}
+        >
+          <Icon name="info" size={14} color={c.warning} />
+          <Text style={{ flex: 1, fontSize: 11.5, color: c.text, lineHeight: 17 }}>{t("map.locationOff")}</Text>
+        </View>
+      )}
+
+      <View
+        style={[
+          styles.notice,
+          { backgroundColor: withAlpha(c.primary, 0.08), borderColor: withAlpha(c.primary, 0.2) },
+        ]}
+      >
+        <Icon name="search" size={14} color={c.primary} />
+        <Text style={{ flex: 1, fontSize: 11.5, color: c.text, lineHeight: 17 }}>{t("map.note")}</Text>
+      </View>
+
+      <View style={styles.grid}>
+        {CATEGORIES.map((cat) => {
+          const color = cat.color(c);
+          return (
+            <Pressable
+              key={cat.key}
+              onPress={() => searchNearby(cat.query, coords)}
+              style={[styles.catCard, { backgroundColor: c.card, borderColor: c.border }]}
+            >
+              <View style={[styles.catIcon, { backgroundColor: withAlpha(color, 0.12) }]}>
+                <Icon name={cat.icon} size={20} color={color} />
+              </View>
+              <Text style={{ flex: 1, fontSize: 13.5, fontFamily: "Inter_700Bold", color: c.text }}>{t(cat.labelKey)}</Text>
+              <Icon name="navigation" size={16} color={c.textFaint} />
+            </Pressable>
+          );
+        })}
+      </View>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  notice: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginHorizontal: 18,
+    marginBottom: 12,
+  },
+  grid: { paddingHorizontal: 18, gap: 10 },
+  catCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+  },
+  catIcon: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center" },
+});
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: app/(tabs)/profile.tsx
+────────────────────────────────────────────────────────────────────────────────
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
+import React, { useState } from "react";
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { Icon } from "@/components/Icon";
+import { Card } from "@/components/ui";
+import {
+  ACCENTS,
+  THEME_LABELS,
+  THEME_ORDER,
+  type ThemeKey,
+  withAlpha,
+} from "@/constants/colors";
+import type { IconName } from "@/constants/data";
+import { LANGUAGE_LABELS } from "@/constants/i18n";
+import { useApp } from "@/context/AppContext";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+import { useToast } from "@/context/ToastContext";
+
+function Row({
+  icon,
+  color,
+  label,
+  right,
+  onPress,
+}: {
+  icon: IconName;
+  color: string;
+  label: string;
+  right?: React.ReactNode;
+  onPress?: () => void;
+}) {
+  const { c } = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11 }}
+    >
+      <View
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 10,
+          backgroundColor: withAlpha(color, 0.12),
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Icon name={icon} size={16} color={color} />
+      </View>
+      <Text style={{ flex: 1, fontSize: 13.5, fontFamily: "Inter_600SemiBold", color: c.text }}>{label}</Text>
+      {right ?? <Icon name="chevronRight" size={16} color={c.textFaint} />}
+    </Pressable>
+  );
+}
+
+export default function ProfileScreen() {
+  const { c, themeKey, setThemeKey, isDark, mode, setMode } = useTheme();
+  const { t, lang, setLang, pick } = useI18n();
+  const { profile, settings, setSettings, setProfile } = useApp();
+  const { showToast } = useToast();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+
+  const displayName = profile.name.trim() || t("profile.guest");
+
+  const [editing, setEditing] = useState(false);
+  const [draftName, setDraftName] = useState(profile.name);
+  const [draftPhone, setDraftPhone] = useState(profile.phone);
+
+  const saveProfile = () => {
+    setProfile({ name: draftName.trim() || profile.name, phone: draftPhone.trim() || profile.phone });
+    setEditing(false);
+    showToast(t("common.done"));
+  };
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: c.bg }}
+      contentContainerStyle={{ paddingBottom: 110 }}
+      showsVerticalScrollIndicator={false}
+    >
+      <LinearGradient
+        colors={[c.primary, c.primaryDark]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{ paddingTop: insets.top + 18, paddingHorizontal: 18, paddingBottom: 26 }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+          <View style={styles.bigAvatar}>
+            <Text style={{ color: "#fff", fontSize: 26, fontFamily: "Inter_700Bold" }}>
+              {displayName.charAt(0).toUpperCase()}
+            </Text>
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: "#fff", fontSize: 20, fontFamily: "Inter_700Bold" }} numberOfLines={1}>
+              {displayName}
+            </Text>
+            <Text style={{ color: "rgba(255,255,255,0.85)", fontSize: 12.5, marginTop: 1 }}>
+              {profile.phone}
+            </Text>
+            {profile.premium && (
+              <View style={styles.premiumBadge}>
+                <Icon name="crown" size={12} color="#FFD66B" />
+                <Text style={{ color: "#FFD66B", fontSize: 11, fontFamily: "Inter_700Bold" }}>
+                  {t("profile.premiumMember")}
+                </Text>
+              </View>
+            )}
+          </View>
+          <Pressable
+            onPress={() => {
+              setDraftName(profile.name);
+              setDraftPhone(profile.phone);
+              setEditing(true);
+            }}
+            hitSlop={10}
+            style={styles.editBtn}
+          >
+            <Icon name="edit" size={16} color="#fff" />
+          </Pressable>
+        </View>
+      </LinearGradient>
+
+      <View style={{ paddingHorizontal: 18, marginTop: 16 }}>
+        <Text style={styles.section}>{t("profile.appearance")}</Text>
+        <Card style={{ marginBottom: 16 }}>
+          <Text style={{ fontSize: 12.5, fontFamily: "Inter_600SemiBold", color: c.textMuted, marginBottom: 12 }}>
+            {t("profile.colorTheme")}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 12, marginBottom: 6 }}>
+            {THEME_ORDER.map((k: ThemeKey) => {
+              const active = themeKey === k;
+              return (
+                <Pressable key={k} onPress={() => setThemeKey(k)} style={{ alignItems: "center", gap: 6 }}>
+                  <View
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 23,
+                      backgroundColor: ACCENTS[k].primary,
+                      borderWidth: active ? 3 : 0,
+                      borderColor: c.text,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {active && <Icon name="check" size={18} color="#fff" />}
+                  </View>
+                  <Text style={{ fontSize: 11, color: c.textMuted, fontFamily: "Inter_500Medium" }}>
+                    {pick(THEME_LABELS[k])}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row
+            icon={isDark ? "moon" : "sun"}
+            color={c.primary}
+            label={t("profile.darkMode")}
+            right={
+              <Switch
+                value={isDark}
+                onValueChange={(v) => setMode(v ? "dark" : "light")}
+                trackColor={{ true: c.primary, false: c.border }}
+                thumbColor="#fff"
+              />
+            }
+          />
+        </Card>
+
+        <Text style={styles.section}>{t("profile.settings")}</Text>
+        <Card style={{ marginBottom: 16, paddingVertical: 6 }}>
+          <Row
+            icon="bell"
+            color={c.accent}
+            label={t("profile.notifications")}
+            right={
+              <Switch
+                value={settings.notifications}
+                onValueChange={(v) => setSettings({ notifications: v })}
+                trackColor={{ true: c.primary, false: c.border }}
+                thumbColor="#fff"
+              />
+            }
+          />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row
+            icon="mapPin"
+            color={c.success}
+            label={t("profile.bgLocation")}
+            right={
+              <Switch
+                value={settings.bgLocation}
+                onValueChange={(v) => setSettings({ bgLocation: v })}
+                trackColor={{ true: c.primary, false: c.border }}
+                thumbColor="#fff"
+              />
+            }
+          />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11 }}>
+            <View
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                backgroundColor: withAlpha(c.police, 0.12),
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Icon name="globe" size={16} color={c.police} />
+            </View>
+            <Text style={{ flex: 1, fontSize: 13.5, fontFamily: "Inter_600SemiBold", color: c.text }}>
+              {t("profile.language")}
+            </Text>
+            <View style={[styles.segment, { backgroundColor: c.cardAlt }]}>
+              {(["en", "hi"] as const).map((l) => {
+                const active = lang === l;
+                return (
+                  <Pressable
+                    key={l}
+                    onPress={() => setLang(l)}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 8,
+                      backgroundColor: active ? c.primary : "transparent",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontFamily: "Inter_700Bold",
+                        color: active ? "#fff" : c.textMuted,
+                      }}
+                    >
+                      {LANGUAGE_LABELS[l]}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </Card>
+
+        <Pressable onPress={() => router.push("/premium")}>
+          <LinearGradient
+            colors={[c.accent, c.accentDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.premiumCard}
+          >
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+                <Icon name="crown" size={16} color="#fff" />
+                <Text style={{ color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" }}>
+                  {t("profile.premium")}
+                </Text>
+              </View>
+              <Text style={{ color: "rgba(255,255,255,0.85)", fontSize: 11.5, marginTop: 3 }}>
+                {t("premium.sub")}
+              </Text>
+            </View>
+            <Icon name="chevronRight" size={18} color="#fff" />
+          </LinearGradient>
+        </Pressable>
+
+        <Text style={[styles.section, { marginTop: 16 }]}>{t("profile.account")}</Text>
+        <Card style={{ paddingVertical: 6 }}>
+          <Row icon="lock" color={c.police} label={t("profile.privacy")} onPress={() => router.push("/privacy")} />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row icon="fileText" color={c.accent} label={t("profile.terms")} onPress={() => router.push("/terms")} />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row icon="shield" color={c.success} label={t("profile.data")} onPress={() => router.push("/data")} />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row icon="info" color={c.primary} label={t("profile.about")} onPress={() => showToast("Suraksha v1.0")} />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row
+            icon="helpCircle"
+            color={c.success}
+            label={t("profile.support")}
+            onPress={() => router.push("/helpline")}
+          />
+        </Card>
+      </View>
+
+      <Modal visible={editing} transparent animationType="fade" onRequestClose={() => setEditing(false)}>
+        <Pressable style={[styles.modalBg, { backgroundColor: c.overlay }]} onPress={() => setEditing(false)}>
+          <Pressable style={[styles.modalCard, { backgroundColor: c.card }]} onPress={() => {}}>
+            <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 14 }}>
+              {t("profile.editName")}
+            </Text>
+            <Text style={[styles.label, { color: c.textMuted }]}>{t("common.name")}</Text>
+            <TextInput
+              value={draftName}
+              onChangeText={setDraftName}
+              style={[styles.input, { backgroundColor: c.cardAlt, color: c.text, borderColor: c.border }]}
+              placeholderTextColor={c.textFaint}
+            />
+            <Text style={[styles.label, { color: c.textMuted, marginTop: 10 }]}>{t("contacts.phone")}</Text>
+            <TextInput
+              value={draftPhone}
+              onChangeText={setDraftPhone}
+              keyboardType="phone-pad"
+              style={[styles.input, { backgroundColor: c.cardAlt, color: c.text, borderColor: c.border }]}
+              placeholderTextColor={c.textFaint}
+            />
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 18 }}>
+              <Pressable
+                onPress={() => setEditing(false)}
+                style={[styles.modalBtn, { backgroundColor: c.cardAlt }]}
+              >
+                <Text style={{ color: c.text, fontFamily: "Inter_700Bold", fontSize: 13.5 }}>{t("common.cancel")}</Text>
+              </Pressable>
+              <Pressable onPress={saveProfile} style={[styles.modalBtn, { backgroundColor: c.primary }]}>
+                <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>{t("common.save")}</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  bigAvatar: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  premiumBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(0,0,0,0.2)",
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 20,
+    marginTop: 6,
+  },
+  editBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  section: { fontSize: 13, fontFamily: "Inter_700Bold", marginBottom: 8, color: "#8A7FA6" },
+  divider: { height: StyleSheet.hairlineWidth, marginVertical: 2 },
+  segment: { flexDirection: "row", borderRadius: 10, padding: 3 },
+  premiumCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 16,
+    padding: 16,
+  },
+  modalBg: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 28 },
+  modalCard: { width: "100%", borderRadius: 18, padding: 20 },
+  label: { fontSize: 12, fontFamily: "Inter_600SemiBold", marginBottom: 6 },
+  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14 },
+  modalBtn: { flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 12 },
+});
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: app/report.tsx
+────────────────────────────────────────────────────────────────────────────────
+import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
+import React, { useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+
+import { BackHeader } from "@/components/Headers";
+import { Icon } from "@/components/Icon";
+import { withAlpha } from "@/constants/colors";
+import { REPORT_CATEGORIES } from "@/constants/data";
+import { useApp } from "@/context/AppContext";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+import { useToast } from "@/context/ToastContext";
+import { useLocation } from "@/hooks/useLocation";
+import { timeAgo } from "@/lib/format";
+import { formatCoords } from "@/lib/location";
+
+export default function ReportScreen() {
+  const { c } = useTheme();
+  const { t, pick, lang } = useI18n();
+  const { reports, addReport, deleteReport } = useApp();
+  const { showToast } = useToast();
+
+  const [category, setCategory] = useState(REPORT_CATEGORIES[0].key);
+  const [description, setDescription] = useState("");
+  const [photoUri, setPhotoUri] = useState<string | undefined>();
+  const [attachLocation, setAttachLocation] = useState(true);
+  const { point, address, status } = useLocation();
+  const locationLabel = address ?? (point ? formatCoords(point) : null);
+
+  const pickPhoto = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      showToast(t("report.addPhoto"));
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.6,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setPhotoUri(result.assets[0].uri);
+    }
+  };
+
+  const submit = () => {
+    if (!description.trim()) return;
+    addReport({
+      category,
+      description: description.trim(),
+      photoUri,
+      location: attachLocation ? locationLabel ?? undefined : undefined,
+    });
+    setDescription("");
+    setPhotoUri(undefined);
+    setCategory(REPORT_CATEGORIES[0].key);
+    showToast(t("report.submitted"));
+  };
+
+  const catLabel = (key: string) => {
+    const found = REPORT_CATEGORIES.find((r) => r.key === key);
+    return found ? pick(found) : key;
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <BackHeader title={t("report.title")} subtitle={t("report.sub")} />
+      <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 50 }} showsVerticalScrollIndicator={false}>
+        <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
+          <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 12 }}>
+            {t("report.newReport")}
+          </Text>
+
+          <Text style={[styles.label, { color: c.textMuted }]}>{t("report.category")}</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+            {REPORT_CATEGORIES.map((cat) => {
+              const active = category === cat.key;
+              return (
+                <Pressable
+                  key={cat.key}
+                  onPress={() => setCategory(cat.key)}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 10,
+                    backgroundColor: active ? c.primary : c.cardAlt,
+                  }}
+                >
+                  <Icon name={cat.icon} size={13} color={active ? "#fff" : c.primary} />
+                  <Text style={{ fontSize: 12, fontFamily: "Inter_600SemiBold", color: active ? "#fff" : c.text }}>
+                    {pick(cat)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Text style={[styles.label, { color: c.textMuted }]}>{t("report.description")}</Text>
+          <TextInput
+            value={description}
+            onChangeText={setDescription}
+            placeholder={t("report.description")}
+            placeholderTextColor={c.textFaint}
+            multiline
+            style={[styles.textarea, { backgroundColor: c.cardAlt, color: c.text, borderColor: c.border }]}
+          />
+
+          {photoUri ? (
+            <View style={{ marginTop: 12 }}>
+              <Image source={{ uri: photoUri }} style={styles.preview} contentFit="cover" />
+              <Pressable onPress={() => setPhotoUri(undefined)} style={[styles.removePhoto, { backgroundColor: c.danger }]}>
+                <Icon name="x" size={14} color="#fff" />
+              </Pressable>
+            </View>
+          ) : (
+            <Pressable onPress={pickPhoto} style={[styles.photoBtn, { borderColor: c.border }]}>
+              <Icon name="camera" size={16} color={c.primary} />
+              <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>{t("report.addPhoto")}</Text>
+            </Pressable>
+          )}
+
+          <Pressable
+            onPress={() => setAttachLocation((v) => !v)}
+            style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 14 }}
+          >
+            <View
+              style={[
+                styles.checkbox,
+                { borderColor: attachLocation ? c.primary : c.border, backgroundColor: attachLocation ? c.primary : "transparent" },
+              ]}
+            >
+              {attachLocation && <Icon name="check" size={12} color="#fff" />}
+            </View>
+            <Icon name="mapPin" size={14} color={c.textMuted} />
+            <Text style={{ fontSize: 12.5, color: c.text }}>{t("report.attachLocation")}</Text>
+          </Pressable>
+          {attachLocation && (
+            <Text style={{ fontSize: 11.5, color: c.textMuted, marginTop: 6, marginLeft: 28 }}>
+              {locationLabel ?? (status === "loading" ? t("home.locating") : t("report.locationUnavailable"))}
+            </Text>
+          )}
+
+          <Pressable
+            onPress={submit}
+            disabled={!description.trim()}
+            style={[styles.submitBtn, { backgroundColor: description.trim() ? c.primary : c.border }]}
+          >
+            <Icon name="check" size={16} color="#fff" />
+            <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>{t("report.submit")}</Text>
+          </Pressable>
+
+          <Text style={{ fontSize: 11, color: c.textFaint, textAlign: "center", marginTop: 12 }}>
+            {t("report.anonymous")}
+          </Text>
+        </View>
+
+        <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 10 }}>
+          {t("report.recent")}
+        </Text>
+        {reports.length === 0 ? (
+          <Text style={{ textAlign: "center", color: c.textMuted, fontSize: 13, marginTop: 10 }}>
+            {t("report.empty")}
+          </Text>
+        ) : (
+          reports.map((r) => (
+            <View key={r.id} style={[styles.reportRow, { backgroundColor: c.card, borderColor: c.border }]}>
+              <View style={[styles.reportBadge, { backgroundColor: withAlpha(c.accent, 0.12) }]}>
+                <Icon name="fileText" size={16} color={c.accent} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: c.text }}>{catLabel(r.category)}</Text>
+                <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }} numberOfLines={2}>
+                  {r.description}
+                </Text>
+                <Text style={{ fontSize: 10.5, color: c.textFaint, marginTop: 4 }}>
+                  {timeAgo(r.createdAt, lang)}
+                  {r.location ? ` · ${r.location}` : ""}
+                </Text>
+              </View>
+              <Pressable onPress={() => deleteReport(r.id)} hitSlop={8}>
+                <Icon name="trash" size={16} color={c.textFaint} />
+              </Pressable>
+            </View>
+          ))
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: { borderWidth: 1, borderRadius: 16, padding: 16, marginBottom: 18 },
+  label: { fontSize: 12, fontFamily: "Inter_600SemiBold", marginBottom: 8 },
+  textarea: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 14,
+    minHeight: 84,
+    textAlignVertical: "top",
+  },
+  preview: { width: "100%", height: 160, borderRadius: 12 },
+  removePhoto: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    borderRadius: 12,
+    paddingVertical: 14,
+    marginTop: 12,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  submitBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 12,
+    paddingVertical: 13,
+    marginTop: 18,
+  },
+  reportRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+  },
+  reportBadge: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
+});
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: app/contacts.tsx
+────────────────────────────────────────────────────────────────────────────────
+import * as Contacts from "expo-contacts";
+import React, { useState } from "react";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+
+import { BackHeader } from "@/components/Headers";
+import { Icon } from "@/components/Icon";
+import { Avatar } from "@/components/ui";
+import { withAlpha } from "@/constants/colors";
+import { useApp } from "@/context/AppContext";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+import { useToast } from "@/context/ToastContext";
+import { callNumber } from "@/lib/native";
+
+export default function ContactsScreen() {
+  const { c } = useTheme();
+  const { t } = useI18n();
+  const { contacts, addContact, addContacts, deleteContact } = useApp();
+  const { showToast } = useToast();
+
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [importing, setImporting] = useState(false);
+
+  const onAdd = () => {
+    if (!name.trim() || !phone.trim()) return;
+    const res = addContact(name, phone);
+    if (!res.ok) {
+      showToast(res.error === "duplicate" ? t("contacts.duplicate") : t("contacts.invalid"));
+      return;
+    }
+    setName("");
+    setPhone("");
+    showToast(t("contacts.added"));
+  };
+
+  const onImport = async () => {
+    setImporting(true);
+    try {
+      const picked = await Contacts.presentContactPickerAsync();
+      if (!picked) return;
+      const phoneNumber = picked.phoneNumbers?.[0]?.number;
+      if (!phoneNumber) {
+        showToast(t("contacts.import"));
+        return;
+      }
+      const added = addContacts([{ name: picked.name ?? "Contact", phone: phoneNumber }]);
+      showToast(added > 0 ? t("contacts.added") : t("contacts.import"));
+    } catch {
+      showToast(t("contacts.import"));
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <BackHeader title={t("contacts.title")} subtitle={t("contacts.sub")} />
+      <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
+        <View style={[styles.infoBox, { backgroundColor: withAlpha(c.primary, 0.08), borderColor: withAlpha(c.primary, 0.2) }]}>
+          <Icon name="info" size={15} color={c.primary} />
+          <Text style={{ flex: 1, fontSize: 11.5, color: c.text, lineHeight: 17 }}>{t("contacts.info")}</Text>
+        </View>
+
+        <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
+          <Text style={{ fontSize: 13.5, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 12 }}>
+            {t("contacts.addNew")}
+          </Text>
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            placeholder={t("contacts.fullName")}
+            placeholderTextColor={c.textFaint}
+            style={[styles.input, { backgroundColor: c.cardAlt, color: c.text, borderColor: c.border }]}
+          />
+          <TextInput
+            value={phone}
+            onChangeText={setPhone}
+            placeholder={t("contacts.phone")}
+            placeholderTextColor={c.textFaint}
+            keyboardType="phone-pad"
+            style={[styles.input, { backgroundColor: c.cardAlt, color: c.text, borderColor: c.border, marginTop: 10 }]}
+          />
+          <Pressable
+            onPress={onAdd}
+            disabled={!name.trim() || !phone.trim()}
+            style={[
+              styles.addBtn,
+              { backgroundColor: name.trim() && phone.trim() ? c.primary : c.border },
+            ]}
+          >
+            <Icon name="plus" size={16} color="#fff" />
+            <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>{t("contacts.add")}</Text>
+          </Pressable>
+          <Pressable
+            onPress={onImport}
+            disabled={importing}
+            style={[styles.importBtn, { borderColor: c.primary }]}
+          >
+            <Icon name="users" size={15} color={c.primary} />
+            <Text style={{ color: c.primary, fontFamily: "Inter_700Bold", fontSize: 13 }}>{t("contacts.import")}</Text>
+          </Pressable>
+        </View>
+
+        {contacts.length === 0 ? (
+          <Text style={{ textAlign: "center", color: c.textMuted, fontSize: 13, marginTop: 26 }}>
+            {t("contacts.empty")}
+          </Text>
+        ) : (
+          contacts.map((contact) => (
+            <View key={contact.id} style={[styles.row, { backgroundColor: c.card, borderColor: c.border }]}>
+              <Avatar label={contact.name} size={42} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text }} numberOfLines={1}>
+                  {contact.name}
+                </Text>
+                <Text style={{ fontSize: 12, color: c.textMuted }}>{contact.phone}</Text>
+              </View>
+              <Pressable
+                onPress={() => {
+                  showToast(`${t("common.calling")} ${contact.name}…`);
+                  callNumber(contact.phone);
+                }}
+                style={[styles.iconBtn, { backgroundColor: c.successSoft }]}
+              >
+                <Icon name="phone" size={16} color={c.success} />
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  deleteContact(contact.id);
+                  showToast(t("contacts.removed"));
+                }}
+                style={[styles.iconBtn, { backgroundColor: c.dangerSoft }]}
+              >
+                <Icon name="trash" size={16} color={c.danger} />
+              </Pressable>
+            </View>
+          ))
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  infoBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  card: { borderWidth: 1, borderRadius: 16, padding: 16, marginBottom: 18 },
+  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14 },
+  addBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginTop: 12,
+  },
+  importBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    paddingVertical: 11,
+    marginTop: 10,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+  },
+  iconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+});
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: app/premium.tsx
+────────────────────────────────────────────────────────────────────────────────
+import { LinearGradient } from "expo-linear-gradient";
+import React, { useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { BackHeader } from "@/components/Headers";
+import { Icon } from "@/components/Icon";
+import { withAlpha } from "@/constants/colors";
+import type { IconName } from "@/constants/data";
+import { useApp } from "@/context/AppContext";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+import { useToast } from "@/context/ToastContext";
+
+const PLANS = [
+  { key: "monthly", en: "Monthly", hi: "मासिक", price: "₹99", per: { en: "/month", hi: "/माह" } },
+  { key: "yearly", en: "Yearly", hi: "वार्षिक", price: "₹799", per: { en: "/year", hi: "/वर्ष" }, badge: { en: "Save 33%", hi: "33% बचत" } },
+  { key: "family", en: "Family", hi: "परिवार", price: "₹1299", per: { en: "/year · 5 members", hi: "/वर्ष · 5 सदस्य" } },
+];
+
+const FEATURES: { icon: IconName; en: string; hi: string }[] = [
+  { icon: "navigation", en: "Unlimited journey timers", hi: "असीमित यात्रा टाइमर" },
+  { icon: "users", en: "Up to 10 trusted contacts", hi: "10 तक विश्वसनीय संपर्क" },
+  { icon: "bell", en: "Priority SOS alerts", hi: "प्राथमिकता SOS अलर्ट" },
+  { icon: "message", en: "Unlimited Sakhi conversations", hi: "असीमित सखी बातचीत" },
+  { icon: "shield", en: "Safety check-in reminders", hi: "सुरक्षा चेक-इन रिमाइंडर" },
+];
+
+export default function PremiumScreen() {
+  const { c } = useTheme();
+  const { t, pick } = useI18n();
+  const { profile } = useApp();
+  const { showToast } = useToast();
+  const insets = useSafeAreaInsets();
+
+  const [selected, setSelected] = useState("yearly");
+
+  return (
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <BackHeader title={t("premium.title")} />
+      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 30 }} showsVerticalScrollIndicator={false}>
+        <LinearGradient
+          colors={[c.accent, c.accentDark]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ padding: 24, alignItems: "center" }}
+        >
+          <View style={styles.crown}>
+            <Icon name="crown" size={32} color="#fff" />
+          </View>
+          <Text style={{ color: "#fff", fontSize: 22, fontFamily: "Inter_700Bold", marginTop: 12 }}>
+            {t("premium.title")}
+          </Text>
+          <Text style={{ color: "rgba(255,255,255,0.9)", fontSize: 13, textAlign: "center", marginTop: 6 }}>
+            {t("premium.sub")}
+          </Text>
+          {profile.premium && (
+            <View style={styles.activeBadge}>
+              <Icon name="check" size={13} color="#fff" />
+              <Text style={{ color: "#fff", fontSize: 12, fontFamily: "Inter_700Bold" }}>
+                {t("premium.currentPlan")}
+              </Text>
+            </View>
+          )}
+        </LinearGradient>
+
+        <View style={{ padding: 18 }}>
+          <View
+            style={[
+              styles.comingSoon,
+              { backgroundColor: withAlpha(c.accent, 0.1), borderColor: withAlpha(c.accent, 0.25) },
+            ]}
+          >
+            <Icon name="info" size={15} color={c.accent} />
+            <Text style={{ flex: 1, fontSize: 11.5, color: c.text, lineHeight: 17 }}>{t("premium.comingSoon")}</Text>
+          </View>
+          <View style={[styles.featureCard, { backgroundColor: c.card, borderColor: c.border }]}>
+            {FEATURES.map((f, i) => (
+              <View
+                key={f.en}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                  paddingVertical: 10,
+                  borderTopWidth: i === 0 ? 0 : StyleSheet.hairlineWidth,
+                  borderTopColor: c.border,
+                }}
+              >
+                <View style={[styles.featureIcon, { backgroundColor: c.successSoft }]}>
+                  <Icon name={f.icon} size={15} color={c.success} />
+                </View>
+                <Text style={{ flex: 1, fontSize: 13, color: c.text, fontFamily: "Inter_500Medium" }}>{pick(f)}</Text>
+                <Icon name="check" size={16} color={c.success} />
+              </View>
+            ))}
+          </View>
+
+          <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text, marginTop: 22, marginBottom: 12 }}>
+            {t("premium.choosePlan")}
+          </Text>
+
+          {PLANS.map((p) => {
+            const active = selected === p.key;
+            return (
+              <Pressable
+                key={p.key}
+                onPress={() => setSelected(p.key)}
+                style={[
+                  styles.plan,
+                  {
+                    backgroundColor: c.card,
+                    borderColor: active ? c.accent : c.border,
+                    borderWidth: active ? 2 : 1,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.radio,
+                    { borderColor: active ? c.accent : c.border },
+                  ]}
+                >
+                  {active && <View style={[styles.radioDot, { backgroundColor: c.accent }]} />}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={{ fontSize: 15, fontFamily: "Inter_700Bold", color: c.text }}>{pick(p)}</Text>
+                    {p.badge && (
+                      <View style={[styles.saveBadge, { backgroundColor: c.successSoft }]}>
+                        <Text style={{ fontSize: 10.5, fontFamily: "Inter_700Bold", color: c.success }}>
+                          {pick(p.badge)}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+                <View style={{ alignItems: "flex-end" }}>
+                  <Text style={{ fontSize: 17, fontFamily: "Inter_700Bold", color: c.accent }}>{p.price}</Text>
+                  <Text style={{ fontSize: 10.5, color: c.textMuted }}>{pick(p.per)}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+
+          <Pressable onPress={() => showToast(t("premium.comingSoon"))} style={{ marginTop: 18 }}>
+            <LinearGradient
+              colors={[c.accent, c.accentDark]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.subscribeBtn}
+            >
+              <Icon name="crown" size={16} color="#fff" />
+              <Text style={{ color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" }}>{t("premium.subscribe")}</Text>
+            </LinearGradient>
+          </Pressable>
+          <Text style={{ fontSize: 11, color: c.textFaint, textAlign: "center", marginTop: 12 }}>
+            {t("premium.note")}
+          </Text>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  crown: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  activeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(0,0,0,0.2)",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    marginTop: 12,
+  },
+  comingSoon: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
+  },
+  featureCard: { borderWidth: 1, borderRadius: 16, padding: 14 },
+  featureIcon: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  plan: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 10,
+  },
+  radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: "center", justifyContent: "center" },
+  radioDot: { width: 11, height: 11, borderRadius: 5.5 },
+  saveBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
+  subscribeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 14,
+    paddingVertical: 15,
+  },
+});
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: app/privacy.tsx
+────────────────────────────────────────────────────────────────────────────────
+import React from "react";
+import { ScrollView, Text, View } from "react-native";
+
+import { BackHeader } from "@/components/Headers";
+import { PRIVACY_SECTIONS } from "@/constants/legal";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+
+export default function PrivacyScreen() {
+  const { c } = useTheme();
+  const { t, pick } = useI18n();
+  return (
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <BackHeader title={t("legal.privacyTitle")} />
+      <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 50 }} showsVerticalScrollIndicator={false}>
+        <Text style={{ fontSize: 11.5, color: c.textFaint, marginBottom: 16 }}>{t("legal.updated")}</Text>
+        {PRIVACY_SECTIONS.map((s, i) => (
+          <View key={i} style={{ marginBottom: 18 }}>
+            <Text style={{ fontSize: 14.5, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 6 }}>
+              {pick(s.heading)}
+            </Text>
+            <Text style={{ fontSize: 13, color: c.textMuted, lineHeight: 20 }}>{pick(s.body)}</Text>
+          </View>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: app/terms.tsx
+────────────────────────────────────────────────────────────────────────────────
+import React from "react";
+import { ScrollView, Text, View } from "react-native";
+
+import { BackHeader } from "@/components/Headers";
+import { TERMS_SECTIONS } from "@/constants/legal";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+
+export default function TermsScreen() {
+  const { c } = useTheme();
+  const { t, pick } = useI18n();
+  return (
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <BackHeader title={t("legal.termsTitle")} />
+      <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 50 }} showsVerticalScrollIndicator={false}>
+        <Text style={{ fontSize: 11.5, color: c.textFaint, marginBottom: 16 }}>{t("legal.updated")}</Text>
+        {TERMS_SECTIONS.map((s, i) => (
+          <View key={i} style={{ marginBottom: 18 }}>
+            <Text style={{ fontSize: 14.5, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 6 }}>
+              {pick(s.heading)}
+            </Text>
+            <Text style={{ fontSize: 13, color: c.textMuted, lineHeight: 20 }}>{pick(s.body)}</Text>
+          </View>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: app/data.tsx
+────────────────────────────────────────────────────────────────────────────────
+import { useRouter } from "expo-router";
+import React, { useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+
+import { BackHeader } from "@/components/Headers";
+import { Icon } from "@/components/Icon";
+import { withAlpha } from "@/constants/colors";
+import { PRIVACY_SECTIONS } from "@/constants/legal";
+import { useApp } from "@/context/AppContext";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+import { useToast } from "@/context/ToastContext";
+
+export default function DataScreen() {
+  const { c } = useTheme();
+  const { t, pick } = useI18n();
+  const { resetAllData } = useApp();
+  const { showToast } = useToast();
+  const router = useRouter();
+
+  const [confirming, setConfirming] = useState(false);
+
+  const onDelete = async () => {
+    await resetAllData();
+    showToast(t("data.deleted"));
+    router.replace("/onboarding");
+  };
+
+  const storage = PRIVACY_SECTIONS[0];
+
+  return (
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <BackHeader title={t("data.title")} subtitle={t("data.sub")} />
+      <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 50 }} showsVerticalScrollIndicator={false}>
+        <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
+          <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 6 }}>
+            {pick(storage.heading)}
+          </Text>
+          <Text style={{ fontSize: 13, color: c.textMuted, lineHeight: 20 }}>{pick(storage.body)}</Text>
+        </View>
+
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: withAlpha(c.danger, 0.06), borderColor: withAlpha(c.danger, 0.3) },
+          ]}
+        >
+          <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.danger, marginBottom: 6 }}>
+            {t("data.deleteHeading")}
+          </Text>
+          <Text style={{ fontSize: 13, color: c.textMuted, lineHeight: 20, marginBottom: 14 }}>
+            {t("data.deleteBody")}
+          </Text>
+
+          {!confirming ? (
+            <Pressable onPress={() => setConfirming(true)} style={[styles.deleteBtn, { backgroundColor: c.danger }]}>
+              <Icon name="trash" size={15} color="#fff" />
+              <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>{t("data.deleteBtn")}</Text>
+            </Pressable>
+          ) : (
+            <View style={[styles.confirmBox, { borderColor: withAlpha(c.danger, 0.3) }]}>
+              <Text style={{ fontSize: 13.5, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 6 }}>
+                {t("data.confirmTitle")}
+              </Text>
+              <Text style={{ fontSize: 12.5, color: c.textMuted, lineHeight: 18, marginBottom: 14 }}>
+                {t("data.confirmBody")}
+              </Text>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <Pressable
+                  onPress={() => setConfirming(false)}
+                  style={[styles.confirmBtn, { backgroundColor: c.cardAlt }]}
+                >
+                  <Text style={{ color: c.text, fontFamily: "Inter_700Bold", fontSize: 13 }}>{t("common.cancel")}</Text>
+                </Pressable>
+                <Pressable onPress={onDelete} style={[styles.confirmBtn, { backgroundColor: c.danger }]}>
+                  <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13 }}>{t("data.confirmTitle")}</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: { borderWidth: 1, borderRadius: 16, padding: 16, marginBottom: 16 },
+  deleteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 12,
+    paddingVertical: 13,
+  },
+  confirmBox: { borderWidth: 1, borderRadius: 12, padding: 14 },
+  confirmBtn: { flex: 1, alignItems: "center", paddingVertical: 11, borderRadius: 10 },
+});
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: constants/legal.ts
+────────────────────────────────────────────────────────────────────────────────
+/**
+ * Plain-language, truthful legal copy for Suraksha.
+ *
+ * Every claim here must match what the app actually does:
+ *  - Contacts, profile, journal entries and settings are stored only on the
+ *    device (contacts & profile in the OS secure keystore).
+ *  - Location is read on-device and is shared with other people only when the
+ *    user taps a share / SMS / WhatsApp / call action. Turning coordinates into
+ *    a readable address may use the OS geocoding service.
+ *  - The only network feature is Sakhi: chat messages are sent to our server,
+ *    which forwards them to OpenAI to generate a reply.
+ */
+
+export interface LegalSection {
+  heading: { en: string; hi: string };
+  body: { en: string; hi: string };
+}
+
+export const PRIVACY_SECTIONS: LegalSection[] = [
+  {
+    heading: { en: "Your data stays on your device", hi: "आपका डेटा आपके डिवाइस पर रहता है" },
+    body: {
+      en: "Your trusted contacts and profile are stored in your phone's secure keystore. Your safety journal entries (including any photos you attach) and app settings are stored in the app's local storage. None of this is sent to us or to anyone else.",
+      hi: "आपके विश्वसनीय संपर्क और प्रोफ़ाइल आपके फ़ोन के सुरक्षित कीस्टोर में रखे जाते हैं। आपकी सुरक्षा डायरी की प्रविष्टियाँ (और जोड़ी गई कोई भी फ़ोटो) तथा ऐप सेटिंग्स ऐप के स्थानीय स्टोरेज में रहती हैं। इनमें से कुछ भी हमें या किसी और को नहीं भेजा जाता।",
+    },
+  },
+  {
+    heading: { en: "Location", hi: "लोकेशन" },
+    body: {
+      en: "The app reads your location only when you open the map, start a journey, or trigger SOS. It is shared with other people only when you tap a share, SMS, WhatsApp or call action yourself. To turn your coordinates into a readable address, the app may use your device's operating-system geocoding service.",
+      hi: "ऐप आपकी लोकेशन तभी पढ़ता है जब आप मैप खोलती हैं, यात्रा शुरू करती हैं, या SOS दबाती हैं। यह अन्य लोगों के साथ तभी साझा होती है जब आप स्वयं शेयर, SMS, WhatsApp या कॉल पर टैप करती हैं। आपके निर्देशांक को पढ़ने योग्य पते में बदलने के लिए ऐप आपके डिवाइस की ऑपरेटिंग-सिस्टम जियोकोडिंग सेवा का उपयोग कर सकता है।",
+    },
+  },
+  {
+    heading: { en: "Sakhi chat uses AI", hi: "सखी चैट AI का उपयोग करती है" },
+    body: {
+      en: "When you message Sakhi, your messages are sent to our server, which forwards them to OpenAI to generate a reply. Please avoid sharing details you would not want processed by an AI provider. Sakhi conversations are not used to identify you and are not stored by us after the reply is generated.",
+      hi: "जब आप सखी को संदेश भेजती हैं, तो आपके संदेश हमारे सर्वर को भेजे जाते हैं, जो उत्तर बनाने हेतु उन्हें OpenAI को अग्रेषित करता है। ऐसी जानकारी साझा करने से बचें जिसे आप किसी AI प्रदाता द्वारा संसाधित नहीं कराना चाहतीं। सखी की बातचीत से आपकी पहचान नहीं की जाती और उत्तर बनने के बाद हम इसे संग्रहीत नहीं करते।",
+    },
+  },
+  {
+    heading: { en: "No accounts, no tracking", hi: "कोई खाता नहीं, कोई ट्रैकिंग नहीं" },
+    body: {
+      en: "Suraksha has no sign-up or login. We do not use analytics, advertising or third-party trackers, and we do not sell any data.",
+      hi: "सुरक्षा में कोई साइन-अप या लॉगिन नहीं है। हम एनालिटिक्स, विज्ञापन या तृतीय-पक्ष ट्रैकर्स का उपयोग नहीं करते, और कोई डेटा नहीं बेचते।",
+    },
+  },
+  {
+    heading: { en: "Deleting your data", hi: "अपना डेटा हटाना" },
+    body: {
+      en: "You can erase everything stored on your device at any time from Profile → Your Data & Account → Delete all my data.",
+      hi: "आप अपने डिवाइस पर संग्रहीत सब कुछ कभी भी प्रोफ़ाइल → आपका डेटा और खाता → मेरा सारा डेटा हटाएँ से मिटा सकती हैं।",
+    },
+  },
+];
+
+export const TERMS_SECTIONS: LegalSection[] = [
+  {
+    heading: { en: "Suraksha is a safety aid, not an emergency service", hi: "सुरक्षा एक सहायक है, आपातकालीन सेवा नहीं" },
+    body: {
+      en: "Suraksha helps you reach people and places quickly, but it does not contact the police or emergency services on your behalf. In a real emergency, always call 112 (or the relevant helpline) directly.",
+      hi: "सुरक्षा आपको लोगों और स्थानों तक जल्दी पहुँचने में मदद करती है, लेकिन यह आपकी ओर से पुलिस या आपातकालीन सेवाओं से संपर्क नहीं करती। वास्तविक आपात स्थिति में हमेशा सीधे 112 (या संबंधित हेल्पलाइन) पर कॉल करें।",
+    },
+  },
+  {
+    heading: { en: "Alerts are manual", hi: "अलर्ट मैनुअल हैं" },
+    body: {
+      en: "SOS and journey features do not send messages automatically. They prepare a call, SMS or WhatsApp message that you choose to send. The app cannot guarantee that a message is delivered or read.",
+      hi: "SOS और यात्रा सुविधाएँ संदेश स्वतः नहीं भेजतीं। वे एक कॉल, SMS या WhatsApp संदेश तैयार करती हैं जिसे भेजने का निर्णय आप लेती हैं। ऐप यह गारंटी नहीं दे सकता कि संदेश पहुँचा या पढ़ा गया।",
+    },
+  },
+  {
+    heading: { en: "Guidance, not professional advice", hi: "मार्गदर्शन, पेशेवर सलाह नहीं" },
+    body: {
+      en: "Legal information and Sakhi's replies are for general guidance only and are not legal, medical or professional advice. Verify important details with a qualified professional or official source.",
+      hi: "कानूनी जानकारी और सखी के उत्तर केवल सामान्य मार्गदर्शन हेतु हैं और कानूनी, चिकित्सकीय या पेशेवर सलाह नहीं हैं। महत्वपूर्ण बातों की पुष्टि किसी योग्य पेशेवर या आधिकारिक स्रोत से करें।",
+    },
+  },
+  {
+    heading: { en: "No warranty", hi: "कोई वारंटी नहीं" },
+    body: {
+      en: "The app is provided “as is”. Features depend on your device, permissions and network, and may not always work. Please do not rely on it as your only means of getting help.",
+      hi: "ऐप “जैसा है” के आधार पर दिया गया है। सुविधाएँ आपके डिवाइस, अनुमतियों और नेटवर्क पर निर्भर करती हैं और हमेशा काम नहीं कर सकतीं। कृपया इसे सहायता पाने का एकमात्र साधन न मानें।",
+    },
+  },
+];
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: constants/data.ts
+────────────────────────────────────────────────────────────────────────────────
+/**
+ * Static, offline content for Suraksha.
+ *
+ * All user-facing copy carries an English (`en`) and Hindi (`hi`) variant so
+ * the app stays fully usable offline in either language.
+ */
+
+import type { Palette } from "./colors";
+
+export type IconName =
+  | "bell"
+  | "alert"
+  | "mapPin"
+  | "home"
+  | "map"
+  | "book"
+  | "user"
+  | "phone"
+  | "plus"
+  | "x"
+  | "check"
+  | "chevronRight"
+  | "chevronDown"
+  | "arrowLeft"
+  | "users"
+  | "store"
+  | "hospital"
+  | "shield"
+  | "navigation"
+  | "clock"
+  | "search"
+  | "info"
+  | "lock"
+  | "globe"
+  | "fileText"
+  | "helpCircle"
+  | "crown"
+  | "message"
+  | "phoneCall"
+  | "camera"
+  | "moon"
+  | "sun"
+  | "palette"
+  | "share"
+  | "heart"
+  | "send"
+  | "sparkles"
+  | "edit"
+  | "trash"
+  | "logOut"
+  | "bellRing";
+
+export interface QuickAction {
+  key: "safe" | "rights" | "addcontact" | "helpline" | "sakhi" | "fakecall";
+  en: string;
+  hi: string;
+  icon: IconName;
+  color: (c: Palette) => string;
+  route: string;
+}
+
+export interface RightItem {
+  id: number;
+  title: string;
+  subtitle: string;
+  icon: IconName;
+  color: (c: Palette) => string;
+  en: string;
+  hi: string;
+  steps: { en: string; hi: string }[];
+}
+
+export interface Helpline {
+  name: string;
+  hi: string;
+  number: string;
+  desc: string;
+  descHi: string;
+  color: (c: Palette) => string;
+}
+
+export const QUICK_ACTIONS: QuickAction[] = [
+  { key: "safe", en: "Safe Places", hi: "सुरक्षित स्थान", icon: "mapPin", color: (c) => c.primary, route: "/(tabs)/map" },
+  { key: "rights", en: "Know Your Rights", hi: "अपने अधिकार जानें", icon: "book", color: (c) => c.police, route: "/(tabs)/rights" },
+  { key: "addcontact", en: "Trusted Contacts", hi: "विश्वसनीय संपर्क", icon: "users", color: (c) => c.success, route: "/contacts" },
+  { key: "helpline", en: "Helpline", hi: "हेल्पलाइन", icon: "phone", color: (c) => c.accent, route: "/helpline" },
+  { key: "sakhi", en: "Ask Sakhi", hi: "सखी से पूछें", icon: "message", color: (c) => c.primaryLight, route: "/(tabs)/sakhi" },
+  { key: "fakecall", en: "Fake Call", hi: "नकली कॉल", icon: "phoneCall", color: (c) => c.warning, route: "/fakecall" },
+];
+
+export const RIGHTS: RightItem[] = [
+  {
+    id: 1,
+    title: "POSH Act, 2013",
+    subtitle: "Sexual Harassment of Women at Workplace",
+    icon: "shield",
+    color: (c) => c.primary,
+    en: "Protects women from sexual harassment at the workplace. Employers with 10 or more employees must set up an Internal Committee (IC) to handle complaints.",
+    hi: "महिलाओं को कार्यस्थल पर यौन उत्पीड़न से सुरक्षा देता है। 10 या अधिक कर्मचारियों वाले हर नियोक्ता को शिकायतों के लिए आंतरिक समिति (IC) बनानी अनिवार्य है।",
+    steps: [
+      { en: "Write a complaint to the Internal Committee (IC) within 3 months of the incident.", hi: "घटना के 3 महीने के भीतर आंतरिक समिति (IC) को लिखित शिकायत दें।" },
+      { en: "The IC must complete its inquiry and submit a report within 90 days.", hi: "IC को 90 दिनों के भीतर जांच पूरी कर रिपोर्ट देनी होती है।" },
+      { en: "You can request interim relief such as transfer or leave during the inquiry.", hi: "जांच के दौरान आप स्थानांतरण या छुट्टी जैसी अंतरिम राहत मांग सकती हैं।" },
+      { en: "If unsatisfied with the outcome, you can appeal in court within 90 days of the IC's report.", hi: "परिणाम से असंतुष्ट होने पर रिपोर्ट के 90 दिनों के भीतर अदालत में अपील कर सकती हैं।" },
+    ],
+  },
+  {
+    id: 2,
+    title: "POCSO Act, 2012",
+    subtitle: "Protection of Children from Sexual Offences",
+    icon: "users",
+    color: (c) => c.accent,
+    en: "Protects children under 18 from sexual abuse and exploitation, and mandates child-friendly procedures in police stations and courts.",
+    hi: "18 वर्ष से कम आयु के बच्चों को यौन शोषण से बचाता है, और पुलिस व अदालत में बाल-सुलभ प्रक्रिया अनिवार्य करता है।",
+    steps: [
+      { en: "Call Childline at 1098 immediately — it is free and available 24x7.", hi: "तुरंत चाइल्डलाइन 1098 पर कॉल करें — यह निःशुल्क और 24x7 उपलब्ध है।" },
+      { en: "Reporting is legally mandatory for anyone who becomes aware of the offence.", hi: "अपराध की जानकारी होने पर रिपोर्ट करना कानूनन अनिवार्य है।" },
+      { en: "The child's statement is recorded in the presence of a parent or trusted adult.", hi: "बच्चे का बयान माता-पिता या विश्वसनीय वयस्क की उपस्थिति में दर्ज होता है।" },
+      { en: "The trial is conducted in-camera to protect the child's identity.", hi: "बच्चे की पहचान सुरक्षित रखने के लिए सुनवाई बंद कमरे में होती है।" },
+    ],
+  },
+  {
+    id: 3,
+    title: "Domestic Violence Act, 2005",
+    subtitle: "Protection of Women from Domestic Violence",
+    icon: "home",
+    color: (c) => c.warning,
+    en: "Gives women the right to live free from violence at home, and to seek protection orders, residence rights and maintenance.",
+    hi: "महिलाओं को घर में हिंसा से मुक्त रहने तथा सुरक्षा आदेश, निवास अधिकार और भरण-पोषण पाने का अधिकार देता है।",
+    steps: [
+      { en: "Approach a Protection Officer or file a complaint directly with the Magistrate.", hi: "संरक्षण अधिकारी से संपर्क करें या सीधे मजिस्ट्रेट के पास शिकायत दर्ज करें।" },
+      { en: "Request a Protection Order to stop the abuser from contacting you.", hi: "उत्पीड़क को संपर्क से रोकने के लिए सुरक्षा आदेश का अनुरोध करें।" },
+      { en: "Ask for a Residence Order to continue living in the shared household.", hi: "साझा घर में रहना जारी रखने के लिए निवास आदेश मांगें।" },
+      { en: "Apply for monetary relief to cover medical costs and lost income.", hi: "चिकित्सा खर्च और आय की हानि के लिए आर्थिक राहत हेतु आवेदन करें।" },
+    ],
+  },
+  {
+    id: 4,
+    title: "IPC Section 354",
+    subtitle: "Assault on a Woman to Outrage Her Modesty",
+    icon: "alert",
+    color: (c) => c.police,
+    en: "Makes it a criminal offence to assault or use force against a woman with the intent to outrage her modesty, punishable with imprisonment.",
+    hi: "महिला की मर्यादा भंग करने के इरादे से हमला या बल प्रयोग करना दंडनीय अपराध है, जिसमें कारावास की सजा हो सकती है।",
+    steps: [
+      { en: "File an FIR at the nearest police station — this is a cognizable offence.", hi: "नज़दीकी थाने में FIR दर्ज करें — यह संज्ञेय अपराध है।" },
+      { en: "The police cannot refuse to register your FIR.", hi: "पुलिस आपकी FIR दर्ज करने से इनकार नहीं कर सकती।" },
+      { en: "You may request a woman police officer to record your statement.", hi: "आप बयान दर्ज करने के लिए महिला पुलिस अधिकारी का अनुरोध कर सकती हैं।" },
+      { en: "Free legal aid is available through the District Legal Services Authority.", hi: "जिला विधिक सेवा प्राधिकरण से निःशुल्क कानूनी सहायता उपलब्ध है।" },
+    ],
+  },
+];
+
+export const HELPLINES: Helpline[] = [
+  { name: "Women Helpline", hi: "महिला हेल्पलाइन", number: "1091", desc: "24x7 support for women in distress", descHi: "संकटग्रस्त महिलाओं के लिए 24x7 सहायता", color: (c) => c.accent },
+  { name: "Police", hi: "पुलिस", number: "100", desc: "For immediate police assistance", descHi: "तत्काल पुलिस सहायता के लिए", color: (c) => c.police },
+  { name: "Childline", hi: "चाइल्डलाइन", number: "1098", desc: "For children in need of care and protection", descHi: "देखभाल व सुरक्षा हेतु बच्चों के लिए", color: (c) => c.warning },
+  { name: "Domestic Violence Helpline", hi: "घरेलू हिंसा हेल्पलाइन", number: "181", desc: "24x7 helpline for women facing violence at home", descHi: "घर में हिंसा झेल रही महिलाओं के लिए 24x7", color: (c) => c.primary },
+  { name: "AASRA — Crisis Line", hi: "आसरा — संकट रेखा", number: "9820466726", desc: "Emotional support & suicide-prevention helpline", descHi: "भावनात्मक सहायता व आत्महत्या रोकथाम हेल्पलाइन", color: (c) => c.success },
+];
+
+export const REPORT_CATEGORIES: { key: string; en: string; hi: string; icon: IconName }[] = [
+  { key: "harassment", en: "Harassment", hi: "उत्पीड़न", icon: "alert" },
+  { key: "unsafe", en: "Unsafe Area", hi: "असुरक्षित क्षेत्र", icon: "mapPin" },
+  { key: "stalking", en: "Stalking", hi: "पीछा करना", icon: "user" },
+  { key: "poorLighting", en: "Poor Lighting", hi: "खराब रोशनी", icon: "sun" },
+  { key: "other", en: "Other", hi: "अन्य", icon: "info" },
+];
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE: constants/i18n.ts
+────────────────────────────────────────────────────────────────────────────────
+/**
+ * Lightweight bilingual string table (English / Hindi).
+ *
+ * Access via the `useI18n()` hook (see context/LanguageContext). Keys are flat
+ * dotted strings; `t("home.tapForHelp")` returns the active-language value.
+ */
+
+export type Language = "en" | "hi";
+
+export const LANGUAGE_LABELS: Record<Language, string> = {
+  en: "English",
+  hi: "हिंदी",
+};
+
+type Strings = Record<string, { en: string; hi: string }>;
+
+export const STRINGS: Strings = {
+  // Tabs
+  "tab.home": { en: "Home", hi: "होम" },
+  "tab.map": { en: "Map", hi: "नक्शा" },
+  "tab.sakhi": { en: "Sakhi", hi: "सखी" },
+  "tab.rights": { en: "Rights", hi: "अधिकार" },
+  "tab.profile": { en: "Profile", hi: "प्रोफ़ाइल" },
+
+  // Onboarding
+  "onb.skip": { en: "Skip", hi: "छोड़ें" },
+  "onb.next": { en: "Next", hi: "आगे" },
+  "onb.getStarted": { en: "Get Started", hi: "शुरू करें" },
+  "onb.chooseLanguage": { en: "Choose your language", hi: "अपनी भाषा चुनें" },
+  "onb.langSub": { en: "You can change this anytime in Profile", hi: "इसे आप प्रोफ़ाइल में कभी भी बदल सकती हैं" },
+  "onb.title1": { en: "You are never alone", hi: "आप कभी अकेली नहीं हैं" },
+  "onb.body1": { en: "One tap on SOS shows your location so you can quickly call or message your trusted contacts.", hi: "SOS पर एक टैप आपकी लोकेशन दिखाता है, ताकि आप झट से अपने विश्वसनीय संपर्कों को कॉल या संदेश भेज सकें।" },
+  "onb.title2": { en: "Safety, all around you", hi: "हर ओर सुरक्षा" },
+  "onb.body2": { en: "Find police stations, hospitals and shelters near you using your maps app.", hi: "अपने मैप ऐप से पास के थाने, अस्पताल और आश्रय खोजें।" },
+  "onb.title3": { en: "Know your rights", hi: "अपने अधिकार जानें" },
+  "onb.body3": { en: "Learn the laws that protect you — and meet Sakhi, your private safety companion.", hi: "आपकी रक्षा करने वाले कानून जानें — और मिलें सखी से, आपकी निजी साथी।" },
+
+  // Home
+  "home.greeting": { en: "Namaste,", hi: "नमस्ते," },
+  "home.guest": { en: "friend", hi: "सखी" },
+  "home.locating": { en: "Locating…", hi: "लोकेशन ढूँढ रहे हैं…" },
+  "home.locationOff": { en: "Location off", hi: "लोकेशन बंद" },
+  "home.tapForHelp": { en: "Tap for instant help", hi: "तुरंत सहायता के लिए दबाएँ" },
+  "home.journey": { en: "Journey Timer", hi: "यात्रा टाइमर" },
+  "home.journeySub": { en: "Time your trip and share your location with someone you trust.", hi: "अपनी यात्रा का समय रखें और किसी विश्वसनीय व्यक्ति को अपनी लोकेशन भेजें।" },
+  "home.startSharing": { en: "Start Journey", hi: "यात्रा शुरू करें" },
+  "home.sharingLive": { en: "Journey in progress", hi: "यात्रा जारी है" },
+  "home.shareLocation": { en: "Share my location", hi: "मेरी लोकेशन भेजें" },
+  "home.overdue": { en: "Overdue — let someone know", hi: "समय पार — किसी को बताएँ" },
+  "home.arrivedSafely": { en: "I've Arrived Safely", hi: "मैं सुरक्षित पहुँच गई" },
+  "home.trustedContacts": { en: "Trusted Contacts", hi: "विश्वसनीय संपर्क" },
+  "home.quickActions": { en: "Quick Actions", hi: "त्वरित क्रियाएँ" },
+  "home.manage": { en: "Manage", hi: "प्रबंधित करें" },
+  "home.noContacts": { en: "Add someone you trust", hi: "किसी विश्वसनीय व्यक्ति को जोड़ें" },
+  "home.minutes": { en: "min", hi: "मिनट" },
+
+  // SOS
+  "sos.sent": { en: "SOS Activated", hi: "SOS सक्रिय" },
+  "sos.helpComing": { en: "Alert your contacts now", hi: "अभी अपने संपर्कों को सूचित करें" },
+  "sos.notConfigured": { en: "Alerts are not sent automatically. Tap a contact to share your location and call them.", hi: "अलर्ट स्वतः नहीं भेजे जाते। लोकेशन भेजने और कॉल करने हेतु किसी संपर्क पर टैप करें।" },
+  "sos.elapsed": { en: "Elapsed time", hi: "बीता हुआ समय" },
+  "sos.liveLocation": { en: "Your location", hi: "आपकी लोकेशन" },
+  "sos.locationUnavailable": { en: "Location unavailable — enable GPS to share it.", hi: "लोकेशन अनुपलब्ध — साझा करने हेतु GPS चालू करें।" },
+  "sos.alertedContacts": { en: "Your trusted contacts", hi: "आपके विश्वसनीय संपर्क" },
+  "sos.noContacts": { en: "No trusted contacts yet. Add someone so you can reach them quickly.", hi: "अभी कोई विश्वसनीय संपर्क नहीं। शीघ्र संपर्क हेतु किसी को जोड़ें।" },
+  "sos.addContacts": { en: "Add Contacts", hi: "संपर्क जोड़ें" },
+  "sos.call": { en: "Call", hi: "कॉल" },
+  "sos.sms": { en: "SMS", hi: "SMS" },
+  "sos.whatsapp": { en: "WhatsApp", hi: "WhatsApp" },
+  "sos.smsBody": { en: "SOS! I need help. My location: {link}", hi: "SOS! मुझे मदद चाहिए। मेरी लोकेशन: {link}" },
+  "sos.smsNoLoc": { en: "SOS! I need help. Please call me.", hi: "SOS! मुझे मदद चाहिए। कृपया मुझे कॉल करें।" },
+  "sos.call112": { en: "Call Emergency 112", hi: "आपातकाल 112 पर कॉल करें" },
+  "sos.shareLocation": { en: "Share my location", hi: "मेरी लोकेशन साझा करें" },
+  "sos.imSafe": { en: "I'm Safe — Cancel Alert", hi: "मैं सुरक्षित हूँ — अलर्ट रद्द करें" },
+  "sos.gettingLocation": { en: "Getting your location…", hi: "आपकी लोकेशन ले रहे हैं…" },
+
+  // Map
+  "map.title": { en: "Safety Map", hi: "सुरक्षा नक्शा" },
+  "map.sub": { en: "Find help near you", hi: "अपने पास सहायता खोजें" },
+  "map.note": { en: "Tap a category to find these places near you in your maps app.", hi: "अपने मैप ऐप में पास के ये स्थान खोजने हेतु किसी श्रेणी पर टैप करें।" },
+  "map.locationOff": { en: "Turn on location to see your position on the map.", hi: "मैप पर अपनी स्थिति देखने हेतु लोकेशन चालू करें।" },
+  "map.police": { en: "Police", hi: "पुलिस" },
+  "map.hospital": { en: "Hospital", hi: "अस्पताल" },
+  "map.pharmacy": { en: "Pharmacy", hi: "दवाख़ाना" },
+  "map.shelter": { en: "Shelter", hi: "आश्रय" },
+  "map.callNow": { en: "Call Now", hi: "अभी कॉल करें" },
+
+  // Rights
+  "rights.title": { en: "Know Your Rights", hi: "अपने अधिकार जानें" },
+  "rights.sub": { en: "Laws that protect you", hi: "कानून जो आपकी रक्षा करते हैं" },
+  "rights.legalProtections": { en: "Legal Protections", hi: "कानूनी सुरक्षा" },
+  "rights.stepsToTake": { en: "Steps to take", hi: "क्या करें" },
+
+  // Sakhi
+  "sakhi.title": { en: "Sakhi", hi: "सखी" },
+  "sakhi.sub": { en: "Your private safety companion", hi: "आपकी निजी सुरक्षा साथी" },
+  "sakhi.online": { en: "Always here for you", hi: "हमेशा आपके लिए" },
+  "sakhi.placeholder": { en: "Ask me anything…", hi: "मुझसे कुछ भी पूछें…" },
+  "sakhi.greeting": {
+    en: "Hi, I'm Sakhi 💜 I'm here for you — ask me about your safety, your rights, or anything on your mind.",
+    hi: "नमस्ते, मैं सखी हूँ 💜 मैं आपके लिए हूँ — अपनी सुरक्षा, अधिकारों या मन की किसी भी बात के बारे में पूछें।",
+  },
+  "sakhi.thinking": { en: "Sakhi is typing…", hi: "सखी लिख रही है…" },
+  "sakhi.error": { en: "I couldn't reach you just now. Please try again.", hi: "अभी संपर्क नहीं हो सका। कृपया फिर प्रयास करें।" },
+  "sakhi.suggest1": { en: "I feel unsafe walking home", hi: "घर जाते हुए असुरक्षित महसूस कर रही हूँ" },
+  "sakhi.suggest2": { en: "How do I file an FIR?", hi: "FIR कैसे दर्ज करूँ?" },
+  "sakhi.suggest3": { en: "Help me make a safety plan", hi: "सुरक्षा योजना बनाने में मदद करें" },
+  "sakhi.disclaimer": { en: "Sakhi offers guidance, not legal or medical advice. In an emergency, call 112.", hi: "सखी मार्गदर्शन देती है, कानूनी या चिकित्सकीय सलाह नहीं। आपात में 112 पर कॉल करें।" },
+
+  // Contacts
+  "contacts.title": { en: "Trusted Contacts", hi: "विश्वसनीय संपर्क" },
+  "contacts.sub": { en: "For quick alerts when you need help", hi: "जरूरत पड़ने पर त्वरित संपर्क हेतु" },
+  "contacts.addNew": { en: "Add a new contact", hi: "नया संपर्क जोड़ें" },
+  "contacts.fullName": { en: "Full name", hi: "पूरा नाम" },
+  "contacts.phone": { en: "Phone number", hi: "फ़ोन नंबर" },
+  "contacts.add": { en: "Add Contact", hi: "संपर्क जोड़ें" },
+  "contacts.import": { en: "Import from phone", hi: "फ़ोन से आयात करें" },
+  "contacts.info": { en: "When you trigger SOS, you can instantly call or send each contact your location by SMS or WhatsApp.", hi: "SOS पर आप हर संपर्क को तुरंत कॉल कर सकती हैं या SMS/WhatsApp से अपनी लोकेशन भेज सकती हैं।" },
+  "contacts.empty": { en: "No contacts yet — add someone you trust.", hi: "अभी कोई संपर्क नहीं — किसी विश्वसनीय व्यक्ति को जोड़ें।" },
+  "contacts.added": { en: "Contact added", hi: "संपर्क जोड़ा गया" },
+  "contacts.removed": { en: "Contact removed", hi: "संपर्क हटाया गया" },
+  "contacts.invalid": { en: "Enter a valid 10-digit Indian mobile number.", hi: "मान्य 10-अंकीय भारतीय मोबाइल नंबर दर्ज करें।" },
+  "contacts.duplicate": { en: "This contact is already added.", hi: "यह संपर्क पहले से जोड़ा जा चुका है।" },
+
+  // Helpline
+  "helpline.title": { en: "Emergency Helplines", hi: "आपातकालीन हेल्पलाइन" },
+  "helpline.sub": { en: "Tap any number to call", hi: "कॉल करने के लिए नंबर पर टैप करें" },
+
+  // Fake call
+  "fake.title": { en: "Fake Call", hi: "नकली कॉल" },
+  "fake.sub": { en: "Schedule a call to exit unsafe situations", hi: "असुरक्षित स्थिति से निकलने हेतु कॉल शेड्यूल करें" },
+  "fake.callerName": { en: "Caller name", hi: "कॉल करने वाले का नाम" },
+  "fake.ringIn": { en: "Ring in", hi: "कॉल आएगी" },
+  "fake.schedule": { en: "Schedule Fake Call", hi: "नकली कॉल शेड्यूल करें" },
+  "fake.scheduled": { en: "Fake call scheduled", hi: "नकली कॉल शेड्यूल हुई" },
+  "fake.cancel": { en: "Cancel scheduled call", hi: "शेड्यूल की गई कॉल रद्द करें" },
+  "fake.incoming": { en: "Incoming call", hi: "आ रही कॉल" },
+  "fake.decline": { en: "Decline", hi: "अस्वीकार" },
+  "fake.accept": { en: "Accept", hi: "स्वीकार" },
+  "fake.seconds": { en: "seconds", hi: "सेकंड" },
+
+  // Report (private on-device safety journal)
+  "report.title": { en: "Safety Journal", hi: "सुरक्षा डायरी" },
+  "report.sub": { en: "Private notes saved on your device", hi: "आपके डिवाइस पर सहेजे निजी नोट्स" },
+  "report.newReport": { en: "Log an incident", hi: "घटना दर्ज करें" },
+  "report.category": { en: "Category", hi: "श्रेणी" },
+  "report.description": { en: "What happened?", hi: "क्या हुआ?" },
+  "report.addPhoto": { en: "Add photo", hi: "फ़ोटो जोड़ें" },
+  "report.attachLocation": { en: "Attach my current location", hi: "मेरी वर्तमान लोकेशन जोड़ें" },
+  "report.locationUnavailable": { en: "Location not available right now", hi: "अभी लोकेशन उपलब्ध नहीं" },
+  "report.submit": { en: "Save to Journal", hi: "डायरी में सहेजें" },
+  "report.submitted": { en: "Saved to your device", hi: "आपके डिवाइस पर सहेजा गया" },
+  "report.recent": { en: "Your journal", hi: "आपकी डायरी" },
+  "report.empty": { en: "No entries yet.", hi: "अभी कोई प्रविष्टि नहीं।" },
+  "report.anonymous": { en: "Entries are saved only on this device. Nothing is uploaded.", hi: "प्रविष्टियाँ केवल इसी डिवाइस पर सहेजी जाती हैं। कुछ भी अपलोड नहीं होता।" },
+
+  // Profile
+  "profile.premiumMember": { en: "Premium Member", hi: "प्रीमियम सदस्य" },
+  "profile.appearance": { en: "Appearance", hi: "रूप-रंग" },
+  "profile.colorTheme": { en: "Color theme", hi: "रंग थीम" },
+  "profile.darkMode": { en: "Dark mode", hi: "डार्क मोड" },
+  "profile.settings": { en: "Settings", hi: "सेटिंग्स" },
+  "profile.notifications": { en: "Notifications", hi: "सूचनाएं" },
+  "profile.bgLocation": { en: "Background Location", hi: "बैकग्राउंड लोकेशन" },
+  "profile.language": { en: "App Language", hi: "भाषा" },
+  "profile.account": { en: "Account", hi: "खाता" },
+  "profile.privacy": { en: "Privacy Policy", hi: "गोपनीयता नीति" },
+  "profile.terms": { en: "Terms of Use", hi: "उपयोग की शर्तें" },
+  "profile.data": { en: "Your Data & Account", hi: "आपका डेटा और खाता" },
+  "profile.about": { en: "About Suraksha", hi: "सुरक्षा के बारे में" },
+  "profile.support": { en: "Contact Support", hi: "सहायता से संपर्क करें" },
+  "profile.premium": { en: "Suraksha Premium", hi: "सुरक्षा प्रीमियम" },
+  "profile.editName": { en: "Edit profile", hi: "प्रोफ़ाइल संपादित करें" },
+  "profile.guest": { en: "Set up your profile", hi: "अपनी प्रोफ़ाइल सेट करें" },
+
+  // Premium
+  "premium.title": { en: "Suraksha Premium", hi: "सुरक्षा प्रीमियम" },
+  "premium.sub": { en: "Extra protection for total peace of mind", hi: "पूर्ण मन की शांति हेतु अतिरिक्त सुरक्षा" },
+  "premium.choosePlan": { en: "Planned plans", hi: "नियोजित योजनाएँ" },
+  "premium.subscribe": { en: "Coming soon", hi: "जल्द आ रहा है" },
+  "premium.currentPlan": { en: "Your current plan", hi: "आपकी वर्तमान योजना" },
+  "premium.comingSoon": { en: "Premium is not yet available. These features are planned for a future update.", hi: "प्रीमियम अभी उपलब्ध नहीं है। ये सुविधाएँ भविष्य के अपडेट हेतु नियोजित हैं।" },
+  "premium.note": { en: "Billing is not enabled in this version.", hi: "इस संस्करण में बिलिंग सक्षम नहीं है।" },
+
+  // Data & legal
+  "legal.privacyTitle": { en: "Privacy Policy", hi: "गोपनीयता नीति" },
+  "legal.termsTitle": { en: "Terms of Use", hi: "उपयोग की शर्तें" },
+  "legal.updated": { en: "Last updated: June 2026", hi: "अंतिम अपडेट: जून 2026" },
+  "data.title": { en: "Your Data & Account", hi: "आपका डेटा और खाता" },
+  "data.sub": { en: "What we store and how to remove it", hi: "हम क्या सहेजते हैं और इसे कैसे हटाएँ" },
+  "data.deleteHeading": { en: "Delete all data", hi: "सारा डेटा हटाएँ" },
+  "data.deleteBody": { en: "This permanently removes your contacts, profile, journal entries and settings from this device. This cannot be undone.", hi: "यह आपके संपर्क, प्रोफ़ाइल, डायरी प्रविष्टियाँ और सेटिंग्स इस डिवाइस से स्थायी रूप से हटा देता है। इसे पूर्ववत नहीं किया जा सकता।" },
+  "data.deleteBtn": { en: "Delete all my data", hi: "मेरा सारा डेटा हटाएँ" },
+  "data.confirmTitle": { en: "Delete everything?", hi: "सब कुछ हटाएँ?" },
+  "data.confirmBody": { en: "All your data on this device will be erased and the app will restart from onboarding.", hi: "इस डिवाइस का आपका सारा डेटा मिट जाएगा और ऐप ऑनबोर्डिंग से फिर शुरू होगा।" },
+  "data.deleted": { en: "All data deleted", hi: "सारा डेटा हटाया गया" },
+
+  // Common
+  "common.save": { en: "Save", hi: "सहेजें" },
+  "common.cancel": { en: "Cancel", hi: "रद्द करें" },
+  "common.done": { en: "Done", hi: "पूर्ण" },
+  "common.calling": { en: "Calling", hi: "कॉल कर रहे हैं" },
+  "common.navigatingTo": { en: "Navigating to", hi: "रास्ता दिखा रहे हैं" },
+  "common.send": { en: "Send", hi: "भेजें" },
+  "common.name": { en: "Name", hi: "नाम" },
+};

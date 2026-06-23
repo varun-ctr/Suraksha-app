@@ -11,3 +11,9 @@ id = "onooDgf9Lo2k02Dgd6KXR"
 uri = "file://suraksha-source-code.txt"
 type = "text"
 title = "Suraksha — Full Source Code"
+
+[[outputs]]
+id = "sfeiCrFtWmKoGZbWFOsIA"
+uri = "file://suraksha_source_code.txt"
+type = "text"
+title = "Suraksha — Complete Source Code"
