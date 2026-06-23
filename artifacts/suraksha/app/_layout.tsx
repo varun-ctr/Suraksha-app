@@ -35,6 +35,7 @@ function RootLayoutNav() {
       <Stack.Screen name="privacy" />
       <Stack.Screen name="terms" />
       <Stack.Screen name="data" />
+      <Stack.Screen name="sessions" />
     </Stack>
   );
 }

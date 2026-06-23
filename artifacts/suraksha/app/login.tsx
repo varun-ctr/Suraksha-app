@@ -1,6 +1,6 @@
 import { BlurView } from "expo-blur";
 import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ImageBackground,
@@ -14,28 +14,84 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { CountryCodePicker } from "@/components/CountryCodePicker";
+import { DEFAULT_COUNTRY, type CountryOption } from "@/constants/countries";
 import { useI18n } from "@/context/LanguageContext";
-import { onAuthStateChange, sendOtp, verifyOtp } from "@/lib/auth";
+import {
+  onAuthStateChange,
+  sendOtp,
+  sendPhoneOtp,
+  verifyOtp,
+  verifyPhoneOtp,
+} from "@/lib/auth";
 
 const PRIMARY = "#7C3AED";
 const loginBg = require("@/assets/images/login-bg.png");
 
-type Step = "email" | "waiting" | "code";
+type LoginTab = "phone" | "email";
+type PhoneStep = "phone" | "otp";
+type EmailStep = "email" | "waiting" | "code";
 
+// ---------------------------------------------------------------------------
+// 6-box OTP display
+// ---------------------------------------------------------------------------
+function OtpBoxes({
+  value,
+  onPress,
+}: {
+  value: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={styles.otpRow} accessibilityLabel="OTP input">
+      {Array.from({ length: 6 }).map((_, i) => {
+        const char = value[i];
+        const isActive = i === value.length && value.length < 6;
+        return (
+          <View
+            key={i}
+            style={[
+              styles.otpBox,
+              char ? styles.otpBoxFilled : styles.otpBoxEmpty,
+              isActive && styles.otpBoxActive,
+            ]}
+          >
+            <Text style={styles.otpBoxChar}>{char ?? ""}</Text>
+          </View>
+        );
+      })}
+    </Pressable>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main screen
+// ---------------------------------------------------------------------------
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { t } = useI18n();
 
-  const [step, setStep] = useState<Step>("email");
+  const [tab, setTab] = useState<LoginTab>("phone");
+
+  // Phone flow
+  const [country, setCountry] = useState<CountryOption>(DEFAULT_COUNTRY);
+  const [localPhone, setLocalPhone] = useState("");
+  const [phoneStep, setPhoneStep] = useState<PhoneStep>("phone");
+  const [phoneOtp, setPhoneOtp] = useState("");
+  const [countdown, setCountdown] = useState(0);
+  const otpInputRef = useRef<TextInput>(null);
+
+  // Email flow
+  const [emailStep, setEmailStep] = useState<EmailStep>("email");
   const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
+  const [emailOtp, setEmailOtp] = useState("");
+
+  // Shared
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Auto-complete when the user clicks the magic link in their email.
-  // Supabase fires SIGNED_IN after processing the URL hash on web, or after
-  // the deep-link on native.
+  // Auto-navigate when Supabase fires SIGNED_IN (magic link or OTP success)
   useEffect(() => {
     const { unsubscribe } = onAuthStateChange((event) => {
       if (event === "SIGNED_IN") {
@@ -45,7 +101,107 @@ export default function LoginScreen() {
     return unsubscribe;
   }, [router]);
 
-  const handleSendOtp = async () => {
+  // Countdown for phone OTP resend
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const t = setTimeout(() => setCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [countdown]);
+
+  // Auto-focus OTP input when entering otp step
+  useEffect(() => {
+    if (phoneStep === "otp") {
+      const t = setTimeout(() => otpInputRef.current?.focus(), 180);
+      return () => clearTimeout(t);
+    }
+  }, [phoneStep]);
+
+  const switchTab = (t: LoginTab) => {
+    setTab(t);
+    setError(null);
+  };
+
+  // ── Phone: send OTP ──────────────────────────────────────────────────────
+  const handleSendPhoneOtp = useCallback(async () => {
+    const digits = localPhone.trim().replace(/\D/g, "");
+    if (digits.length < 4) {
+      setError(t("login.invalidPhone"));
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    const fullPhone = `${country.dial}${digits}`;
+    const result = await sendPhoneOtp(fullPhone);
+    setLoading(false);
+    if (result.error === "rate_limited") {
+      setError(t("login.rateLimited").replace("{n}", String(result.rateLimitMinutes ?? 60)));
+      return;
+    }
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    setPhoneOtp("");
+    setPhoneStep("otp");
+    setCountdown(30);
+  }, [localPhone, country, t]);
+
+  // ── Phone: verify OTP ────────────────────────────────────────────────────
+  const handleVerifyPhoneOtp = useCallback(
+    async (codeOverride?: string) => {
+      const code = codeOverride ?? phoneOtp;
+      if (code.length !== 6) {
+        setError(t("login.invalidCode"));
+        return;
+      }
+      setError(null);
+      setLoading(true);
+      const fullPhone = `${country.dial}${localPhone.trim().replace(/\D/g, "")}`;
+      const { error: err } = await verifyPhoneOtp(fullPhone, code);
+      setLoading(false);
+      if (err) {
+        setError(err);
+      } else {
+        router.replace("/(tabs)" as never);
+      }
+    },
+    [phoneOtp, country, localPhone, router, t],
+  );
+
+  // ── Phone: resend OTP ─────────────────────────────────────────────────────
+  const handleResendPhoneOtp = useCallback(async () => {
+    setPhoneOtp("");
+    setError(null);
+    setLoading(true);
+    const fullPhone = `${country.dial}${localPhone.trim().replace(/\D/g, "")}`;
+    const result = await sendPhoneOtp(fullPhone);
+    setLoading(false);
+    if (result.error === "rate_limited") {
+      setError(t("login.rateLimited").replace("{n}", String(result.rateLimitMinutes ?? 60)));
+      return;
+    }
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    setCountdown(30);
+  }, [country, localPhone, t]);
+
+  // ── Phone: handle OTP input change (auto-submit at 6 digits) ─────────────
+  const handlePhoneOtpChange = useCallback(
+    (v: string) => {
+      const digits = v.replace(/\D/g, "").slice(0, 6);
+      setPhoneOtp(digits);
+      setError(null);
+      if (digits.length === 6) {
+        void handleVerifyPhoneOtp(digits);
+      }
+    },
+    [handleVerifyPhoneOtp],
+  );
+
+  // ── Email: send OTP ───────────────────────────────────────────────────────
+  const handleSendEmailOtp = useCallback(async () => {
     const trimmed = email.trim().toLowerCase();
     if (!trimmed.includes("@")) {
       setError(t("login.invalidEmail"));
@@ -58,12 +214,13 @@ export default function LoginScreen() {
     if (err) {
       setError(err);
     } else {
-      setStep("waiting");
+      setEmailStep("waiting");
     }
-  };
+  }, [email, t]);
 
-  const handleVerifyOtp = async () => {
-    const code = otp.trim();
+  // ── Email: verify OTP ──────────────────────────────────────────────────────
+  const handleVerifyEmailOtp = useCallback(async () => {
+    const code = emailOtp.trim();
     if (code.length !== 6) {
       setError(t("login.invalidCode"));
       return;
@@ -77,13 +234,16 @@ export default function LoginScreen() {
     } else {
       router.replace("/(tabs)" as never);
     }
-  };
+  }, [email, emailOtp, router, t]);
 
-  const resetToEmail = () => {
-    setStep("email");
-    setOtp("");
+  const resetEmailFlow = () => {
+    setEmailStep("email");
+    setEmailOtp("");
     setError(null);
   };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  const sentTo = `${country.flag} ${country.dial} ${localPhone.trim()}`;
 
   return (
     <ImageBackground source={loginBg} style={styles.bg} resizeMode="cover">
@@ -100,8 +260,119 @@ export default function LoginScreen() {
           </View>
 
           <BlurView intensity={60} tint="light" style={styles.card}>
-            {/* ── Step 1: Enter email ── */}
-            {step === "email" && (
+            {/* ── Tab selector ── */}
+            <View style={styles.tabRow}>
+              {(["phone", "email"] as LoginTab[]).map((tk) => (
+                <Pressable
+                  key={tk}
+                  onPress={() => switchTab(tk)}
+                  style={[styles.tabBtn, tab === tk && styles.tabBtnActive]}
+                >
+                  <Text style={[styles.tabText, tab === tk && styles.tabTextActive]}>
+                    {tk === "phone" ? t("login.tabMobile") : t("login.tabEmail")}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {/* ══════════════════════════════════════════════════════════════ */}
+            {/*  PHONE TAB                                                    */}
+            {/* ══════════════════════════════════════════════════════════════ */}
+            {tab === "phone" && phoneStep === "phone" && (
+              <>
+                <Text style={styles.cardTitle}>{t("login.signIn")}</Text>
+                <Text style={styles.cardSub}>{t("login.phoneSub")}</Text>
+
+                <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+                  <CountryCodePicker value={country} onChange={(c) => { setCountry(c); setError(null); }} />
+                  <TextInput
+                    value={localPhone}
+                    onChangeText={(v) => { setLocalPhone(v.replace(/\D/g, "")); setError(null); }}
+                    placeholder={t("login.phonePlaceholder")}
+                    placeholderTextColor="rgba(80,60,120,0.45)"
+                    keyboardType="number-pad"
+                    maxLength={15}
+                    style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                    returnKeyType="done"
+                    onSubmitEditing={handleSendPhoneOtp}
+                  />
+                </View>
+
+                {error && <Text style={styles.error}>{error}</Text>}
+
+                <Pressable
+                  onPress={handleSendPhoneOtp}
+                  disabled={loading}
+                  style={[styles.btn, { opacity: loading ? 0.7 : 1 }]}
+                >
+                  {loading
+                    ? <ActivityIndicator color="#fff" />
+                    : <Text style={styles.btnText}>{t("login.sendOtp")}</Text>}
+                </Pressable>
+              </>
+            )}
+
+            {tab === "phone" && phoneStep === "otp" && (
+              <>
+                <Text style={styles.cardTitle}>{t("login.enterCode")}</Text>
+                <Text style={styles.cardSub}>
+                  {t("login.otpSentTo").replace("{phone}", sentTo)}
+                </Text>
+
+                {/* 6-box OTP display */}
+                <OtpBoxes value={phoneOtp} onPress={() => otpInputRef.current?.focus()} />
+
+                {/* Hidden input that captures actual typing */}
+                <TextInput
+                  ref={otpInputRef}
+                  value={phoneOtp}
+                  onChangeText={handlePhoneOtpChange}
+                  keyboardType="number-pad"
+                  textContentType="oneTimeCode"
+                  autoComplete="sms-otp"
+                  caretHidden
+                  maxLength={6}
+                  style={{ height: 1, opacity: 0, marginBottom: 0 }}
+                />
+
+                {error && <Text style={styles.error}>{error}</Text>}
+
+                <Pressable
+                  onPress={() => handleVerifyPhoneOtp()}
+                  disabled={loading || phoneOtp.length !== 6}
+                  style={[styles.btn, { opacity: loading || phoneOtp.length !== 6 ? 0.6 : 1, marginTop: 4 }]}
+                >
+                  {loading
+                    ? <ActivityIndicator color="#fff" />
+                    : <Text style={styles.btnText}>{t("login.verify")}</Text>}
+                </Pressable>
+
+                {/* Resend / countdown row */}
+                <View style={styles.resendRow}>
+                  {countdown > 0 ? (
+                    <Text style={styles.countdownText}>
+                      {t("login.resendIn").replace("{n}", String(countdown))}
+                    </Text>
+                  ) : (
+                    <Pressable onPress={handleResendPhoneOtp} disabled={loading} style={styles.linkBtn}>
+                      <Text style={styles.linkBtnText}>{t("login.resend")}</Text>
+                    </Pressable>
+                  )}
+                </View>
+
+                <Pressable
+                  onPress={() => { setPhoneStep("phone"); setPhoneOtp(""); setError(null); }}
+                  style={styles.backBtn}
+                >
+                  <Text style={styles.backBtnText}>{t("login.backToPhone")}</Text>
+                </Pressable>
+              </>
+            )}
+
+            {/* ══════════════════════════════════════════════════════════════ */}
+            {/*  EMAIL TAB                                                    */}
+            {/* ══════════════════════════════════════════════════════════════ */}
+            {tab === "email" && emailStep === "email" && (
               <>
                 <Text style={styles.cardTitle}>{t("login.signIn")}</Text>
                 <Text style={styles.cardSub}>{t("login.signInSub")}</Text>
@@ -117,13 +388,13 @@ export default function LoginScreen() {
                   autoCorrect={false}
                   style={styles.input}
                   returnKeyType="done"
-                  onSubmitEditing={handleSendOtp}
+                  onSubmitEditing={handleSendEmailOtp}
                 />
 
                 {error && <Text style={styles.error}>{error}</Text>}
 
                 <Pressable
-                  onPress={handleSendOtp}
+                  onPress={handleSendEmailOtp}
                   disabled={loading}
                   style={[styles.btn, { opacity: loading ? 0.7 : 1 }]}
                 >
@@ -134,8 +405,7 @@ export default function LoginScreen() {
               </>
             )}
 
-            {/* ── Step 2: Waiting for magic link click ── */}
-            {step === "waiting" && (
+            {tab === "email" && emailStep === "waiting" && (
               <>
                 <Text style={styles.cardTitle}>{t("login.checkEmail")}</Text>
                 <Text style={styles.cardSub}>
@@ -153,39 +423,38 @@ export default function LoginScreen() {
                   <View style={styles.dividerLine} />
                 </View>
 
-                <Pressable onPress={() => setStep("code")} style={styles.linkBtn}>
+                <Pressable onPress={() => setEmailStep("code")} style={styles.linkBtn}>
                   <Text style={styles.linkBtnText}>{t("login.enterCodeInstead")}</Text>
                 </Pressable>
 
-                <Pressable onPress={resetToEmail} style={styles.backBtn}>
+                <Pressable onPress={resetEmailFlow} style={styles.backBtn}>
                   <Text style={styles.backBtnText}>{t("login.useDifferentEmail")}</Text>
                 </Pressable>
               </>
             )}
 
-            {/* ── Step 3: Enter 6-digit OTP code ── */}
-            {step === "code" && (
+            {tab === "email" && emailStep === "code" && (
               <>
                 <Text style={styles.cardTitle}>{t("login.enterCode")}</Text>
                 <Text style={styles.cardSub}>{t("login.enterCodeSub")}</Text>
 
                 <Text style={styles.label}>{t("login.otpLabel")}</Text>
                 <TextInput
-                  value={otp}
-                  onChangeText={(v) => { setOtp(v.replace(/\D/g, "").slice(0, 6)); setError(null); }}
+                  value={emailOtp}
+                  onChangeText={(v) => { setEmailOtp(v.replace(/\D/g, "").slice(0, 6)); setError(null); }}
                   placeholder="123456"
                   placeholderTextColor="rgba(80,60,120,0.45)"
                   keyboardType="number-pad"
-                  style={[styles.input, styles.otpInput]}
+                  style={[styles.input, styles.otpTextInput]}
                   returnKeyType="done"
-                  onSubmitEditing={handleVerifyOtp}
+                  onSubmitEditing={handleVerifyEmailOtp}
                   maxLength={6}
                 />
 
                 {error && <Text style={styles.error}>{error}</Text>}
 
                 <Pressable
-                  onPress={handleVerifyOtp}
+                  onPress={handleVerifyEmailOtp}
                   disabled={loading}
                   style={[styles.btn, { opacity: loading ? 0.7 : 1 }]}
                 >
@@ -194,7 +463,7 @@ export default function LoginScreen() {
                     : <Text style={styles.btnText}>{t("login.verify")}</Text>}
                 </Pressable>
 
-                <Pressable onPress={resetToEmail} style={styles.backBtn}>
+                <Pressable onPress={resetEmailFlow} style={styles.backBtn}>
                   <Text style={styles.backBtnText}>{t("login.useDifferentEmail")}</Text>
                 </Pressable>
               </>
@@ -242,6 +511,26 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     zIndex: 1,
   },
+  tabRow: {
+    flexDirection: "row",
+    backgroundColor: "rgba(40,20,70,0.1)",
+    borderRadius: 12,
+    padding: 3,
+    marginBottom: 20,
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: "center",
+    borderRadius: 10,
+  },
+  tabBtnActive: { backgroundColor: PRIMARY },
+  tabText: {
+    fontSize: 12.5,
+    fontFamily: "Inter_600SemiBold",
+    color: "rgba(40,20,70,0.55)",
+  },
+  tabTextActive: { color: "#fff" },
   cardTitle: {
     fontSize: 22,
     fontFamily: "Inter_700Bold",
@@ -271,11 +560,55 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(124,58,237,0.2)",
   },
-  otpInput: {
+  otpTextInput: {
     fontSize: 24,
     letterSpacing: 8,
     fontFamily: "Inter_700Bold",
     textAlign: "center",
+  },
+  // 6-box OTP
+  otpRow: {
+    flexDirection: "row",
+    gap: 7,
+    justifyContent: "center",
+    marginBottom: 4,
+    marginTop: 4,
+  },
+  otpBox: {
+    width: 42,
+    height: 52,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+  },
+  otpBoxEmpty: {
+    backgroundColor: "rgba(255,255,255,0.5)",
+    borderColor: "rgba(124,58,237,0.25)",
+  },
+  otpBoxFilled: {
+    backgroundColor: "rgba(124,58,237,0.1)",
+    borderColor: PRIMARY,
+  },
+  otpBoxActive: {
+    borderColor: PRIMARY,
+    borderWidth: 2,
+    backgroundColor: "rgba(255,255,255,0.65)",
+  },
+  otpBoxChar: {
+    fontSize: 22,
+    fontFamily: "Inter_700Bold",
+    color: "#1A0A2E",
+  },
+  resendRow: {
+    alignItems: "center",
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  countdownText: {
+    fontSize: 12.5,
+    color: "rgba(40,20,70,0.55)",
+    fontFamily: "Inter_500Medium",
   },
   error: {
     fontSize: 12,
@@ -293,18 +626,25 @@ const styles = StyleSheet.create({
   btnText: { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
   backBtn: { alignItems: "center", marginTop: 14 },
   backBtnText: { fontSize: 13, color: "rgba(40,20,70,0.6)", fontFamily: "Inter_500Medium" },
+  linkBtn: {
+    borderWidth: 1,
+    borderColor: "rgba(124,58,237,0.3)",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  linkBtnText: { fontSize: 13, color: PRIMARY, fontFamily: "Inter_600SemiBold" },
   waitingRow: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    backgroundColor: "rgba(124,58,237,0.08)", borderRadius: 12,
-    padding: 14, marginBottom: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "rgba(124,58,237,0.08)",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 18,
   },
   waitingText: { flex: 1, fontSize: 13, color: "rgba(40,20,70,0.75)", lineHeight: 18 },
   dividerRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 },
   dividerLine: { flex: 1, height: 1, backgroundColor: "rgba(40,20,70,0.15)" },
   dividerLabel: { fontSize: 11, color: "rgba(40,20,70,0.45)", fontFamily: "Inter_500Medium" },
-  linkBtn: {
-    borderWidth: 1, borderColor: "rgba(124,58,237,0.3)",
-    borderRadius: 12, paddingVertical: 12, alignItems: "center",
-  },
-  linkBtnText: { fontSize: 13, color: PRIMARY, fontFamily: "Inter_600SemiBold" },
 });

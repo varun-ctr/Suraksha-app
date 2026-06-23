@@ -301,6 +301,13 @@ export default function ProfileScreen() {
           />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
           <Row
+            icon="user"
+            color={c.police}
+            label={t("account.sessions")}
+            onPress={() => router.push("/sessions" as never)}
+          />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row
             icon="logOut"
             color="#E53E3E"
             label={lang === "hi" ? "साइन आउट" : "Sign out"}
