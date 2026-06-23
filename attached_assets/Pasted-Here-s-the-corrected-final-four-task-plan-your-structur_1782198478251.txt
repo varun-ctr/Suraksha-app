@@ -1,0 +1,132 @@
+Here's the corrected, final four-task plan — your structure kept exactly, with the six fixes from Foundation and the two refinements to Map Pins folded in directly. Paste each task into Replit's agent in order (Foundation → Auth → Sakhi/Map in either order, both depend only on Foundation).
+
+---
+
+## 1 — Foundation: Supabase + Express Backend
+
+**What & Why**
+Replace the old Replit-managed api-server wiring with a self-contained Express backend and a Supabase integration, providing the shared foundation every other upgrade task depends on: auth client, database tables, backend routes (Sakhi chat, nearby places, RevenueCat webhook).
+
+**Done looks like**
+- `lib/supabaseClient.ts` exports an initialised Supabase client using `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, with AsyncStorage session storage.
+- `lib/auth.ts` exports `sendOtp`, `verifyOtp`, `signOut`, `getCurrentUser`, `onAuthStateChange`.
+- `server/index.js` starts on `process.env.PORT`, binds `0.0.0.0`, loads secrets from env, and serves three routes: `POST /sakhi-chat`, `GET /nearby-places`, `POST /revenuecat-webhook`.
+- `/sakhi-chat` verifies the Supabase Bearer token, checks the `profiles` row for `is_premium` + `sakhi_message_count`, enforces the 5-message free cap (returns 402 with `error:"limit_reached"` when exceeded), increments the count on success, and forwards the conversation to OpenAI `gpt-4o-mini` via a plain `fetch` call to `https://api.openai.com/v1/chat/completions` — **do not add the `openai` npm package**, no SDK dependency needed.
+- `/nearby-places` proxies Google Places Nearby Search (and `searchText` for shelter) using `GOOGLE_PLACES_API_KEY` with a strict field mask (`id,displayName,formattedAddress,location`); results cached 5 minutes in memory keyed by category + rounded lat/lng to **3 decimal places** (~111m precision — 1 decimal place is too coarse at ~11km and would serve wrong-neighborhood results to nearby users).
+- `/revenuecat-webhook` is guarded by `REVENUECAT_WEBHOOK_SECRET`; on event types `INITIAL_PURCHASE`, `RENEWAL`, `UNCANCELLATION`, `PRODUCT_CHANGE` sets `is_premium=true` and `premium_until` from `expiration_at_ms`; on `EXPIRATION` sets `is_premium=false`; returns 501 when the secret is not configured.
+- The old `@workspace/api-client-react` import and `EXPO_PUBLIC_DOMAIN` / `setBaseUrl` wiring are removed from `app/_layout.tsx` and `app/(tabs)/sakhi.tsx`. `QueryClientProvider` and `@tanstack/react-query` are also removed if no other screen uses them.
+- A `DATABASE_SETUP.sql` file is added at the repo root with the exact SQL the user should paste into the Supabase SQL Editor: `profiles` table (with auto-create trigger on `auth.users`), `live_sessions` table, and all RLS policies described in the spec.
+- A README block lists the required Replit Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, `GOOGLE_PLACES_API_KEY`, `REVENUECAT_WEBHOOK_SECRET` (optional); and the required Expo public env vars: `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `EXPO_PUBLIC_BACKEND_URL`, `EXPO_PUBLIC_LIVE_TRACKER_URL`.
+
+**Out of scope**
+Login UI screen (separate task). Map pins UI and live SOS UI (separate task). RevenueCat mobile SDK (separate task).
+
+**Steps**
+1. Secrets registration — Document all required secrets; register `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, `GOOGLE_PLACES_API_KEY` as Replit Secrets and set the `EXPO_PUBLIC_*` env vars.
+2. Supabase client lib — Create `lib/supabaseClient.ts` using `@supabase/supabase-js` with AsyncStorage adapter, `autoRefreshToken`/`persistSession` true, `detectSessionInUrl` false.
+3. Auth helpers — Create `lib/auth.ts` wrapping `signInWithOtp` (type email), `verifyOtp`, `signOut`, `getUser`, and `onAuthStateChange`.
+4. Database SQL file — Write `DATABASE_SETUP.sql` with all DDL and RLS from the spec, including the `profiles` trigger and `live_sessions` table with the 3-decimal-precision note documented as a comment near the cache logic (not in SQL itself — that's server-side).
+5. Express server — Replace/update `server/index.js`: CORS, JSON body parsing, bind `0.0.0.0:PORT`. Implement the three routes with auth verification, OpenAI forwarding (raw `fetch`, no SDK), Places proxy (3-decimal cache key), RevenueCat webhook (explicit event-type sets as listed above), and in-memory cache.
+6. Remove old wiring — Strip `setBaseUrl`, `EXPO_PUBLIC_DOMAIN`, `QueryClientProvider`, and `@workspace/api-client-react` imports from `_layout.tsx` and `sakhi.tsx` (leave the Sakhi screen intact — it will be rewired in the Sakhi task).
+7. Install packages — `@supabase/supabase-js`, `react-native-url-polyfill` in the mobile workspace; `express`, `cors`, `@supabase/supabase-js` in the server workspace (no `openai` package).
+8. Verify `react-native-maps` — Confirm `react-native-maps` is already present in the mobile workspace's `package.json` (it should be, since `components/MapPreview.tsx` already imports `MapView` from it). If missing, add it now since the Map Pins task depends on it.
+
+**Relevant files**
+`artifacts/suraksha/app/_layout.tsx`, `artifacts/suraksha/app/(tabs)/sakhi.tsx`, `artifacts/api-server/src/index.ts`, `artifacts/suraksha/lib/secureStore.ts`
+
+---
+
+## 2 — Auth Gate + Login Screen
+
+*(unchanged from your version — no corrections needed here)*
+
+**What & Why**
+Add a Supabase email-OTP login screen with a cinematic frosted-glass UI, and update the app's routing gate so unauthenticated users are sent to `/login` before they can reach the tabs. This replaces the current onboarding-only gate.
+
+**Done looks like**
+- `app/login.tsx` shows a two-step flow: enter email → receive 6-digit OTP → verify → land on `/(tabs)`. The screen uses an `ImageBackground` with the AI-generated `assets/images/login-bg.jpg`, a dark scrim overlay (`rgba(20,10,30,0.55)`), and the form inside an `expo-blur` `BlurView` (intensity 60, tint "light") so the photo is visible but softly blurred behind readable text. Primary buttons use `#7C3AED`. Error states are shown inline.
+- `assets/images/login-bg.jpg` is an AI-generated portrait: confident young Indian woman, golden-hour light, warm purple/amber tones, 9:16 vertical, no text.
+- The routing gate in `app/_layout.tsx` is extended: after all contexts are ready, if there is no authenticated Supabase session AND the user is not already on `/login`, redirect to `/login`. If authenticated and on `/login`, redirect to the appropriate screen (onboarding if not yet onboarded, else tabs).
+- `expo-blur` is installed and working.
+- `app/login.tsx` is registered as a `Stack.Screen` in `_layout.tsx`.
+- Signing out from Profile sends the user back to `/login`.
+
+**Out of scope**
+Social/OAuth login (email OTP only). Persisting the user's name to the Supabase `profiles` table. RevenueCat premium SDK.
+
+**Steps**
+1. AI login background — Generate `assets/images/login-bg.jpg` with the exact prompt from the spec.
+2. Login screen — Build `app/login.tsx`: two-step form, calls `sendOtp`/`verifyOtp` from `lib/auth.ts`, navigates on success. Style with `ImageBackground` + scrim + `BlurView` card. Use existing `#7C3AED` color token.
+3. Auth gate — Update `Gate` in `app/_layout.tsx` to read the Supabase session alongside existing `appReady`/`themeReady`/`langReady` checks, and route unauthenticated users to `/login`.
+4. Register screen + sign-out — Add `<Stack.Screen name="login" />`. Update sign-out in `app/(tabs)/profile.tsx` to call `signOut()`.
+5. Install `expo-blur`.
+
+**Relevant files**
+`artifacts/suraksha/app/_layout.tsx`, `artifacts/suraksha/app/(tabs)/profile.tsx`
+**Dependencies**: Supabase client + Express backend (Task 1)
+
+---
+
+## 3 — Sakhi Chat + Premium Upgrade
+
+*(unchanged from your version — no corrections needed here)*
+
+**What & Why**
+Replace the old `@workspace/api-client-react` Sakhi hook with a new `lib/sakhi.ts` client that calls the self-hosted backend, enforces the 5-message free cap with a paywall UI, and adds the RevenueCat mobile SDK so users can subscribe to unlock unlimited Sakhi access.
+
+**Done looks like**
+- `lib/sakhi.ts` exports `sendSakhiMessage(messages)` — gets the current Supabase session token (returns `auth_required` if no session), POSTs to `${EXPO_PUBLIC_BACKEND_URL}/sakhi-chat`, returns a discriminated-union result: `{ ok: true, reply } | { ok: false, reason: "limit_reached" | "auth_required" | "network" | "server" }`.
+- `lib/premium.ts` exports `configurePurchases(supabaseUserId)`, `isPremiumActive()`, `getOfferings()`, `purchasePackage(pkg)`, `restorePurchases()`, and `syncPremiumStatusToSupabase(supabase)`.
+- `app/(tabs)/sakhi.tsx` imports `sendSakhiMessage` from `lib/sakhi.ts` instead of `@workspace/api-client-react`. On `limit_reached`, a paywall bottom-sheet or inline banner shown with an "Upgrade to Premium" CTA navigating to `/(app)/premium`. On `auth_required`, an inline prompt encourages login.
+- `app/premium.tsx` subscription buttons wired to `purchasePackage`/`restorePurchases`. "Coming soon" placeholder replaced with real purchase flows. Entitlement state from RevenueCat drives the "active plan" display.
+- `react-native-purchases` is installed in the mobile workspace.
+- Existing Sakhi UI styling fully preserved — only the data layer changes.
+
+**Out of scope**
+RevenueCat backend webhook (handled in Foundation). Profile screen premium badge (already driven by `AppContext`). Server-side Sakhi logic (handled in Foundation).
+
+**Steps**
+1. Install `react-native-purchases`.
+2. Create `lib/sakhi.ts` — typed fetch wrapper as specified above.
+3. Create `lib/premium.ts` — RevenueCat SDK wrapper, configured with `EXPO_PUBLIC_REVENUECAT_API_KEY`.
+4. Rewire `sakhi.tsx` — replace old hook with `useState`/`useCallback` calling `sendSakhiMessage`; add paywall banner and auth prompt; preserve existing UI structure.
+5. Wire `premium.tsx` — real `purchasePackage` calls, restore button, active entitlement display.
+6. Initialise RevenueCat in `_layout.tsx` — call `configurePurchases` once the Supabase user is known.
+
+**Relevant files**
+`artifacts/suraksha/app/(tabs)/sakhi.tsx`, `artifacts/suraksha/app/premium.tsx`, `artifacts/suraksha/app/_layout.tsx`
+**Dependencies**: Supabase client + Express backend (Task 1)
+
+---
+
+## 4 — Real Map Pins + Live SOS Tracking
+
+**What & Why**
+Upgrade the map screen to show real nearby-place pins fetched from the backend (police stations, hospitals, pharmacies, shelters), and add live GPS tracking during SOS so trusted contacts receive a Supabase Realtime-powered tracking link instead of a static coordinate.
+
+**Done looks like**
+- `lib/nearbyPlaces.ts` exports `fetchNearbyPlaces(lat, lng, category)` — fetches `${EXPO_PUBLIC_BACKEND_URL}/nearby-places`, returns a typed `NearbyPlace[]` (`id, name, address, lat, lng`).
+- `app/(tabs)/map.tsx` (native only): after a category card is tapped, calls `fetchNearbyPlaces` and renders results as `<Marker>` pins on the existing `react-native-maps` `MapView`. **Each marker uses the same per-category color as its card icon** (police/hospital/pharmacy/shelter colors already defined in `CATEGORIES`) via `pinColor`. Tapping a marker opens a **`<Callout>`** (not a bottom sheet — no new dependency needed) showing name, address, and a "Navigate" button that calls **`navigateTo(lat, lng, label)`** from `lib/native.ts` (the existing function that opens the device's maps app at exact coordinates — distinct from the card-level `searchNearby`, which stays as the secondary category-search action on each card). Web platform (`MapPreview.web.tsx`) is unchanged.
+- `lib/liveSession.ts` exports `startLiveSession()` (inserts a `live_sessions` row, returns `{ shareId, shareUrl }` where `shareUrl = ${EXPO_PUBLIC_LIVE_TRACKER_URL}/${shareId}`), `updateLiveSession(shareId, lat, lng, accuracy)`, and `endLiveSession(shareId)`. All calls are no-ops / silently skipped if no Supabase user is signed in.
+- `context/SafetyContext.tsx` is updated: `triggerSOS()` calls `startLiveSession()` and begins `Location.watchPositionAsync` (high accuracy, ~10s interval, 10m distance filter), pushing updates via `updateLiveSession`. `cancelSOS()` (and provider unmount cleanup) stops the watcher and calls `endLiveSession`. `SosState` gains an optional `shareUrl` field populated once `startLiveSession` resolves.
+- `components/SosModal.tsx` is updated: when `sos.shareUrl` is set, the SMS/WhatsApp message body uses it instead of the static Google Maps link. A small "Live tracking is on" badge with a green dot is shown in the location panel.
+- `web/live.html` is a single self-contained HTML file (no build step): reads `shareId` from the URL path, connects to Supabase via the JS CDN client (Supabase URL and publishable key are hand-filled into the file before each deploy — these are public-safe values protected by RLS, not secrets, but must be updated manually if keys ever rotate), loads the initial `live_sessions` row by `shareId`, subscribes to Realtime UPDATE events on that row, renders a moving marker on a Leaflet/OpenStreetMap map. Shows "Session ended" when `is_active` becomes false or `expires_at` is past. Works on any device without installing the app.
+
+**Out of scope**
+In-app real-time tracking of someone else's location (recipients use the web link). RevenueCat or Sakhi changes (separate tasks). Routing/turn-by-turn navigation (external maps app handles this).
+
+**Steps**
+1. `lib/nearbyPlaces.ts` — Typed fetch wrapper around `/nearby-places`; handles network errors gracefully, returns an empty array on failure.
+2. Map screen — fetch + pins — Update `app/(tabs)/map.tsx`: on category tap, fetch nearby places; show a loading indicator on the card while fetching; render `<Marker>` pins colored per category, each with a `<Callout>` showing name, address, and a "Navigate" button wired to `navigateTo`. Keep the existing external-maps icon (`searchNearby`) as the card's secondary action. Handle empty results with an inline notice. Web platform file untouched.
+3. `lib/liveSession.ts` — Supabase insert/update/delete helpers for `live_sessions`; guard all calls with a `getCurrentUser()` check so they silently skip when unauthenticated.
+4. SafetyContext live tracking — Extend `triggerSOS` to call `startLiveSession` and begin position watching; extend `cancelSOS` and the cleanup effect to stop watching and call `endLiveSession`. Expose `shareUrl` in `SosState`.
+5. SosModal badge + message update — Prefer `shareUrl` over the static coordinate link in SMS/WhatsApp bodies; add "Live tracking is on" green-dot badge in the location panel.
+6. `web/live.html` — Static single-file Leaflet tracker; reads `share_id` from URL path, loads row, subscribes to Realtime updates, moves marker, shows ended/expired state.
+
+**Relevant files**
+`artifacts/suraksha/app/(tabs)/map.tsx`, `artifacts/suraksha/components/MapPreview.tsx`, `artifacts/suraksha/components/MapPreview.web.tsx`, `artifacts/suraksha/context/SafetyContext.tsx`, `artifacts/suraksha/components/SosModal.tsx`, `artifacts/suraksha/lib/native.ts`
+**Dependencies**: Supabase client + Express backend (Task 1)
+
+---
+
+**Build order:** Task 1 first, always. Tasks 2, 3, 4 can then run in any order or in parallel since they only depend on Task 1, not on each other.

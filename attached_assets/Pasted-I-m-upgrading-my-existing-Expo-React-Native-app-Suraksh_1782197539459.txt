@@ -1,0 +1,44 @@
+I'm upgrading my existing Expo/React Native app (Suraksha) with account-based login, a usage-limited AI chat feature, real nearby-place pins on the map, and live SOS location sharing. Implement the following:
+
+=== 1. AUTH (Supabase email OTP — no password) ===
+- Install: @supabase/supabase-js, @react-native-async-storage/async-storage, react-native-url-polyfill, expo-blur
+- Create lib/supabaseClient.ts initializing Supabase using EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY from env, with AsyncStorage as the session storage adapter, autoRefreshToken/persistSession true, detectSessionInUrl false.
+- Create lib/auth.ts: sendOtp(email), verifyOtp(email, code), signOut(), getCurrentUser(), onAuthStateChange(callback) using supabase.auth.signInWithOtp / verifyOtp with type "email".
+- Create app/login.tsx: two-step screen (enter email -> enter 6-digit code -> router.replace("/(tabs)") on success). Use ImageBackground with assets/images/login-bg.jpg, a dark scrim overlay (rgba(20,10,30,0.55)), and the form inside an expo-blur BlurView "frosted glass" card (intensity 60, tint "light") so the photo stays visible but blurred behind readable text. Primary buttons use color #7C3AED.
+- Generate assets/images/login-bg.jpg using AI image generation with this prompt: "A confident young Indian woman standing outdoors in soft golden-hour light, smiling slightly, looking directly at camera, warm and safe feeling, shot from chest-up, shallow depth of field with softly blurred background, cinematic portrait photography style, warm purple and amber color tones, vertical 9:16 aspect ratio, high resolution, no text or logos in the image."
+- Gate the app: unauthenticated users route to /login instead of /(tabs).
+- Remove the old EXPO_PUBLIC_DOMAIN / @workspace/api-client-react wiring from app/_layout.tsx — it pointed at the old Replit-managed backend this replaces.
+
+=== 2. DATABASE (Supabase Postgres, run in SQL Editor) ===
+- profiles table: id (uuid, references auth.users), is_premium (boolean, default false), premium_until (timestamptz, nullable), sakhi_message_count (int, default 0), created_at (timestamptz, default now()). Auto-create via trigger on auth.users insert. Enable RLS: users SELECT their own row; users UPDATE only their own is_premium (needed for client-side RevenueCat sync).
+- live_sessions table: share_id (uuid, primary key, default gen_random_uuid()), user_id (uuid, references auth.users), lat/lng/accuracy (double precision), is_active (boolean, default true), started_at/updated_at (timestamptz, default now()), expires_at (timestamptz, default now() + interval '6 hours'). Enable RLS: owning user can do anything on their own rows (using/with check auth.uid() = user_id); anyone holding the share_id can SELECT rows where is_active = true and expires_at > now() (this is the public read policy the contact's web page uses). Enable Realtime replication on this table via Dashboard > Database > Replication.
+
+=== 3. BACKEND (Node/Express server hosted in this Repl, NOT Supabase Edge Functions) ===
+Create server/index.js — one Express server with CORS + JSON body parsing, reading SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, OPENAI_API_KEY, GOOGLE_PLACES_API_KEY, REVENUECAT_WEBHOOK_SECRET from Replit Secrets (never hardcoded). Listen on process.env.PORT, bind 0.0.0.0. Add a .replit file: run = "node server/index.js".
+
+Routes:
+a) POST /sakhi-chat — verify the caller's Supabase auth token (Authorization: Bearer <token>) via supabase.auth.getUser(token) using the service role key. Look up their profile. If NOT premium (is_premium false, or premium_until expired) AND sakhi_message_count >= 5, return 402 { error: "limit_reached", message: "...upgrade to Premium..." }. Otherwise forward the conversation to OpenAI's /v1/chat/completions (model "gpt-4o-mini", system prompt establishing "Sakhi" as a warm safety companion that defers to calling 112 in emergencies), return the reply, increment sakhi_message_count for free users only. Never store chat messages themselves.
+
+b) POST /revenuecat-webhook — verify Authorization Bearer header against REVENUECAT_WEBHOOK_SECRET. On INITIAL_PURCHASE/RENEWAL/UNCANCELLATION/PRODUCT_CHANGE, set is_premium=true and premium_until from expiration_at_ms. On EXPIRATION, set is_premium=false. (Inactive until I'm on RevenueCat's Pro plan, since webhooks aren't on their free tier — return 501 if REVENUECAT_WEBHOOK_SECRET isn't set.)
+
+c) GET /nearby-places?lat=&lng=&type=police|hospital|pharmacy|shelter — proxies Google Places "Nearby Search (New)" (searchText for "shelter" since there's no direct Google type, searchNearby for the rest) using X-Goog-Api-Key and a strict X-Goog-FieldMask limited to id, displayName, formattedAddress, location only — do not add photos/rating/openingHours, those push billing into pricier tiers. Add a simple 5-minute in-memory cache keyed by category+rounded lat/lng to cut duplicate calls. Return { places: [{ id, name, address, lat, lng }] }.
+
+=== 4. APP-SIDE PREMIUM CHECK (RevenueCat SDK, no webhook needed yet) ===
+- Install react-native-purchases.
+- Create lib/premium.ts: configurePurchases(supabaseUserId), isPremiumActive() checking customerInfo.entitlements.active["premium"], getOfferings(), purchasePackage(pkg), restorePurchases(), and syncPremiumStatusToSupabase(supabase) which checks RevenueCat and writes is_premium back to the user's own profiles row.
+
+=== 5. SAKHI CHAT CLIENT ===
+- Create lib/sakhi.ts: sendSakhiMessage(messages) — gets the current Supabase session token, POSTs to `${EXPO_PUBLIC_BACKEND_URL}/sakhi-chat`, returns a typed result distinguishing ok success, limit_reached, auth_required, network/server errors so the chat UI can show a paywall on limit_reached.
+
+=== 6. REAL MAP PINS ===
+- Create lib/nearbyPlaces.ts: fetchNearbyPlaces(lat, lng, category) calling `${EXPO_PUBLIC_BACKEND_URL}/nearby-places`.
+- Update app/(tabs)/map.tsx: keep the existing category-card grid (police/hospital/pharmacy/shelter) and the MapPreview-style live map, but on category tap, fetch real places and render them as <Marker> pins on the existing react-native-maps MapView (web platform keeps its existing faux-map fallback unchanged). Keep the existing "open in external Maps app" icon as a secondary action per category card — don't remove it, since react-native-maps doesn't do turn-by-turn routing.
+
+=== 7. LIVE SOS LOCATION SHARING ===
+- Install expo-location if not already present.
+- Create lib/liveSession.ts: startLiveSession() inserts a live_sessions row for the signed-in user and returns { shareId, shareUrl } where shareUrl = `${EXPO_PUBLIC_LIVE_TRACKER_URL}/${shareId}`; updateLiveSession(shareId, lat, lng, accuracy) updates that row; endLiveSession(shareId) sets is_active false.
+- Update context/SafetyContext.tsx: on triggerSOS(), call startLiveSession() and begin Location.watchPositionAsync (high accuracy, ~10s interval, 10m distance interval) pushing updates via updateLiveSession(). On cancelSOS() (or provider unmount), stop the location subscription and call endLiveSession(). Expose sos.shareUrl in the SOS state once available. Skip live tracking gracefully (no error) if the user isn't signed in.
+- Update components/SosModal.tsx: when sos.shareUrl is set, prefer it over the static coordinate link when building the SMS/WhatsApp message body, and show a small "Live tracking is on" badge with a green dot in the location panel.
+- Create web/live.html: a single static HTML file (no build step) that reads a share_id from the URL path, connects to Supabase via the JS CDN client using SUPABASE_URL + SUPABASE_PUBLISHABLE_KEY (safe to expose, protected by RLS), loads the initial live_sessions row by share_id, subscribes to postgres_changes UPDATE events on that row via Supabase Realtime, and renders the moving point on a Leaflet/OpenStreetMap map (free, no API key needed for the tile layer). Show "session ended" if is_active becomes false or the row isn't found. Deploy this file to a free static host (Vercel/Netlify/Cloudflare Pages) with SPA-style fallback routing so any /{share_id} path serves the same file.
+
+Keep everything else in the existing app (contacts, fake call, safety journal, rights, helplines, i18n, theming) untouched. Use existing color tokens (#7C3AED primary) and the app's existing Icon/theme components where applicable instead of introducing new styling patterns.
