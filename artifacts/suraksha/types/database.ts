@@ -160,16 +160,32 @@ export interface LiveSessionRow {
   lng: number | null;
   accuracy: number | null;
   is_active: boolean;
+  expires_at: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export type LiveSessionInsert = Pick<LiveSessionRow, "lat" | "lng"> &
-  Partial<Pick<LiveSessionRow, "accuracy">>;
+  Partial<Pick<LiveSessionRow, "accuracy" | "expires_at">>;
 
 export type LiveSessionUpdate = Partial<
-  Pick<LiveSessionRow, "lat" | "lng" | "accuracy" | "is_active">
+  Pick<LiveSessionRow, "lat" | "lng" | "accuracy" | "is_active" | "expires_at">
 >;
+
+/**
+ * Return type of the `get_live_session(p_share_id)` SECURITY DEFINER RPC.
+ * This is the safe public-facing shape — no user_id is exposed.
+ */
+export interface LiveSessionPublic {
+  id: string;
+  share_id: string;
+  lat: number | null;
+  lng: number | null;
+  accuracy: number | null;
+  is_active: boolean;
+  expires_at: string | null;
+  updated_at: string;
+}
 
 // ------------------------------------------------------------------
 // Convenience union — all table row types

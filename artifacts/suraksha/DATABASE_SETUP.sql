@@ -232,9 +232,19 @@ CREATE TABLE IF NOT EXISTS public.live_sessions (
   lng         DOUBLE PRECISION,
   accuracy    DOUBLE PRECISION,
   is_active   BOOLEAN     NOT NULL DEFAULT TRUE,
+  expires_at  TIMESTAMPTZ,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Add expires_at if it doesn't exist yet (idempotent alter)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_schema='public' AND table_name='live_sessions' AND column_name='expires_at') THEN
+    ALTER TABLE public.live_sessions ADD COLUMN expires_at TIMESTAMPTZ;
+  END IF;
+END $$;
 
 DROP TRIGGER IF EXISTS live_sessions_updated_at ON public.live_sessions;
 CREATE TRIGGER live_sessions_updated_at
@@ -245,12 +255,46 @@ ALTER TABLE public.live_sessions ENABLE ROW LEVEL SECURITY;
 -- Owner can read and write their own sessions.
 DROP POLICY IF EXISTS "live_sessions: owner all" ON public.live_sessions;
 CREATE POLICY "live_sessions: owner all" ON public.live_sessions FOR ALL USING (auth.uid() = user_id);
--- NOTE: Share-link reads (public tracker page) must go through the api-server
--- using the Supabase service-role key via a backend RPC / REST call — NOT
--- via the anon key. This prevents leaking all active sessions to any client.
--- The old "public read by share_id" policy (USING is_active = TRUE) has been
--- intentionally removed because it exposed every active session, not just the
--- one matching a specific share token.
+
+-- Share-link lookups go through a SECURITY DEFINER function so the caller
+-- only retrieves the one session matching their token — no table-wide exposure.
+-- This replaces the old "USING (is_active = TRUE)" policy which leaked all
+-- active sessions to any authenticated user.
+CREATE OR REPLACE FUNCTION public.get_live_session(p_share_id TEXT)
+RETURNS TABLE (
+  id          UUID,
+  share_id    TEXT,
+  lat         DOUBLE PRECISION,
+  lng         DOUBLE PRECISION,
+  accuracy    DOUBLE PRECISION,
+  is_active   BOOLEAN,
+  expires_at  TIMESTAMPTZ,
+  updated_at  TIMESTAMPTZ
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN QUERY
+    SELECT
+      ls.id,
+      ls.share_id,
+      ls.lat,
+      ls.lng,
+      ls.accuracy,
+      ls.is_active,
+      ls.expires_at,
+      ls.updated_at
+    FROM public.live_sessions ls
+    WHERE ls.share_id = p_share_id
+      AND ls.is_active = TRUE
+      AND (ls.expires_at IS NULL OR ls.expires_at > NOW());
+END;
+$$;
+
+-- Grant execute to anon and authenticated so the share link works without login
+GRANT EXECUTE ON FUNCTION public.get_live_session(TEXT) TO anon, authenticated;
 
 
 -- ----------------------------------------------------------

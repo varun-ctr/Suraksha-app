@@ -23,6 +23,7 @@ import type {
   LiveSessionRow,
   LiveSessionInsert,
   LiveSessionUpdate,
+  LiveSessionPublic,
 } from "../types/database";
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
@@ -183,11 +184,20 @@ export const db = {
         .update({ is_active: false })
         .eq("share_id", shareId),
 
+    // Owner-only: reads the full row including user_id
     getByShareId: (shareId: string) =>
       supabase
         .from("live_sessions")
         .select<"*", LiveSessionRow>("*")
         .eq("share_id", shareId)
+        .single(),
+
+    // Public-safe: calls the SECURITY DEFINER RPC — only returns the one
+    // session matching p_share_id, never exposes user_id or other sessions.
+    getPublicByShareId: (shareId: string) =>
+      supabase
+        .rpc("get_live_session", { p_share_id: shareId })
+        .returns<LiveSessionPublic[]>()
         .single(),
   },
 };
