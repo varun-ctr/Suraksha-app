@@ -1,0 +1,580 @@
+BUILD ON TOP OF THE EXISTING SURAKSHA CODEBASE. DO NOT REBUILD FROM SCRATCH.
+
+You are a Senior React Native, Expo Router, TypeScript, Supabase, Google Maps, UI/UX and Mobile Security Architect.
+
+Upgrade the existing Suraksha Women’s Safety App into a production-ready Android and iOS application while preserving all existing functionality.
+
+==================================================
+PROJECT OBJECTIVE
+
+Transform Suraksha into a modern, premium-quality women’s safety platform with:
+
+* Beautiful modern UI
+* Mobile OTP Login
+* Email OTP Login
+* Magic Link Login
+* Google Maps Integration
+* Trusted Contacts
+* SOS Emergency System
+* Journey Tracking
+* Multi-language Support
+* Premium-ready Architecture
+* Android & iOS Compatibility
+
+The application should feel comparable to:
+
+* PhonePe
+* Uber
+* Google Maps
+* CRED
+
+Clean, premium, responsive and accessible.
+
+==================================================
+AUTHENTICATION SYSTEM
+
+Replace current authentication with:
+
+Option 1:
+Continue with Mobile Number
+
+Option 2:
+Continue with Email Address
+
+No password login.
+
+⸻
+
+MOBILE LOGIN
+
+Use Supabase Phone Authentication.
+
+Features:
+
+* Country code selector
+* Default +91 India
+* Support all countries
+* OTP Verification
+* OTP Auto Read
+* OTP Auto Fill
+* Resend OTP after 30 seconds
+* Maximum 5 OTP requests per hour
+* Session Persistence
+* Logout
+* Device Session Management
+
+⸻
+
+EMAIL LOGIN
+
+Use Supabase Email Authentication.
+
+Features:
+
+* Email OTP
+* Email Magic Link
+
+Flow:
+
+User enters email.
+
+Send:
+
+1. Magic Link
+2. 6 Digit OTP
+
+Display:
+
+“We have sent a secure sign-in link and verification code to your email.”
+
+User can:
+
+A) Click Magic Link
+
+OR
+
+B) Enter OTP
+
+If Magic Link clicked:
+
+* Detect automatically
+* Create session
+* Redirect to Home Screen
+
+If OTP entered:
+
+* Verify
+* Create session
+* Redirect to Home Screen
+
+⸻
+
+ACCOUNT MANAGEMENT
+
+Add:
+
+* Logout
+* Delete Account
+* Manage Active Sessions
+* Privacy Controls
+
+==================================================
+ONBOARDING EXPERIENCE
+
+Default Language:
+
+English only on first launch.
+
+Onboarding Screens:
+
+Screen 1:
+One Tap SOS
+
+Screen 2:
+Live Location Sharing
+
+Screen 3:
+Trusted Contacts
+
+Screen 4:
+Know Your Rights
+
+Screen 5:
+Language Selection
+
+Screen 6:
+Login / Sign Up
+
+Allow Skip.
+
+Store onboarding completion.
+
+==================================================
+LANGUAGE SUPPORT
+
+Default:
+
+English
+
+User can later select language.
+
+Implement scalable localization architecture.
+
+Priority Languages:
+
+* English
+* Hindi
+* Telugu
+* Tamil
+* Kannada
+* Malayalam
+* Marathi
+* Gujarati
+* Bengali
+* Punjabi
+* Urdu
+* Odia
+
+International Languages:
+
+* Arabic
+* French
+* German
+* Spanish
+* Portuguese
+* Italian
+* Dutch
+* Russian
+* Chinese Simplified
+* Chinese Traditional
+* Japanese
+* Korean
+* Turkish
+* Indonesian
+* Thai
+* Vietnamese
+
+Requirements:
+
+* Dynamic language switching
+* No app restart
+* Remember selected language
+* Store language in Supabase Profile
+* Search language option
+* Native language names
+* RTL support for Arabic
+
+Do not automatically switch language.
+
+English remains default until user changes it.
+
+==================================================
+UI DESIGN SYSTEM
+
+Primary:
+#7C3AED
+
+Secondary:
+#A78BFA
+
+Success:
+#22C55E
+
+Danger:
+#EF4444
+
+Use:
+
+* Glassmorphism
+* Soft shadows
+* Premium gradients
+* Smooth animations
+* Rounded corners
+* Inter Font
+* Light Mode
+* Dark Mode
+
+Create reusable:
+
+* Buttons
+* Cards
+* Inputs
+* Bottom Sheets
+* Modals
+* Toasts
+* Loading States
+* Empty States
+
+==================================================
+HOME SCREEN REDESIGN
+
+Top Section:
+
+* Greeting
+* Profile Picture
+* Current Location
+* Weather Summary
+
+Safety Status Card:
+
+Safe
+Caution
+Emergency
+
+Large SOS Button:
+
+* Premium animation
+* Pulsing effect
+* Haptic feedback
+
+Quick Actions Grid:
+
+* Emergency Contacts
+* Safety Map
+* Fake Call
+* Journey Tracking
+* Community Reports
+* Know Your Rights
+* Sakhi AI
+
+Modern card layout.
+
+==================================================
+SOS SYSTEM
+
+Keep existing functionality.
+
+Enhance UI and workflow.
+
+When SOS pressed:
+
+Show Bottom Sheet.
+
+Display:
+
+* Current Location
+* Trusted Contacts
+* GPS Status
+
+Countdown:
+
+3
+2
+1
+
+Options:
+
+* Call 112
+* Share Location
+* Send SMS
+* WhatsApp Alert
+
+Show activation animation.
+
+Store SOS event in Supabase.
+
+Future ready for automated alerts.
+
+==================================================
+TRUSTED CONTACTS
+
+Features:
+
+* Add Contact
+* Edit Contact
+* Delete Contact
+* Import From Device Contacts
+
+Maximum:
+
+10 Contacts
+
+Each contact card:
+
+* Photo
+* Name
+* Mobile Number
+
+Actions:
+
+* Call
+* SMS
+* WhatsApp
+
+==================================================
+GOOGLE MAPS INTEGRATION
+
+Replace basic map with Google Maps SDK.
+
+Features:
+
+* Current Location
+* Live GPS Marker
+* Police Stations
+* Hospitals
+* Pharmacies
+* Shelters
+
+Map Modes:
+
+* Light
+* Dark
+
+Actions:
+
+* Navigate
+* Directions
+* Open Google Maps
+
+==================================================
+JOURNEY TRACKING
+
+Redesign UI.
+
+Options:
+
+15 Minutes
+30 Minutes
+60 Minutes
+Custom
+
+Display:
+
+* Start Time
+* Elapsed Time
+* Remaining Time
+* Current Location
+
+Actions:
+
+* Share Live Location
+* End Journey
+
+Store journey history.
+
+==================================================
+SAKHI AI
+
+Keep existing Sakhi module.
+
+Upgrade UI.
+
+Features:
+
+* Chat Interface
+* Suggested Questions
+* Typing Indicator
+* Chat History
+
+Future-ready for OpenAI integration.
+
+==================================================
+KNOW YOUR RIGHTS
+
+Redesign with:
+
+* Search
+* Categories
+* Bookmarks
+* Offline Reading
+
+Modern reading experience.
+
+==================================================
+COMMUNITY REPORTING
+
+Create UI and backend structure.
+
+Features:
+
+* Report Unsafe Area
+* Report Harassment
+* Report Stalking
+* Report Suspicious Activity
+
+Store in Supabase.
+
+Moderation-ready architecture.
+
+==================================================
+PROFILE SCREEN
+
+Sections:
+
+Personal Information
+
+Language
+
+Notifications
+
+Theme
+
+Privacy
+
+Security
+
+Subscription
+
+Support
+
+About
+
+Logout
+
+Delete Account
+
+==================================================
+PREMIUM READY
+
+Create Premium Placeholder Screen.
+
+Do NOT activate billing yet.
+
+Display:
+
+Suraksha Premium
+
+Coming Soon
+
+Benefits:
+
+* Unlimited Rights Access
+* Unlimited Community Reports
+* Family Tracking
+* Advanced Journey Monitoring
+* Priority Support
+
+Architecture must support:
+
+* Google Play Billing
+* Apple In-App Purchase
+* Razorpay
+
+Future implementation.
+
+==================================================
+PUSH NOTIFICATIONS
+
+Integrate:
+
+* Expo Notifications
+* Firebase Cloud Messaging
+
+Prepare for:
+
+* SOS Alerts
+* Journey Reminders
+* Safety Notifications
+
+==================================================
+DATABASE
+
+Use Supabase.
+
+Tables:
+
+profiles
+
+trusted_contacts
+
+sos_events
+
+journeys
+
+community_reports
+
+subscriptions
+
+notification_tokens
+
+Audit ready schema.
+
+==================================================
+SECURITY
+
+Implement:
+
+* Input Validation
+* Rate Limiting
+* Session Security
+* Secure Storage
+* Error Handling
+* Privacy Controls
+
+No hardcoded secrets.
+
+==================================================
+PERFORMANCE
+
+Optimize:
+
+* Lazy Loading
+* Code Splitting
+* Image Optimization
+* Fast Startup
+
+Target:
+
+* Android
+* iOS
+
+==================================================
+FINAL REQUIREMENT
+
+Do not remove existing functionality.
+
+Upgrade current codebase.
+
+Refactor where needed.
+
+Generate:
+
+* Clean folder structure
+* Reusable components
+* Reusable hooks
+* Services layer
+* Production-ready code
+* Android support
+* iOS support
+
+Deliver a complete App Store and Play Store quality application
