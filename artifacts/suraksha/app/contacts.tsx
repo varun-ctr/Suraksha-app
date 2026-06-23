@@ -2,9 +2,12 @@ import * as Contacts from "expo-contacts";
 import * as ImagePicker from "expo-image-picker";
 import React, { useState } from "react";
 import {
+  ActionSheetIOS,
   ActivityIndicator,
+  Alert,
   Image,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -110,49 +113,79 @@ export default function ContactsScreen() {
     closeEdit();
   };
 
-  const pickPhoto = async (contactId: string) => {
-    setUploadingPhoto(true);
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.75,
-      });
-      if (result.canceled) return;
-      const asset = result.assets[0];
-      if (!asset.uri) return;
-
-      let finalUri = asset.uri;
-
-      // Try to upload to Supabase Storage if signed in
+  const pickPhoto = (contactId: string) => {
+    const launch = async (mode: "camera" | "library") => {
+      setUploadingPhoto(true);
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const ext = (asset.uri.split(".").pop() ?? "jpg").toLowerCase().replace(/[^a-z]/g, "j");
-          const path = `${user.id}/${contactId}.${ext}`;
-          const response = await fetch(asset.uri);
-          const blob = await response.blob();
-          const { error: uploadError } = await supabase.storage
-            .from("contact-avatars")
-            .upload(path, blob, { upsert: true, contentType: `image/${ext}` });
-          if (!uploadError) {
-            const { data: urlData } = supabase.storage
-              .from("contact-avatars")
-              .getPublicUrl(path);
-            finalUri = urlData.publicUrl;
-          }
-        }
-      } catch {
-        // Upload failed — fall back to local URI (works until app reinstall)
-      }
+        const result =
+          mode === "camera"
+            ? await ImagePicker.launchCameraAsync({
+                mediaTypes: ["images"],
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.75,
+              })
+            : await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ["images"],
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.75,
+              });
+        if (result.canceled) return;
+        const asset = result.assets[0];
+        if (!asset.uri) return;
 
-      editContact(contactId, { avatarUrl: finalUri });
-      showToast(t("contacts.saved"));
-    } catch {
-      // ignore
-    } finally {
-      setUploadingPhoto(false);
+        let finalUri = asset.uri;
+
+        // Upload to Supabase Storage if signed in; fall back to local URI
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            const ext = (asset.uri.split(".").pop() ?? "jpg").toLowerCase().replace(/[^a-z]/g, "j");
+            const path = `${user.id}/${contactId}.${ext}`;
+            const response = await fetch(asset.uri);
+            const blob = await response.blob();
+            const { error: uploadError } = await supabase.storage
+              .from("contact-avatars")
+              .upload(path, blob, { upsert: true, contentType: `image/${ext}` });
+            if (!uploadError) {
+              const { data: urlData } = supabase.storage
+                .from("contact-avatars")
+                .getPublicUrl(path);
+              finalUri = urlData.publicUrl;
+            }
+          }
+        } catch {
+          // non-critical — keep local URI
+        }
+
+        editContact(contactId, { avatarUrl: finalUri });
+        showToast(t("contacts.saved"));
+      } catch {
+        // ignore
+      } finally {
+        setUploadingPhoto(false);
+      }
+    };
+
+    // iOS: native action sheet; Android: Alert dialog
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ["Cancel", "Take Photo", "Choose from Library"],
+          cancelButtonIndex: 0,
+        },
+        (idx) => {
+          if (idx === 1) void launch("camera");
+          else if (idx === 2) void launch("library");
+        },
+      );
+    } else {
+      Alert.alert("Contact Photo", "Choose a source", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Take Photo", onPress: () => void launch("camera") },
+        { text: "Choose from Library", onPress: () => void launch("library") },
+      ]);
     }
   };
 

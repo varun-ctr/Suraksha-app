@@ -19,11 +19,11 @@ const PLANS = [
 ];
 
 const FEATURES: { icon: IconName; en: string; hi: string }[] = [
-  { icon: "navigation", en: "Unlimited journey timers", hi: "असीमित यात्रा टाइमर" },
-  { icon: "users", en: "Up to 10 trusted contacts", hi: "10 तक विश्वसनीय संपर्क" },
-  { icon: "bell", en: "Priority SOS alerts", hi: "प्राथमिकता SOS अलर्ट" },
-  { icon: "message", en: "Unlimited Sakhi conversations", hi: "असीमित सखी बातचीत" },
-  { icon: "shield", en: "Safety check-in reminders", hi: "सुरक्षा चेक-इन रिमाइंडर" },
+  { icon: "bell",       en: "Automatic SOS push notifications (planned)", hi: "स्वचालित SOS पुश नोटिफिकेशन (योजनाबद्ध)" },
+  { icon: "users",      en: "More than 10 trusted contacts (planned)",    hi: "10 से अधिक विश्वसनीय संपर्क (योजनाबद्ध)" },
+  { icon: "shield",     en: "Scheduled safety check-in reminders (planned)", hi: "शेड्यूल्ड सुरक्षा चेक-इन रिमाइंडर (योजनाबद्ध)" },
+  { icon: "mapPin",     en: "Background location during journeys (planned)", hi: "यात्रा के दौरान बैकग्राउंड लोकेशन (योजनाबद्ध)" },
+  { icon: "book",       en: "Offline safety guides (planned)",             hi: "ऑफलाइन सुरक्षा मार्गदर्शिकाएँ (योजनाबद्ध)" },
 ];
 
 export default function PremiumScreen() {

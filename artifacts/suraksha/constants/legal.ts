@@ -18,7 +18,11 @@
  *       coordinates are written to a Supabase row linked to a random share ID.
  *       The row is readable only by someone who has that exact share URL. The
  *       session expires automatically (24 h) and can be ended at any time.
- *    4. Nearby-places search: when you tap a map category, your coordinates
+ *    4. Community reports: when you submit a community safety report your GPS
+ *       coordinates, incident type, optional text description (up to 280 chars),
+ *       and optional photo are uploaded to Supabase and associated with your
+ *       account ID. Reports may be reviewed by moderators to maintain map quality.
+ *    5. Nearby-places search: when you tap a map category, your coordinates
  *       are sent to our API server, which calls the Google Places API on your
  *       behalf and returns results. No result is stored after the request.
  */
@@ -55,6 +59,13 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     body: {
       en: "When you message Sakhi, your messages are sent to our API server, which forwards them to OpenAI to generate a reply. Please avoid sharing details you would not want processed by an AI provider. Sakhi conversations are not stored by us after the reply is generated and are not used to identify you.",
       hi: "जब आप सखी को संदेश भेजती हैं, तो वे हमारे API सर्वर को भेजे जाते हैं, जो उत्तर बनाने हेतु उन्हें OpenAI को अग्रेषित करता है। ऐसी जानकारी साझा करने से बचें जिसे आप किसी AI प्रदाता द्वारा संसाधित नहीं कराना चाहतीं। उत्तर बनने के बाद सखी की बातचीत हमारे द्वारा संग्रहीत नहीं की जाती और आपकी पहचान के लिए उपयोग नहीं होती।",
+    },
+  },
+  {
+    heading: { en: "Community safety reports", hi: "सामुदायिक सुरक्षा रिपोर्ट" },
+    body: {
+      en: "When you submit a community safety report, your GPS coordinates, a readable address (when available), incident type, optional description (up to 280 characters), and optional photo are uploaded to Supabase and linked to your account ID. Reports may be reviewed by moderators to maintain the quality of the shared safety map. You must be signed in to submit a report.",
+      hi: "जब आप कोई सामुदायिक सुरक्षा रिपोर्ट सबमिट करती हैं, तो आपके GPS निर्देशांक, पठनीय पता (जब उपलब्ध हो), घटना प्रकार, वैकल्पिक विवरण (280 अक्षर तक), और वैकल्पिक फ़ोटो Supabase पर अपलोड होकर आपके खाता ID से जुड़ जाते हैं। साझा सुरक्षा मैप की गुणवत्ता बनाए रखने के लिए रिपोर्टों की मॉडरेटर द्वारा समीक्षा की जा सकती है। रिपोर्ट सबमिट करने के लिए साइन इन होना आवश्यक है।",
     },
   },
   {
