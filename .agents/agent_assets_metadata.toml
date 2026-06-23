@@ -6,6 +6,12 @@ uri = "file://artifacts/suraksha/assets/images/icon.png"
 type = "image"
 title = "generated_image"
 
+[[generated]]
+id = "cXF6H9xheNOvSgdm2BCff"
+uri = "file://artifacts/suraksha/assets/images/login-bg.png"
+type = "image"
+title = "indian-woman-golden-hour-portrait"
+
 [[outputs]]
 id = "onooDgf9Lo2k02Dgd6KXR"
 uri = "file://suraksha-source-code.txt"

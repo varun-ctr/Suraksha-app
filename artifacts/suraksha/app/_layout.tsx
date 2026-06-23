@@ -5,8 +5,6 @@ import {
   Inter_700Bold,
   useFonts,
 } from "@expo-google-fonts/inter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { setBaseUrl } from "@workspace/api-client-react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
@@ -21,21 +19,14 @@ import { SafetyProvider } from "@/context/SafetyContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { ToastProvider } from "@/context/ToastContext";
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
-
-const domain = process.env.EXPO_PUBLIC_DOMAIN;
-if (domain) {
-  setBaseUrl(`https://${domain}`);
-}
-
-const queryClient = new QueryClient();
 
 function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerShown: false, headerBackTitle: "Back" }}>
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="onboarding" />
+      <Stack.Screen name="login" />
       <Stack.Screen name="contacts" />
       <Stack.Screen name="helpline" />
       <Stack.Screen name="fakecall" />
@@ -63,8 +54,10 @@ function Gate() {
 
   useEffect(() => {
     if (!allReady) return;
-    const inOnboarding = segments[0] === "onboarding";
-    if (!onboarded && !inOnboarding) {
+    const seg0 = segments[0] as string;
+    const inOnboarding = seg0 === "onboarding";
+    const inLogin = seg0 === "login";
+    if (!onboarded && !inOnboarding && !inLogin) {
       router.replace("/onboarding");
     } else if (onboarded && inOnboarding) {
       router.replace("/(tabs)");
@@ -89,23 +82,21 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <KeyboardProvider>
-              <ThemeProvider>
-                <LanguageProvider>
-                  <AppProvider>
-                    <SafetyProvider>
-                      <ToastProvider>
-                        <Gate />
-                      </ToastProvider>
-                    </SafetyProvider>
-                  </AppProvider>
-                </LanguageProvider>
-              </ThemeProvider>
-            </KeyboardProvider>
-          </GestureHandlerRootView>
-        </QueryClientProvider>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <KeyboardProvider>
+            <ThemeProvider>
+              <LanguageProvider>
+                <AppProvider>
+                  <SafetyProvider>
+                    <ToastProvider>
+                      <Gate />
+                    </ToastProvider>
+                  </SafetyProvider>
+                </AppProvider>
+              </LanguageProvider>
+            </ThemeProvider>
+          </KeyboardProvider>
+        </GestureHandlerRootView>
       </ErrorBoundary>
     </SafeAreaProvider>
   );

@@ -73,6 +73,7 @@ export const STRINGS: Strings = {
   "sos.shareLocation": { en: "Share my location", hi: "मेरी लोकेशन साझा करें" },
   "sos.imSafe": { en: "I'm Safe — Cancel Alert", hi: "मैं सुरक्षित हूँ — अलर्ट रद्द करें" },
   "sos.gettingLocation": { en: "Getting your location…", hi: "आपकी लोकेशन ले रहे हैं…" },
+  "sos.liveTrackingOn": { en: "Live tracking is on", hi: "लाइव ट्रैकिंग चालू है" },
 
   // Map
   "map.title": { en: "Safety Map", hi: "सुरक्षा नक्शा" },
@@ -84,6 +85,8 @@ export const STRINGS: Strings = {
   "map.pharmacy": { en: "Pharmacy", hi: "दवाख़ाना" },
   "map.shelter": { en: "Shelter", hi: "आश्रय" },
   "map.callNow": { en: "Call Now", hi: "अभी कॉल करें" },
+  "map.noResults": { en: "No results found nearby. Your maps app opened instead.", hi: "पास में कोई परिणाम नहीं मिला। इसके बजाय आपका मैप ऐप खुल गया।" },
+  "map.navigateTip": { en: "Tap to navigate", hi: "रास्ता देखने हेतु टैप करें" },
 
   // Rights
   "rights.title": { en: "Know Your Rights", hi: "अपने अधिकार जानें" },

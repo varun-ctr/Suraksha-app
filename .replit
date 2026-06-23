@@ -34,3 +34,7 @@ externalPort = 3000
 [userenv]
 
 [userenv.shared]
+EXPO_PUBLIC_SUPABASE_URL = "https://bjeevqilbqxxtdhpvqlw.supabase.co"
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_PnC2dB_NfjolJIBNlPPmYw_HDjsVs5wE"
+EXPO_PUBLIC_BACKEND_URL = "https://99b7880f-6a8a-4b2a-99b4-cedf24ec9f8d-00-3okzi78w5gape.pike.replit.dev/api-server"
+EXPO_PUBLIC_LIVE_TRACKER_URL = "https://99b7880f-6a8a-4b2a-99b4-cedf24ec9f8d-00-3okzi78w5gape.pike.replit.dev/live"

@@ -1,6 +1,7 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
+import { signOut } from "@/lib/auth";
 import {
   Modal,
   Pressable,
@@ -297,6 +298,16 @@ export default function ProfileScreen() {
             color={c.success}
             label={t("profile.support")}
             onPress={() => router.push("/helpline")}
+          />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row
+            icon="logOut"
+            color="#E53E3E"
+            label={lang === "hi" ? "साइन आउट" : "Sign out"}
+            onPress={async () => {
+              await signOut();
+              router.replace("/login" as never);
+            }}
           />
         </Card>
       </View>

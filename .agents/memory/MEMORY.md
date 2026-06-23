@@ -1,3 +1,7 @@
 - [Suraksha Expo ↔ api-server wiring](suraksha-expo-api-wiring.md) — Expo app hits `https://${EXPO_PUBLIC_DOMAIN}/api/...` (no protocol in env); api-server doesn't hot-reload, restart its workflow after route edits.
 - [Expo Go "Failed to load all assets"](expo-go-failed-to-load-assets.md) — Expo Go native error = bundle/asset download failure on device, not your code; verify manifest/bundle/splash serve from `$REPLIT_EXPO_DEV_DOMAIN` before debugging code.
 - [Suraksha truthfulness invariants](suraksha-truthfulness-invariants.md) — safety app must never lie: legal copy must match real data/network behavior, delete-all must clear legacy versioned keys, no fake success/GPS/places.
+- [Suraksha legal copy](suraksha-legal.md) — legal.ts must be updated whenever new network features are added (auth, live-tracking, nearby-places); architect will FAIL if legal claims lag behind actual behavior.
+- [Suraksha live-session RLS](suraksha-live-session-rls.md) — broad public SELECT on live_sessions is a security issue; use SECURITY DEFINER RPC get_live_session(uuid) so only 1 row is returned per share_id.
+- [Suraksha i18n discipline](suraksha-i18n.md) — all user-facing strings must go through t(); hardcoded English in .tsx files will fail architect review.
+- [Suraksha TS router casts](suraksha-router-casts.md) — Expo Router typed-routes may not include dynamically added screens; cast with `as never` or `as string` at call sites to silence TS errors.

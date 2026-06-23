@@ -1,7 +1,5 @@
-import { useSendSakhiMessage } from "@workspace/api-client-react";
-import type { SakhiChatMessage } from "@workspace/api-client-react";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -18,58 +16,111 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { useI18n } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
+import { supabase } from "@/lib/supabaseClient";
 
 type Msg = { id: string; role: "user" | "assistant"; content: string };
+type SendResult =
+  | { ok: true; reply: string }
+  | { ok: false; reason: "limit_reached" | "auth_required" | "network" | "server" };
+
+async function sendSakhiMessage(
+  messages: { role: "user" | "assistant"; content: string }[],
+  language: string,
+): Promise<SendResult> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) return { ok: false, reason: "auth_required" };
+
+  const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL;
+
+  try {
+    const res = await fetch(`${backendUrl}/sakhi-chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ messages, language }),
+    });
+
+    if (res.status === 401) return { ok: false, reason: "auth_required" };
+    if (res.status === 402) return { ok: false, reason: "limit_reached" };
+
+    if (!res.ok) return { ok: false, reason: "server" };
+
+    const data = (await res.json()) as { reply: string };
+    return { ok: true, reply: data.reply };
+  } catch {
+    return { ok: false, reason: "network" };
+  }
+}
 
 export default function SakhiScreen() {
   const { c } = useTheme();
   const { t, lang } = useI18n();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
-  const send = useSendSakhiMessage();
 
   const [messages, setMessages] = useState<Msg[]>([
     { id: "seed", role: "assistant", content: t("sakhi.greeting") },
   ]);
   const [input, setInput] = useState("");
+  const [pending, setPending] = useState(false);
+  const [limitReached, setLimitReached] = useState(false);
 
   const suggestions = [t("sakhi.suggest1"), t("sakhi.suggest2"), t("sakhi.suggest3")];
 
-  const submit = async (text: string) => {
+  const submit = useCallback(async (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed || send.isPending) return;
+    if (!trimmed || pending) return;
     setInput("");
+    setLimitReached(false);
 
     const userMsg: Msg = { id: `u${Date.now()}`, role: "user", content: trimmed };
     const next = [...messages, userMsg];
     setMessages(next);
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
 
-    const history: SakhiChatMessage[] = next
+    setPending(true);
+    const history = next
       .filter((m) => m.id !== "seed")
       .map((m) => ({ role: m.role, content: m.content }));
 
-    try {
-      const res = await send.mutateAsync({ data: { messages: history, language: lang } });
+    const result = await sendSakhiMessage(history, lang);
+    setPending(false);
+
+    if (result.ok) {
       setMessages((prev) => [
         ...prev,
-        { id: `a${Date.now()}`, role: "assistant", content: res.reply },
+        { id: `a${Date.now()}`, role: "assistant", content: result.reply },
       ]);
-    } catch {
+    } else if (result.reason === "limit_reached") {
+      setLimitReached(true);
+    } else if (result.reason === "auth_required") {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `e${Date.now()}`,
+          role: "assistant",
+          content: lang === "hi"
+            ? "सखी का उपयोग करने के लिए कृपया लॉग इन करें।"
+            : "Please log in to use Sakhi.",
+        },
+      ]);
+    } else {
       setMessages((prev) => [
         ...prev,
         { id: `e${Date.now()}`, role: "assistant", content: t("sakhi.error") },
       ]);
-    } finally {
-      requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
     }
-  };
+
+    requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+  }, [messages, pending, lang, t]);
 
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: c.bg }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
     >
       <LinearGradient
         colors={[c.primary, c.primaryDark]}
@@ -102,11 +153,7 @@ export default function SakhiScreen() {
           return (
             <View
               key={m.id}
-              style={{
-                alignSelf: mine ? "flex-end" : "flex-start",
-                maxWidth: "82%",
-                marginBottom: 10,
-              }}
+              style={{ alignSelf: mine ? "flex-end" : "flex-start", maxWidth: "82%", marginBottom: 10 }}
             >
               <View
                 style={{
@@ -125,7 +172,8 @@ export default function SakhiScreen() {
             </View>
           );
         })}
-        {send.isPending && (
+
+        {pending && (
           <View style={{ alignSelf: "flex-start", marginBottom: 10 }}>
             <View style={[styles.typing, { backgroundColor: c.card, borderColor: c.border }]}>
               <ActivityIndicator size="small" color={c.primary} />
@@ -135,7 +183,29 @@ export default function SakhiScreen() {
         )}
       </ScrollView>
 
-      {messages.length <= 1 && (
+      {limitReached && (
+        <View style={[styles.paywallBanner, { backgroundColor: c.card, borderColor: c.primary }]}>
+          <Icon name="crown" size={18} color={c.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: c.text, fontSize: 13, fontFamily: "Inter_600SemiBold" }}>
+              {lang === "hi" ? "5 मुफ़्त संदेश उपयोग हो गए" : "Free messages used up"}
+            </Text>
+            <Text style={{ color: c.textMuted, fontSize: 11.5, marginTop: 2 }}>
+              {lang === "hi" ? "असीमित Sakhi चैट के लिए प्रीमियम लें।" : "Upgrade to Premium for unlimited Sakhi access."}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => { /* router.push('/premium') — wired in auth task */ }}
+            style={[styles.upgradeBtn, { backgroundColor: c.primary }]}
+          >
+            <Text style={{ color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" }}>
+              {lang === "hi" ? "अपग्रेड" : "Upgrade"}
+            </Text>
+          </Pressable>
+        </View>
+      )}
+
+      {messages.length <= 1 && !limitReached && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -168,17 +238,22 @@ export default function SakhiScreen() {
           multiline
           onSubmitEditing={() => submit(input)}
           returnKeyType="send"
+          editable={!limitReached}
         />
         <Pressable
           onPress={() => submit(input)}
-          disabled={!input.trim() || send.isPending}
+          disabled={!input.trim() || pending || limitReached}
           style={[
             styles.sendBtn,
-            { backgroundColor: input.trim() && !send.isPending ? c.primary : c.border },
+            { backgroundColor: input.trim() && !pending && !limitReached ? c.primary : c.border },
           ]}
         >
           <Icon name="send" size={18} color="#fff" />
         </Pressable>
+      </View>
+
+      <View style={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 4, alignItems: "center" }}>
+        <Text style={{ fontSize: 10, color: c.textFaint, textAlign: "center" }}>{t("sakhi.disclaimer")}</Text>
       </View>
     </KeyboardAvoidingView>
   );
@@ -186,39 +261,27 @@ export default function SakhiScreen() {
 
 const styles = StyleSheet.create({
   botAvatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 42, height: 42, borderRadius: 21,
     backgroundColor: "rgba(255,255,255,0.18)",
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: "center", justifyContent: "center",
   },
   typing: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    flexDirection: "row", alignItems: "center", gap: 8,
+    borderWidth: 1, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10,
   },
   suggestion: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9 },
   inputBar: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    borderTopWidth: 1,
+    flexDirection: "row", alignItems: "flex-end", gap: 10,
+    paddingHorizontal: 14, paddingTop: 10, borderTopWidth: 1,
   },
   input: {
-    flex: 1,
-    borderRadius: 22,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 10,
-    fontSize: 13.5,
-    maxHeight: 110,
+    flex: 1, borderRadius: 22, paddingHorizontal: 16,
+    paddingTop: 10, paddingBottom: 10, fontSize: 13.5, maxHeight: 110,
   },
   sendBtn: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  paywallBanner: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    margin: 12, padding: 14, borderRadius: 14, borderWidth: 1.5,
+  },
+  upgradeBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10 },
 });
