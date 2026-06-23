@@ -1,6 +1,6 @@
 import { BlurView } from "expo-blur";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   ImageBackground,
@@ -15,21 +15,35 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useI18n } from "@/context/LanguageContext";
-import { sendOtp, verifyOtp } from "@/lib/auth";
+import { onAuthStateChange, sendOtp, verifyOtp } from "@/lib/auth";
 
 const PRIMARY = "#7C3AED";
 const loginBg = require("@/assets/images/login-bg.png");
+
+type Step = "email" | "waiting" | "code";
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { t } = useI18n();
 
-  const [step, setStep] = useState<"email" | "otp">("email");
+  const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Auto-complete when the user clicks the magic link in their email.
+  // Supabase fires SIGNED_IN after processing the URL hash on web, or after
+  // the deep-link on native.
+  useEffect(() => {
+    const { unsubscribe } = onAuthStateChange((event) => {
+      if (event === "SIGNED_IN") {
+        router.replace("/(tabs)" as never);
+      }
+    });
+    return unsubscribe;
+  }, [router]);
 
   const handleSendOtp = async () => {
     const trimmed = email.trim().toLowerCase();
@@ -44,7 +58,7 @@ export default function LoginScreen() {
     if (err) {
       setError(err);
     } else {
-      setStep("otp");
+      setStep("waiting");
     }
   };
 
@@ -61,8 +75,14 @@ export default function LoginScreen() {
     if (err) {
       setError(err);
     } else {
-      router.replace("/(tabs)");
+      router.replace("/(tabs)" as never);
     }
+  };
+
+  const resetToEmail = () => {
+    setStep("email");
+    setOtp("");
+    setError(null);
   };
 
   return (
@@ -80,7 +100,8 @@ export default function LoginScreen() {
           </View>
 
           <BlurView intensity={60} tint="light" style={styles.card}>
-            {step === "email" ? (
+            {/* ── Step 1: Enter email ── */}
+            {step === "email" && (
               <>
                 <Text style={styles.cardTitle}>{t("login.signIn")}</Text>
                 <Text style={styles.cardSub}>{t("login.signInSub")}</Text>
@@ -111,13 +132,42 @@ export default function LoginScreen() {
                     : <Text style={styles.btnText}>{t("login.sendCode")}</Text>}
                 </Pressable>
               </>
-            ) : (
+            )}
+
+            {/* ── Step 2: Waiting for magic link click ── */}
+            {step === "waiting" && (
+              <>
+                <Text style={styles.cardTitle}>{t("login.checkEmail")}</Text>
+                <Text style={styles.cardSub}>
+                  {t("login.checkEmailSub").replace("{email}", email)}
+                </Text>
+
+                <View style={styles.waitingRow}>
+                  <ActivityIndicator color={PRIMARY} />
+                  <Text style={styles.waitingText}>{t("login.waitingForLink")}</Text>
+                </View>
+
+                <View style={styles.dividerRow}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerLabel}>{t("login.or")}</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+
+                <Pressable onPress={() => setStep("code")} style={styles.linkBtn}>
+                  <Text style={styles.linkBtnText}>{t("login.enterCodeInstead")}</Text>
+                </Pressable>
+
+                <Pressable onPress={resetToEmail} style={styles.backBtn}>
+                  <Text style={styles.backBtnText}>{t("login.useDifferentEmail")}</Text>
+                </Pressable>
+              </>
+            )}
+
+            {/* ── Step 3: Enter 6-digit OTP code ── */}
+            {step === "code" && (
               <>
                 <Text style={styles.cardTitle}>{t("login.enterCode")}</Text>
-                <Text style={styles.cardSub}>
-                  {t("login.enterCode")} —{" "}
-                  <Text style={{ fontWeight: "700" }}>{email}</Text>
-                </Text>
+                <Text style={styles.cardSub}>{t("login.enterCodeSub")}</Text>
 
                 <Text style={styles.label}>{t("login.otpLabel")}</Text>
                 <TextInput
@@ -144,10 +194,7 @@ export default function LoginScreen() {
                     : <Text style={styles.btnText}>{t("login.verify")}</Text>}
                 </Pressable>
 
-                <Pressable
-                  onPress={() => { setStep("email"); setOtp(""); setError(null); }}
-                  style={styles.backBtn}
-                >
+                <Pressable onPress={resetToEmail} style={styles.backBtn}>
                   <Text style={styles.backBtnText}>{t("login.useDifferentEmail")}</Text>
                 </Pressable>
               </>
@@ -243,11 +290,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 4,
   },
-  btnText: {
-    color: "#fff",
-    fontSize: 15,
-    fontFamily: "Inter_700Bold",
-  },
+  btnText: { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
   backBtn: { alignItems: "center", marginTop: 14 },
   backBtnText: { fontSize: 13, color: "rgba(40,20,70,0.6)", fontFamily: "Inter_500Medium" },
+  waitingRow: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    backgroundColor: "rgba(124,58,237,0.08)", borderRadius: 12,
+    padding: 14, marginBottom: 18,
+  },
+  waitingText: { flex: 1, fontSize: 13, color: "rgba(40,20,70,0.75)", lineHeight: 18 },
+  dividerRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: "rgba(40,20,70,0.15)" },
+  dividerLabel: { fontSize: 11, color: "rgba(40,20,70,0.45)", fontFamily: "Inter_500Medium" },
+  linkBtn: {
+    borderWidth: 1, borderColor: "rgba(124,58,237,0.3)",
+    borderRadius: 12, paddingVertical: 12, alignItems: "center",
+  },
+  linkBtnText: { fontSize: 13, color: PRIMARY, fontFamily: "Inter_600SemiBold" },
 });

@@ -3,8 +3,8 @@
  *
  * Every screen that needs the user's position goes through here so the app
  * never falls back to a hardcoded/fake place. Reverse geocoding uses the
- * operating system's geocoder (which may use a network service); it is
- * unavailable on web, where we surface raw coordinates instead.
+ * operating system's geocoder on native; on web it falls back to the free
+ * OpenStreetMap Nominatim API (no API key required).
  */
 import * as Location from "expo-location";
 import { Platform } from "react-native";
@@ -35,17 +35,48 @@ export async function getCurrentLocation(): Promise<GeoPoint | null> {
   }
 }
 
-/** Best-effort reverse geocode to a short human address. Null on web/failure. */
+/** Best-effort reverse geocode to a short human address. */
 export async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
-  if (Platform.OS === "web") return null;
+  // Native: use OS geocoder (fast, works offline)
+  if (Platform.OS !== "web") {
+    try {
+      const results = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+      const r = results[0];
+      if (!r) return null;
+      const parts = [r.name, r.district ?? r.subregion, r.city ?? r.region]
+        .filter((v): v is string => Boolean(v))
+        .filter((v, i, arr) => arr.indexOf(v) === i);
+      return parts.join(", ") || null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Web: use Nominatim (OpenStreetMap free geocoding — no API key needed)
   try {
-    const results = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
-    const r = results[0];
-    if (!r) return null;
-    const parts = [r.name, r.district ?? r.subregion, r.city ?? r.region]
-      .filter((v): v is string => Boolean(v))
-      .filter((v, i, arr) => arr.indexOf(v) === i);
-    return parts.join(", ") || null;
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`;
+    const res = await fetch(url, {
+      headers: { "Accept-Language": "en", "User-Agent": "Suraksha-App/1.0" },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      address?: {
+        neighbourhood?: string;
+        suburb?: string;
+        city_district?: string;
+        city?: string;
+        town?: string;
+        village?: string;
+        state?: string;
+      };
+      display_name?: string;
+    };
+    const a = data.address;
+    if (!a) return null;
+    const area = a.neighbourhood ?? a.suburb ?? a.city_district ?? "";
+    const city = a.city ?? a.town ?? a.village ?? a.state ?? "";
+    const parts = [area, city].filter(Boolean).filter((v, i, arr) => arr.indexOf(v) === i);
+    return parts.join(", ") || data.display_name?.split(",").slice(0, 2).join(", ") || null;
   } catch {
     return null;
   }

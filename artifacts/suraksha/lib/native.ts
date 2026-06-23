@@ -30,16 +30,31 @@ export function locationLink(lat: number, lng: number): string {
   return `https://maps.google.com/?q=${lat},${lng}`;
 }
 
+/** Opens the best maps URL. On web, opens in a new browser tab. */
+async function openMapsUrl(url: string): Promise<void> {
+  if (Platform.OS === "web") {
+    try {
+      // window.open ensures it opens in a new tab, not inside the Expo web app
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch {
+      // fallback if window.open is blocked
+      await Linking.openURL(url);
+    }
+    return;
+  }
+  try {
+    await Linking.openURL(url);
+  } catch {
+    // ignore
+  }
+}
+
 export async function navigateTo(
   lat: number,
   lng: number,
   label?: string,
 ): Promise<void> {
-  try {
-    await Linking.openURL(mapsUrl(lat, lng, label));
-  } catch {
-    // ignore
-  }
+  await openMapsUrl(mapsUrl(lat, lng, label));
 }
 
 /** Opens the device SMS composer pre-filled with a recipient and message body. */
@@ -59,16 +74,12 @@ export async function openWhatsApp(phone: string, body: string): Promise<void> {
   const url = intl
     ? `https://wa.me/${intl}?text=${encodeURIComponent(body)}`
     : `https://wa.me/?text=${encodeURIComponent(body)}`;
-  try {
-    await Linking.openURL(url);
-  } catch {
-    // ignore
-  }
+  await openMapsUrl(url);
 }
 
 /**
  * Opens the device maps app with a category search near the given coordinates.
- * Honest: results come from the maps provider, not a baked-in list.
+ * On web, opens Google Maps in a new browser tab.
  */
 export async function searchNearby(
   query: string,
@@ -80,15 +91,12 @@ export async function searchNearby(
       ? `https://maps.apple.com/?q=${encodeURIComponent(query)}&sll=${coords.lat},${coords.lng}`
       : `https://maps.apple.com/?q=${encodeURIComponent(query)}`;
   } else {
+    // web + android: Google Maps
     url = coords
       ? `https://www.google.com/maps/search/${encodeURIComponent(query)}/@${coords.lat},${coords.lng},15z`
       : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
   }
-  try {
-    await Linking.openURL(url);
-  } catch {
-    // ignore
-  }
+  await openMapsUrl(url);
 }
 
 export async function shareLiveLocation(

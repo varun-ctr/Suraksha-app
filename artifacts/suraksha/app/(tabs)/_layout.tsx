@@ -3,14 +3,15 @@ import React from "react";
 import { Platform, StyleSheet, View } from "react-native";
 
 import { Icon } from "@/components/Icon";
+import { SakhiIcon } from "@/components/SakhiIcon";
 import type { IconName } from "@/constants/data";
 import { useI18n } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
 
-const TABS: { name: string; icon: IconName; key: string }[] = [
+const TABS: { name: string; icon: IconName | "sakhi_custom"; key: string }[] = [
   { name: "index", icon: "home", key: "tab.home" },
   { name: "map", icon: "map", key: "tab.map" },
-  { name: "sakhi", icon: "message", key: "tab.sakhi" },
+  { name: "sakhi", icon: "sakhi_custom", key: "tab.sakhi" },
   { name: "rights", icon: "book", key: "tab.rights" },
   { name: "profile", icon: "user", key: "tab.profile" },
 ];
@@ -44,7 +45,11 @@ export default function TabLayout() {
             title: t(tab.key),
             tabBarIcon: ({ color, focused }) => (
               <View style={{ alignItems: "center", justifyContent: "center" }}>
-                <Icon name={tab.icon} size={focused ? 24 : 22} color={color} />
+                {tab.icon === "sakhi_custom" ? (
+                  <SakhiIcon color={color} size={focused ? 24 : 22} focused={focused} />
+                ) : (
+                  <Icon name={tab.icon as IconName} size={focused ? 24 : 22} color={color} />
+                )}
               </View>
             ),
           }}

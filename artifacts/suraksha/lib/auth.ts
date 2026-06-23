@@ -1,10 +1,27 @@
 import { supabase } from "./supabaseClient";
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
+import { Platform } from "react-native";
+
+/**
+ * Returns the URL Supabase should redirect to after the user clicks the
+ * magic-link email. On web this must point back to the login screen so the
+ * Supabase JS client can pick up the session hash.
+ */
+function getRedirectTo(): string | undefined {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    // Return the current page URL so the magic link lands back here.
+    return `${window.location.origin}${window.location.pathname}`;
+  }
+  return undefined;
+}
 
 export async function sendOtp(email: string): Promise<{ error: string | null }> {
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { shouldCreateUser: true },
+    options: {
+      shouldCreateUser: true,
+      emailRedirectTo: getRedirectTo(),
+    },
   });
   return { error: error?.message ?? null };
 }

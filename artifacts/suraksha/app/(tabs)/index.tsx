@@ -76,13 +76,14 @@ function SosButton({ onPress }: { onPress: () => void }) {
 
 export default function HomeScreen() {
   const { c } = useTheme();
-  const { t, pick, lang } = useI18n();
+  const { t, pick, lang, setLang } = useI18n();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { contacts, profile } = useApp();
   const { triggerSOS, journey, setJourneyDuration, startJourney, endJourney } = useSafety();
   const { showToast } = useToast();
   const { point, address, status } = useLocation();
+  const [showLangPicker, setShowLangPicker] = React.useState(false);
 
   const displayName = profile.name.trim() || t("home.guest");
   const locLabel =
@@ -117,9 +118,21 @@ export default function HomeScreen() {
               <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
             </View>
           </View>
-          <Pressable style={styles.bellBtn} onPress={() => router.push("/helpline")}>
-            <Icon name="bell" size={18} color="#fff" />
-          </Pressable>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            {/* Language toggle — tap to cycle EN ↔ HI */}
+            <Pressable
+              style={[styles.bellBtn, { paddingHorizontal: 10 }]}
+              onPress={() => setShowLangPicker(true)}
+              hitSlop={8}
+            >
+              <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12, letterSpacing: 0.5 }}>
+                {lang.toUpperCase()}
+              </Text>
+            </Pressable>
+            <Pressable style={styles.bellBtn} onPress={() => router.push("/helpline")}>
+              <Icon name="bell" size={18} color="#fff" />
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.locPill}>
@@ -127,6 +140,48 @@ export default function HomeScreen() {
           <Text style={styles.locText} numberOfLines={1}>{locLabel}</Text>
         </View>
       </LinearGradient>
+
+      {/* Language Picker Sheet */}
+      {showLangPicker && (
+        <Pressable
+          style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(0,0,0,0.45)", zIndex: 100, justifyContent: "flex-end" }]}
+          onPress={() => setShowLangPicker(false)}
+        >
+          <Pressable onPress={() => {}} style={{ backgroundColor: c.card, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 24, paddingBottom: 36 }}>
+            <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 4 }}>
+              {t("home.selectLanguage")}
+            </Text>
+            <Text style={{ fontSize: 13, color: c.textMuted, marginBottom: 20 }}>
+              {t("home.selectLanguageSub")}
+            </Text>
+            {(["en", "hi"] as const).map((l) => {
+              const active = lang === l;
+              return (
+                <Pressable
+                  key={l}
+                  onPress={() => { setLang(l); setShowLangPicker(false); }}
+                  style={{
+                    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+                    paddingVertical: 14, paddingHorizontal: 16, borderRadius: 14, marginBottom: 10,
+                    backgroundColor: active ? withAlpha(c.primary, 0.12) : c.bg,
+                    borderWidth: 1.5, borderColor: active ? c.primary : c.border,
+                  }}
+                >
+                  <View>
+                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: active ? c.primary : c.text }}>
+                      {l === "en" ? "English" : "हिन्दी"}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: c.textMuted }}>
+                      {l === "en" ? "English" : "Hindi"}
+                    </Text>
+                  </View>
+                  {active && <Icon name="check" size={18} color={c.primary} />}
+                </Pressable>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      )}
 
       <View style={{ alignItems: "center", marginTop: -48, marginBottom: 6 }}>
         <SosButton onPress={triggerSOS} />
