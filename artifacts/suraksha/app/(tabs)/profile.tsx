@@ -1,8 +1,10 @@
 import { LinearGradient } from "expo-linear-gradient";
+import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { signOut } from "@/lib/auth";
 import {
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -31,6 +33,7 @@ import { useApp } from "@/context/AppContext";
 import { useI18n } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useToast } from "@/context/ToastContext";
+import { db, supabase } from "@/lib/supabaseClient";
 
 function Row({
   icon,
@@ -85,14 +88,55 @@ export default function ProfileScreen() {
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(profile.name);
   const [draftPhone, setDraftPhone] = useState(profile.phone);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
-  // Language picker modal
   const [langModalVisible, setLangModalVisible] = useState(false);
 
   const saveProfile = () => {
     setProfile({ name: draftName.trim() || profile.name, phone: draftPhone.trim() || profile.phone });
     setEditing(false);
     showToast(t("common.done"));
+  };
+
+  const uploadAvatar = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.75,
+      });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      setUploadingPhoto(true);
+
+      // Try Supabase Storage upload if signed in
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const response = await fetch(asset.uri);
+        const blob = await response.blob();
+        const ext = (asset.uri.split(".").pop() ?? "jpg").toLowerCase();
+        const path = `${user.id}/avatar.${ext}`;
+        const { error: uploadError } = await supabase.storage
+          .from("avatars")
+          .upload(path, blob, { upsert: true, contentType: asset.mimeType ?? "image/jpeg" });
+
+        if (!uploadError) {
+          const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+          setProfile({ avatarUrl: publicUrl });
+          try { await db.profiles.update(user.id, { avatar_url: publicUrl }); } catch { /* non-critical */ }
+          showToast(t("common.done"));
+          return;
+        }
+      }
+      // Fallback: save local URI (offline or not signed in)
+      setProfile({ avatarUrl: asset.uri });
+      showToast(t("common.done"));
+    } catch {
+      showToast(lang === "hi" ? "फ़ोटो अपलोड नहीं हो सकी" : "Could not update photo");
+    } finally {
+      setUploadingPhoto(false);
+    }
   };
 
   const currentLangMeta = LANG_BY_CODE[lang];
@@ -110,11 +154,21 @@ export default function ProfileScreen() {
         style={{ paddingTop: insets.top + 18, paddingHorizontal: 18, paddingBottom: 26 }}
       >
         <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
-          <View style={styles.bigAvatar}>
-            <Text style={{ color: "#fff", fontSize: 26, fontFamily: "Inter_700Bold" }}>
-              {displayName.charAt(0).toUpperCase()}
-            </Text>
-          </View>
+          {/* Avatar — tap to change photo */}
+          <Pressable onPress={uploadAvatar} disabled={uploadingPhoto} style={styles.bigAvatarWrap}>
+            {profile.avatarUrl ? (
+              <Image source={{ uri: profile.avatarUrl }} style={styles.bigAvatarImg} />
+            ) : (
+              <Text style={{ color: "#fff", fontSize: 26, fontFamily: "Inter_700Bold" }}>
+                {displayName.charAt(0).toUpperCase()}
+              </Text>
+            )}
+            {/* Camera overlay badge */}
+            <View style={styles.cameraBadge}>
+              <Icon name="camera" size={11} color="#fff" />
+            </View>
+          </Pressable>
+
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ color: "#fff", fontSize: 20, fontFamily: "Inter_700Bold" }} numberOfLines={1}>
               {displayName}
@@ -225,7 +279,6 @@ export default function ProfileScreen() {
             }
           />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
-          {/* Language row — opens searchable picker modal */}
           <Pressable
             onPress={() => setLangModalVisible(true)}
             style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11 }}
@@ -281,17 +334,17 @@ export default function ProfileScreen() {
         {/* ── Account ── */}
         <Text style={[styles.section, { marginTop: 16 }]}>{t("profile.account")}</Text>
         <Card style={{ paddingVertical: 6 }}>
-          <Row icon="lock"     color={c.police}  label={t("profile.privacy")} onPress={() => router.push("/privacy")} />
+          <Row icon="lock"       color={c.police}  label={t("profile.privacy")} onPress={() => router.push("/privacy")} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row icon="fileText" color={c.accent}  label={t("profile.terms")}   onPress={() => router.push("/terms")} />
+          <Row icon="fileText"   color={c.accent}  label={t("profile.terms")}   onPress={() => router.push("/terms")} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row icon="shield"   color={c.success} label={t("profile.data")}    onPress={() => router.push("/data")} />
+          <Row icon="shield"     color={c.success} label={t("profile.data")}    onPress={() => router.push("/data")} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row icon="info"     color={c.primary} label={t("profile.about")}   onPress={() => showToast("Suraksha v1.0")} />
+          <Row icon="info"       color={c.primary} label={t("profile.about")}   onPress={() => showToast("Suraksha v1.0")} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
           <Row icon="helpCircle" color={c.success} label={t("profile.support")} onPress={() => router.push("/helpline")} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row icon="user"    color={c.police}   label={t("account.sessions")} onPress={() => router.push("/sessions" as never)} />
+          <Row icon="user"       color={c.police}  label={t("account.sessions")} onPress={() => router.push("/sessions" as never)} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
           <Row
             icon="logOut"
@@ -377,11 +430,24 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  bigAvatar: {
+  bigAvatarWrap: {
     width: 66,
     height: 66,
     borderRadius: 33,
     backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  bigAvatarImg: { width: 66, height: 66, borderRadius: 33 },
+  cameraBadge: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "rgba(0,0,0,0.45)",
     alignItems: "center",
     justifyContent: "center",
   },

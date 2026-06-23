@@ -229,6 +229,26 @@ const en: Record<string, string> = {
   "common.navigatingTo": "Navigating to",
   "common.send": "Send",
   "common.name": "Name",
+  "common.goBack": "Go Back",
+
+  "sos.countdownTitle": "Preparing SOS…",
+  "sos.countdownSub": "Tap cancel if this was a mistake.",
+  "sos.cancelCountdown": "Cancel",
+
+  "status.safe": "You're Safe",
+  "status.caution": "SOS Active — Awaiting Response",
+  "status.emergency": "SOS Active",
+  "status.safeSub": "No active alerts",
+  "status.cautionSub": "Over 2 min — reach out to contacts",
+  "status.emergencySub": "Alert your contacts now",
+
+  "weather.label": "Weather",
+  "weather.loading": "Fetching weather…",
+
+  "community.title": "Community Reports",
+  "community.sub": "Safety incidents reported near you",
+  "community.comingSoon": "Coming Soon",
+  "community.comingSoonSub": "Community safety reports let you see and share safety incidents in your area. This feature is coming in the next update.",
 };
 
 export default en;

@@ -1,9 +1,10 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Easing,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -23,12 +24,17 @@ import type { LangCode } from "@/constants/languages";
 import { useApp } from "@/context/AppContext";
 import { useI18n } from "@/context/LanguageContext";
 import { useSafety } from "@/context/SafetyContext";
+import type { SafetyStatus } from "@/context/SafetyContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useToast } from "@/context/ToastContext";
 import { useLocation } from "@/hooks/useLocation";
 import { fmtClock } from "@/lib/format";
 import { formatCoords } from "@/lib/location";
 import { callNumber, shareLiveLocation } from "@/lib/native";
+import type { WeatherData } from "@/lib/weather";
+import { fetchWeather } from "@/lib/weather";
+
+// ── SOS Pulse Button ──────────────────────────────────────────────────────────
 
 function SosButton({ onPress }: { onPress: () => void }) {
   const { c } = useTheme();
@@ -78,16 +84,59 @@ function SosButton({ onPress }: { onPress: () => void }) {
   );
 }
 
+// ── Safety Status Card ────────────────────────────────────────────────────────
+
+const STATUS_ICON: Record<SafetyStatus, "check" | "clock" | "alert"> = {
+  safe: "check",
+  caution: "clock",
+  emergency: "alert",
+};
+
+function SafetyStatusCard({ status }: { status: SafetyStatus }) {
+  const { c } = useTheme();
+  const { t } = useI18n();
+
+  const colors = {
+    safe:      { bg: c.successSoft,             border: c.success, text: c.success },
+    caution:   { bg: withAlpha(c.warning, 0.12), border: c.warning, text: c.warning },
+    emergency: { bg: c.dangerSoft,              border: c.accent,  text: c.accent  },
+  }[status];
+
+  return (
+    <View
+      style={[
+        styles.statusCard,
+        { backgroundColor: colors.bg, borderColor: colors.border },
+      ]}
+    >
+      <View style={[styles.statusIconWrap, { backgroundColor: withAlpha(colors.border, 0.15) }]}>
+        <Icon name={STATUS_ICON[status]} size={16} color={colors.text} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.statusLabel, { color: colors.text }]}>
+          {t(`status.${status}`)}
+        </Text>
+        <Text style={[styles.statusSub, { color: colors.text, opacity: 0.7 }]}>
+          {t(`status.${status}Sub`)}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+// ── Home Screen ───────────────────────────────────────────────────────────────
+
 export default function HomeScreen() {
   const { c } = useTheme();
   const { t, pick, lang, setLang } = useI18n();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { contacts, profile } = useApp();
-  const { triggerSOS, journey, setJourneyDuration, startJourney, endJourney } = useSafety();
+  const { triggerSOS, journey, setJourneyDuration, startJourney, endJourney, safetyStatus } = useSafety();
   const { showToast } = useToast();
   const { point, address, status } = useLocation();
   const [showLangPicker, setShowLangPicker] = React.useState(false);
+  const [weather, setWeather] = useState<WeatherData | null>(null);
 
   const displayName = profile.name.trim() || t("home.guest");
   const locLabel =
@@ -97,6 +146,15 @@ export default function HomeScreen() {
         ? t("home.locationOff")
         : address ?? (point ? formatCoords(point) : t("home.locating"));
   const overdue = journey.active && journey.seconds >= journey.duration * 60;
+
+  // Fetch weather whenever location changes
+  useEffect(() => {
+    if (point) {
+      fetchWeather(point.lat, point.lng)
+        .then((w) => { if (w) setWeather(w); })
+        .catch(() => {});
+    }
+  }, [point]);
 
   return (
     <ScrollView
@@ -110,20 +168,30 @@ export default function HomeScreen() {
         end={{ x: 1, y: 1 }}
         style={{ paddingTop: insets.top + 14, paddingHorizontal: 18, paddingBottom: 54 }}
       >
+        {/* Header row */}
         <View style={styles.headerRow}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-            <View style={styles.headerAvatar}>
-              <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 17 }}>
-                {displayName.charAt(0).toUpperCase()}
-              </Text>
-            </View>
+            <Pressable
+              onPress={() => router.push("/(tabs)/profile" as never)}
+              style={styles.headerAvatarWrap}
+            >
+              {profile.avatarUrl ? (
+                <Image
+                  source={{ uri: profile.avatarUrl }}
+                  style={styles.headerAvatarImg}
+                />
+              ) : (
+                <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 17 }}>
+                  {displayName.charAt(0).toUpperCase()}
+                </Text>
+              )}
+            </Pressable>
             <View>
               <Text style={styles.greeting}>{t("home.greeting")}</Text>
               <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
             </View>
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            {/* Language button — opens full 28-language picker */}
             <Pressable
               style={[styles.bellBtn, { paddingHorizontal: 8 }]}
               onPress={() => setShowLangPicker(true)}
@@ -137,13 +205,22 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <View style={styles.locPill}>
-          <Icon name="mapPin" size={13} color="#fff" />
-          <Text style={styles.locText} numberOfLines={1}>{locLabel}</Text>
+        {/* Location + weather row */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <View style={styles.locPill}>
+            <Icon name="mapPin" size={13} color="#fff" />
+            <Text style={styles.locText} numberOfLines={1}>{locLabel}</Text>
+          </View>
+          {weather && (
+            <View style={styles.weatherPill}>
+              <Text style={{ fontSize: 14 }}>{weather.icon}</Text>
+              <Text style={styles.weatherText}>{weather.temp}°C · {weather.label}</Text>
+            </View>
+          )}
         </View>
       </LinearGradient>
 
-      {/* Language Picker Modal — full 28-language searchable list */}
+      {/* Language Picker Modal */}
       <Modal
         visible={showLangPicker}
         transparent
@@ -177,14 +254,21 @@ export default function HomeScreen() {
         </Pressable>
       </Modal>
 
-      <View style={{ alignItems: "center", marginTop: -48, marginBottom: 6 }}>
+      {/* Safety Status Card */}
+      <View style={{ paddingHorizontal: 18, marginTop: -24, marginBottom: 6 }}>
+        <SafetyStatusCard status={safetyStatus} />
+      </View>
+
+      {/* SOS Button */}
+      <View style={{ alignItems: "center", marginTop: 8, marginBottom: 6 }}>
         <SosButton onPress={triggerSOS} />
         <Text style={{ fontSize: 12.5, color: c.textMuted, fontFamily: "Inter_500Medium", marginTop: 2 }}>
           {t("home.tapForHelp")}
         </Text>
       </View>
 
-      <View style={{ paddingHorizontal: 18, marginTop: 18 }}>
+      <View style={{ paddingHorizontal: 18, marginTop: 14 }}>
+        {/* Quick Actions — 8 items */}
         <View style={styles.grid}>
           {QUICK_ACTIONS.map((qa) => (
             <Pressable
@@ -199,6 +283,7 @@ export default function HomeScreen() {
           ))}
         </View>
 
+        {/* Journey Timer */}
         <Card style={{ marginBottom: 20 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 3 }}>
             <Icon name="navigation" size={16} color={c.primary} />
@@ -300,6 +385,7 @@ export default function HomeScreen() {
           )}
         </Card>
 
+        {/* Trusted Contacts */}
         <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
           <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text }}>
             {t("home.trustedContacts")}
@@ -311,40 +397,63 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        {contacts.slice(0, 4).map((contact) => (
-          <View key={contact.id} style={[styles.contactRow, { backgroundColor: c.card, borderColor: c.border }]}>
-            <Avatar label={contact.name} />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ fontSize: 13.5, fontFamily: "Inter_700Bold", color: c.text }} numberOfLines={1}>
-                {contact.name}
-              </Text>
-              <Text style={{ fontSize: 11.5, color: c.textMuted }}>{contact.phone}</Text>
+        {contacts.length === 0 ? (
+          <Pressable
+            onPress={() => router.push("/contacts")}
+            style={[styles.noContactsRow, { backgroundColor: c.cardAlt, borderColor: c.border }]}
+          >
+            <Icon name="users" size={18} color={c.primary} />
+            <Text style={{ fontSize: 13, color: c.textMuted, fontFamily: "Inter_500Medium" }}>
+              {t("home.noContacts")}
+            </Text>
+          </Pressable>
+        ) : (
+          contacts.slice(0, 4).map((contact) => (
+            <View key={contact.id} style={[styles.contactRow, { backgroundColor: c.card, borderColor: c.border }]}>
+              <Avatar label={contact.name} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 13.5, fontFamily: "Inter_700Bold", color: c.text }} numberOfLines={1}>
+                  {contact.name}
+                </Text>
+                <Text style={{ fontSize: 11.5, color: c.textMuted }}>{contact.phone}</Text>
+              </View>
+              <Pressable
+                onPress={() => {
+                  showToast(`${t("common.calling")} ${contact.name}…`);
+                  callNumber(contact.phone);
+                }}
+                style={[styles.callBtn, { backgroundColor: c.successSoft }]}
+              >
+                <Icon name="phone" size={15} color={c.success} />
+              </Pressable>
             </View>
-            <Pressable
-              onPress={() => {
-                showToast(`${t("common.calling")} ${contact.name}…`);
-                callNumber(contact.phone);
-              }}
-              style={[styles.callBtn, { backgroundColor: c.successSoft }]}
-            >
-              <Icon name="phone" size={15} color={c.success} />
-            </Pressable>
-          </View>
-        ))}
+          ))
+        )}
       </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
-  headerAvatar: {
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  headerAvatarWrap: {
     width: 42,
     height: 42,
     borderRadius: 21,
     backgroundColor: "rgba(255,255,255,0.18)",
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
+  },
+  headerAvatarImg: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
   },
   greeting: { color: "rgba(255,255,255,0.85)", fontSize: 14, fontFamily: "Inter_600SemiBold" },
   name: { color: "#fff", fontSize: 18, fontFamily: "Inter_700Bold" },
@@ -366,7 +475,36 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
   },
-  locText: { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold", maxWidth: 260 },
+  locText: { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold", maxWidth: 200 },
+  weatherPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  weatherText: { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" },
+
+  statusCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 13,
+  },
+  statusIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statusLabel: { fontSize: 13.5, fontFamily: "Inter_700Bold" },
+  statusSub: { fontSize: 11.5, fontFamily: "Inter_500Medium", marginTop: 1 },
+
   sosCircle: {
     width: 140,
     height: 140,
@@ -377,6 +515,7 @@ const styles = StyleSheet.create({
     borderColor: "#fff",
   },
   sosText: { color: "#fff", fontFamily: "Inter_700Bold", fontSize: 17, marginTop: 4, letterSpacing: 1 },
+
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 20 },
   qaCard: {
     width: "47.5%",
@@ -387,6 +526,7 @@ const styles = StyleSheet.create({
   },
   qaLabel: { fontSize: 13.5, fontFamily: "Inter_700Bold", marginTop: 10 },
   qaSub: { fontSize: 11.5, marginTop: 2 },
+
   liveRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -397,6 +537,16 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   dot: { width: 9, height: 9, borderRadius: 4.5 },
+
+  noContactsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 8,
+  },
   contactRow: {
     flexDirection: "row",
     alignItems: "center",

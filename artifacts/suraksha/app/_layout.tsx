@@ -32,6 +32,7 @@ function RootLayoutNav() {
       <Stack.Screen name="helpline" />
       <Stack.Screen name="fakecall" />
       <Stack.Screen name="report" />
+      <Stack.Screen name="community-report" />
       <Stack.Screen name="premium" />
       <Stack.Screen name="privacy" />
       <Stack.Screen name="terms" />
@@ -48,7 +49,6 @@ function Gate() {
   const router = useRouter();
   const segments = useSegments();
 
-  // Track whether user has an active Supabase session
   const [authed, setAuthed] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
 
@@ -76,10 +76,8 @@ function Gate() {
     const inLogin      = seg0 === "login";
 
     if (!onboarded && !inOnboarding && !inLogin) {
-      // New user — show onboarding
       router.replace("/onboarding");
     } else if (onboarded && inOnboarding) {
-      // Already completed onboarding: go to tabs if authed, login if not
       router.replace(authed ? "/(tabs)" : "/login" as never);
     }
   }, [allReady, onboarded, authed, segments, router]);

@@ -37,6 +37,7 @@ export interface Profile {
   name: string;
   phone: string;
   premium: boolean;
+  avatarUrl?: string;
 }
 
 interface Settings {

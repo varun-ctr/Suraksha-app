@@ -48,10 +48,11 @@ export type IconName =
   | "edit"
   | "trash"
   | "logOut"
-  | "bellRing";
+  | "bellRing"
+  | "flag";
 
 export interface QuickAction {
-  key: "safe" | "rights" | "addcontact" | "helpline" | "sakhi" | "fakecall";
+  key: "safe" | "rights" | "addcontact" | "helpline" | "sakhi" | "fakecall" | "community" | "journey";
   en: string;
   hi: string;
   icon: IconName;
@@ -80,12 +81,14 @@ export interface Helpline {
 }
 
 export const QUICK_ACTIONS: QuickAction[] = [
-  { key: "safe", en: "Safe Places", hi: "सुरक्षित स्थान", icon: "mapPin", color: (c) => c.primary, route: "/(tabs)/map" },
-  { key: "rights", en: "Know Your Rights", hi: "अपने अधिकार जानें", icon: "book", color: (c) => c.police, route: "/(tabs)/rights" },
-  { key: "addcontact", en: "Trusted Contacts", hi: "विश्वसनीय संपर्क", icon: "users", color: (c) => c.success, route: "/contacts" },
-  { key: "helpline", en: "Helpline", hi: "हेल्पलाइन", icon: "phone", color: (c) => c.accent, route: "/helpline" },
-  { key: "sakhi", en: "Ask Sakhi", hi: "सखी से पूछें", icon: "message", color: (c) => c.primaryLight, route: "/(tabs)/sakhi" },
-  { key: "fakecall", en: "Fake Call", hi: "नकली कॉल", icon: "phoneCall", color: (c) => c.warning, route: "/fakecall" },
+  { key: "addcontact", en: "Emergency Contacts", hi: "आपातकालीन संपर्क",  icon: "users",      color: (c) => c.success,      route: "/contacts" },
+  { key: "safe",       en: "Safety Map",          hi: "सुरक्षा नक्शा",      icon: "mapPin",     color: (c) => c.primary,      route: "/(tabs)/map" },
+  { key: "fakecall",   en: "Fake Call",            hi: "नकली कॉल",           icon: "phoneCall",  color: (c) => c.warning,      route: "/fakecall" },
+  { key: "journey",    en: "Journey Timer",        hi: "यात्रा टाइमर",       icon: "navigation", color: (c) => c.police,       route: "/(tabs)/index" },
+  { key: "community",  en: "Community Reports",    hi: "सामुदायिक रिपोर्ट",  icon: "flag",       color: (c) => c.accent,       route: "/community-report" },
+  { key: "rights",     en: "Know Your Rights",     hi: "अपने अधिकार जानें",  icon: "book",       color: (c) => c.police,       route: "/(tabs)/rights" },
+  { key: "sakhi",      en: "Sakhi AI",             hi: "सखी AI",              icon: "message",    color: (c) => c.primaryLight, route: "/(tabs)/sakhi" },
+  { key: "helpline",   en: "Helpline",             hi: "हेल्पलाइन",           icon: "phone",      color: (c) => c.accent,       route: "/helpline" },
 ];
 
 export const RIGHTS: RightItem[] = [
@@ -160,9 +163,9 @@ export const HELPLINES: Helpline[] = [
 ];
 
 export const REPORT_CATEGORIES: { key: string; en: string; hi: string; icon: IconName }[] = [
-  { key: "harassment", en: "Harassment", hi: "उत्पीड़न", icon: "alert" },
-  { key: "unsafe", en: "Unsafe Area", hi: "असुरक्षित क्षेत्र", icon: "mapPin" },
-  { key: "stalking", en: "Stalking", hi: "पीछा करना", icon: "user" },
-  { key: "poorLighting", en: "Poor Lighting", hi: "खराब रोशनी", icon: "sun" },
-  { key: "other", en: "Other", hi: "अन्य", icon: "info" },
+  { key: "harassment", en: "Harassment",   hi: "उत्पीड़न",         icon: "alert" },
+  { key: "unsafe",     en: "Unsafe Area",  hi: "असुरक्षित क्षेत्र", icon: "mapPin" },
+  { key: "stalking",   en: "Stalking",     hi: "पीछा करना",        icon: "user" },
+  { key: "poorLighting", en: "Poor Lighting", hi: "खराब रोशनी",    icon: "sun" },
+  { key: "other",      en: "Other",        hi: "अन्य",              icon: "info" },
 ];

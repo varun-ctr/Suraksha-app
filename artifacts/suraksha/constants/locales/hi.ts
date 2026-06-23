@@ -229,6 +229,26 @@ const hi: Record<string, string> = {
   "common.navigatingTo": "रास्ता दिखा रहे हैं",
   "common.send": "भेजें",
   "common.name": "नाम",
+  "common.goBack": "वापस जाएँ",
+
+  "sos.countdownTitle": "SOS तैयार हो रहा है…",
+  "sos.countdownSub": "गलती हो गई? रद्द करें।",
+  "sos.cancelCountdown": "रद्द करें",
+
+  "status.safe": "आप सुरक्षित हैं",
+  "status.caution": "SOS सक्रिय — प्रतीक्षा में",
+  "status.emergency": "SOS सक्रिय",
+  "status.safeSub": "कोई सक्रिय अलर्ट नहीं",
+  "status.cautionSub": "2 मिनट से अधिक — संपर्कों तक पहुँचें",
+  "status.emergencySub": "अभी अपने संपर्कों को सूचित करें",
+
+  "weather.label": "मौसम",
+  "weather.loading": "मौसम ले रहे हैं…",
+
+  "community.title": "सामुदायिक रिपोर्ट",
+  "community.sub": "आपके पास की सुरक्षा घटनाएँ",
+  "community.comingSoon": "जल्द आ रहा है",
+  "community.comingSoonSub": "सामुदायिक सुरक्षा रिपोर्ट से आप अपने क्षेत्र की सुरक्षा घटनाएँ देख और साझा कर सकेंगी। यह सुविधा अगले अपडेट में आएगी।",
 };
 
 export default hi;

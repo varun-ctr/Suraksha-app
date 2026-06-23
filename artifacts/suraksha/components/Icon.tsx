@@ -45,6 +45,7 @@ const MAP: Record<IconName, React.ComponentProps<typeof Feather>["name"]> = {
   trash: "trash-2",
   logOut: "log-out",
   bellRing: "bell",
+  flag: "flag",
 };
 
 interface Props {
