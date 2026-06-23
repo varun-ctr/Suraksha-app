@@ -103,7 +103,7 @@ const en: Record<string, string> = {
   "contacts.empty": "No contacts yet — add someone you trust.",
   "contacts.added": "Contact added",
   "contacts.removed": "Contact removed",
-  "contacts.invalid": "Enter a valid 10-digit Indian mobile number.",
+  "contacts.invalid": "Enter a valid phone number (Indian mobile or international).",
   "contacts.duplicate": "This contact is already added.",
   "contacts.limit": "You can add up to 10 trusted contacts.",
   "contacts.limitReached": "Limit reached — remove a contact to add another.",

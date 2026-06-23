@@ -57,7 +57,7 @@ export default function CommunityReportScreen() {
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -129,8 +129,10 @@ export default function CommunityReportScreen() {
       });
       if (error) throw error;
 
-      setSubmitted(true);
+      showToast(t("community.submitted"));
+      router.back();
     } catch {
+      setSubmitError(true);
       showToast(t("community.error"));
     } finally {
       setSubmitting(false);
@@ -182,39 +184,6 @@ export default function CommunityReportScreen() {
     );
   }
 
-  // ── Success state ──────────────────────────────────────────────────────────
-  if (submitted) {
-    return (
-      <View style={{ flex: 1, backgroundColor: c.bg }}>
-        <LinearGradient
-          colors={[c.success, "#059669"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{ paddingTop: insets.top + 14, paddingHorizontal: 18, paddingBottom: 28 }}
-        >
-          <View style={{ height: 22 }} />
-          <Text style={styles.headerTitle}>{t("community.title")}</Text>
-        </LinearGradient>
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32 }}>
-          <View style={[styles.stateIcon, { backgroundColor: withAlpha(c.success, 0.12) }]}>
-            <Icon name="check" size={40} color={c.success} />
-          </View>
-          <Text style={[styles.stateTitle, { color: c.text }]}>{t("community.submitted")}</Text>
-          <Text style={{ fontSize: 13, color: c.textMuted, textAlign: "center", lineHeight: 20, marginBottom: 28 }}>
-            {t("community.note")}
-          </Text>
-          <Pressable
-            onPress={() => router.back()}
-            style={[styles.submitBtn, { backgroundColor: c.success, paddingHorizontal: 40, marginTop: 0 }]}
-          >
-            <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 14 }}>
-              {t("common.goBack")}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
 
   // ── Main form ──────────────────────────────────────────────────────────────
   return (
@@ -367,9 +336,31 @@ export default function CommunityReportScreen() {
           </Text>
         </View>
 
+        {/* ── Error / retry banner ── */}
+        {submitError && (
+          <View
+            style={[
+              styles.noteBox,
+              { backgroundColor: withAlpha(c.danger, 0.07), borderColor: withAlpha(c.danger, 0.25), marginTop: 16 },
+            ]}
+          >
+            <Icon name="alert" size={14} color={c.danger} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 12, color: c.danger, fontFamily: "Inter_600SemiBold" }}>
+                {t("community.error")}
+              </Text>
+              <Pressable onPress={handleSubmit} style={{ marginTop: 4 }}>
+                <Text style={{ fontSize: 12, color: c.danger, fontFamily: "Inter_700Bold", textDecorationLine: "underline" }}>
+                  {t("common.retry")}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
         {/* ── Submit ── */}
         <Pressable
-          onPress={handleSubmit}
+          onPress={() => { setSubmitError(false); handleSubmit(); }}
           disabled={submitting || !locationPoint}
           style={[
             styles.submitBtn,
@@ -382,7 +373,7 @@ export default function CommunityReportScreen() {
             <>
               <Icon name="send" size={16} color="#fff" />
               <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 14 }}>
-                {t("community.submit")}
+                {submitError ? t("common.retry") : t("community.submit")}
               </Text>
             </>
           )}

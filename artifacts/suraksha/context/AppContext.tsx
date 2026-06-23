@@ -10,7 +10,7 @@ import React, {
 } from "react";
 
 import { secureDelete, secureGet, secureSet } from "@/lib/secureStore";
-import { normalizeIndianMobile } from "@/lib/validate";
+import { normalizePhone } from "@/lib/validate";
 
 /** Sensitive data (PII) lives in the OS keystore; the rest in plain storage. */
 const SECURE_KEY = "suraksha.secure.v1";
@@ -143,12 +143,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addContact = useCallback(
     (name: string, phone: string): AddContactResult => {
       const trimmedName = name.trim();
-      const normalized = normalizeIndianMobile(phone);
+      const normalized = normalizePhone(phone);
       if (!trimmedName || !normalized) return { ok: false, error: "invalid" };
       const prev = stateRef.current;
       if (prev.contacts.length >= MAX_CONTACTS) return { ok: false, error: "limit" };
       const exists = prev.contacts.some(
-        (c) => normalizeIndianMobile(c.phone) === normalized,
+        (c) => normalizePhone(c.phone) === normalized,
       );
       if (exists) return { ok: false, error: "duplicate" };
       const next = {
@@ -168,12 +168,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setState((prev) => {
       const existing = new Set(
         prev.contacts
-          .map((c) => normalizeIndianMobile(c.phone))
+          .map((c) => normalizePhone(c.phone))
           .filter((v): v is string => Boolean(v)),
       );
       const slots = MAX_CONTACTS - prev.contacts.length;
       const fresh = items
-        .map((i) => ({ name: i.name.trim(), normalized: normalizeIndianMobile(i.phone) }))
+        .map((i) => ({ name: i.name.trim(), normalized: normalizePhone(i.phone) }))
         .filter((i): i is { name: string; normalized: string } => Boolean(i.name) && Boolean(i.normalized))
         .filter((i) => {
           if (existing.has(i.normalized)) return false;
@@ -199,9 +199,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       let normalized = target.phone;
       if (patch.phone !== undefined) {
-        const n = normalizeIndianMobile(patch.phone);
+        const n = normalizePhone(patch.phone);
         if (!n) return { ok: false, error: "invalid" };
-        const dupe = prev.contacts.some((c) => c.id !== id && normalizeIndianMobile(c.phone) === n);
+        const dupe = prev.contacts.some((c) => c.id !== id && normalizePhone(c.phone) === n);
         if (dupe) return { ok: false, error: "duplicate" };
         normalized = n;
       }

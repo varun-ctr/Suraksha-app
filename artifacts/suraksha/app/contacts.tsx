@@ -71,12 +71,9 @@ export default function ContactsScreen() {
         showToast(t("contacts.import"));
         return;
       }
-      const added = addContacts([{ name: picked.name ?? "Contact", phone: phoneNumber }]);
-      if (added === 0) {
-        showToast(t("contacts.duplicate"));
-      } else {
-        showToast(t("contacts.added"));
-      }
+      // Pre-fill the add form so the user can review/edit before confirming
+      setName(picked.name ?? "");
+      setPhone(phoneNumber.replace(/\s/g, ""));
     } catch {
       showToast(t("contacts.import"));
     } finally {
