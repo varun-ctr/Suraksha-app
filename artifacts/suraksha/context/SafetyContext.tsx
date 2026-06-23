@@ -93,6 +93,11 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
    * simply discarded.
    */
   const sosRunIdRef = useRef(0);
+  /**
+   * Prevents duplicate sos_events inserts within one SOS activation.
+   * Reset to false whenever phase returns to "idle".
+   */
+  const insertingRef = useRef(false);
 
   // ── Live-tracking helpers ─────────────────────────────────────────
 
@@ -221,15 +226,23 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
     };
   }, [sos.phase]);
 
-  // ── When phase first becomes "active" write DB row ────────────────
+  // ── Write sos_events once coords are available in active phase ───
+  //
+  // Keyed on (phase, coords, eventId) so the insert is retried whenever
+  // coords arrive after the countdown finishes (slow GPS / permission
+  // prompt). insertingRef guards against duplicate concurrent inserts;
+  // it resets to false when phase returns to idle.
 
-  const prevPhaseRef = useRef<SosPhase>("idle");
   useEffect(() => {
-    if (prevPhaseRef.current !== "active" && sos.phase === "active") {
+    if (sos.phase === "idle") {
+      insertingRef.current = false; // reset for next activation
+      return;
+    }
+    if (sos.phase === "active" && sos.coords !== null && sos.eventId === null && !insertingRef.current) {
+      insertingRef.current = true;
       activateSosDb(sosRunIdRef.current, sos.coords, sos.address);
     }
-    prevPhaseRef.current = sos.phase;
-  }, [sos.phase, sos.coords, sos.address, activateSosDb]);
+  }, [sos.phase, sos.coords, sos.eventId, sos.address, activateSosDb]);
 
   // ── Elapsed timer (active only) ───────────────────────────────────
 

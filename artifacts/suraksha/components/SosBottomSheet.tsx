@@ -5,6 +5,7 @@ import React, { useEffect, useRef } from "react";
 import {
   Animated,
   Easing,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,6 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "@/components/Icon";
+import { withAlpha } from "@/constants/colors";
 import { useApp } from "@/context/AppContext";
 import { useI18n } from "@/context/LanguageContext";
 import type { SosState } from "@/context/SafetyContext";
@@ -30,7 +32,7 @@ interface Props {
 export function SosBottomSheet({ sos, cancelSOS }: Props) {
   const { c } = useTheme();
   const { t } = useI18n();
-  const { contacts } = useApp();
+  const { contacts, profile } = useApp();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -153,6 +155,7 @@ export function SosBottomSheet({ sos, cancelSOS }: Props) {
           >
             {/* Header */}
             <View style={styles.activeHeader}>
+              {/* User avatar with live-pulse ring */}
               <View style={styles.pulseWrap}>
                 <Animated.View
                   style={[
@@ -160,7 +163,15 @@ export function SosBottomSheet({ sos, cancelSOS }: Props) {
                     { transform: [{ scale: pulseScale }], opacity: pulseOpacity },
                   ]}
                 />
-                <View style={[styles.activeDot, { backgroundColor: c.accent }]} />
+                <View style={[styles.avatarCircle, { backgroundColor: withAlpha(c.accent, 0.12) }]}>
+                  {profile.avatarUrl ? (
+                    <Image source={{ uri: profile.avatarUrl }} style={styles.avatarImg} />
+                  ) : (
+                    <Text style={[styles.avatarInitial, { color: c.accent }]}>
+                      {(profile.name.trim() || "?").charAt(0).toUpperCase()}
+                    </Text>
+                  )}
+                </View>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.activeTitle, { color: c.text }]}>{t("sos.sent")}</Text>
@@ -408,11 +419,16 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     backgroundColor: "#FF3B30",
   },
-  activeDot: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+  avatarCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
   },
+  avatarImg: { width: 40, height: 40, borderRadius: 20 },
+  avatarInitial: { fontSize: 18, fontFamily: "Inter_700Bold" },
   activeTitle: {
     fontSize: 17,
     fontFamily: "Inter_700Bold",
