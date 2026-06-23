@@ -7,7 +7,7 @@ import {
 } from "@expo-google-fonts/inter";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -18,6 +18,7 @@ import { LanguageProvider, useI18n } from "@/context/LanguageContext";
 import { SafetyProvider } from "@/context/SafetyContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { ToastProvider } from "@/context/ToastContext";
+import { supabase } from "@/lib/supabaseClient";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -47,7 +48,22 @@ function Gate() {
   const router = useRouter();
   const segments = useSegments();
 
-  const allReady = appReady && themeReady && langReady;
+  // Track whether user has an active Supabase session
+  const [authed, setAuthed] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setAuthed(!!session);
+      setAuthChecked(true);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_, session) => setAuthed(!!session),
+    );
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const allReady = appReady && themeReady && langReady && authChecked;
 
   useEffect(() => {
     if (allReady) SplashScreen.hideAsync();
@@ -57,13 +73,16 @@ function Gate() {
     if (!allReady) return;
     const seg0 = segments[0] as string;
     const inOnboarding = seg0 === "onboarding";
-    const inLogin = seg0 === "login";
+    const inLogin      = seg0 === "login";
+
     if (!onboarded && !inOnboarding && !inLogin) {
+      // New user — show onboarding
       router.replace("/onboarding");
     } else if (onboarded && inOnboarding) {
-      router.replace("/(tabs)");
+      // Already completed onboarding: go to tabs if authed, login if not
+      router.replace(authed ? "/(tabs)" : "/login" as never);
     }
-  }, [allReady, onboarded, segments, router]);
+  }, [allReady, onboarded, authed, segments, router]);
 
   if (!allReady) return null;
 

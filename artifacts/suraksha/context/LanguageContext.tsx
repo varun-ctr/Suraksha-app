@@ -7,68 +7,168 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import { Alert, I18nManager } from "react-native";
 
-import { type Language, STRINGS } from "@/constants/i18n";
+import type { LangCode } from "@/constants/languages";
+import { LANG_BY_CODE } from "@/constants/languages";
+import { db, supabase } from "@/lib/supabaseClient";
 
 const LANG_KEY = "suraksha.lang.v1";
+const DEFAULT_LANG: LangCode = "en";
 
-interface LanguageContextValue {
-  lang: Language;
-  setLang: (l: Language) => void;
+// ---------------------------------------------------------------------------
+// Static locale loader map — Metro requires static import() strings
+// ---------------------------------------------------------------------------
+const LOCALE_LOADERS: Record<LangCode, () => Promise<{ default: Record<string, string> }>> = {
+  en: () => import("@/constants/locales/en"),
+  hi: () => import("@/constants/locales/hi"),
+  bn: () => import("@/constants/locales/bn"),
+  te: () => import("@/constants/locales/te"),
+  mr: () => import("@/constants/locales/mr"),
+  ta: () => import("@/constants/locales/ta"),
+  gu: () => import("@/constants/locales/gu"),
+  kn: () => import("@/constants/locales/kn"),
+  or: () => import("@/constants/locales/or"),
+  ml: () => import("@/constants/locales/ml"),
+  pa: () => import("@/constants/locales/pa"),
+  ur: () => import("@/constants/locales/ur"),
+  ar: () => import("@/constants/locales/ar"),
+  es: () => import("@/constants/locales/es"),
+  fr: () => import("@/constants/locales/fr"),
+  de: () => import("@/constants/locales/de"),
+  pt: () => import("@/constants/locales/pt"),
+  ru: () => import("@/constants/locales/ru"),
+  zh: () => import("@/constants/locales/zh"),
+  ja: () => import("@/constants/locales/ja"),
+  ko: () => import("@/constants/locales/ko"),
+  sw: () => import("@/constants/locales/sw"),
+  tr: () => import("@/constants/locales/tr"),
+  id: () => import("@/constants/locales/id"),
+  ms: () => import("@/constants/locales/ms"),
+  th: () => import("@/constants/locales/th"),
+  vi: () => import("@/constants/locales/vi"),
+  fa: () => import("@/constants/locales/fa"),
+};
+
+const RTL_LANGS = new Set<LangCode>(["ar", "ur", "fa"]);
+
+// ---------------------------------------------------------------------------
+// Context type
+// ---------------------------------------------------------------------------
+export interface LanguageContextValue {
+  lang: LangCode;
+  setLang: (l: LangCode) => void;
   toggleLang: () => void;
   t: (key: string) => string;
-  /** Picks the right field from an object carrying `en`/`hi` variants. */
+  /**
+   * Picks the value for the current language from a bilingual (or partial)
+   * object. Falls back to `obj.en` for language codes that aren't present.
+   * Typed as `{ en: T; hi: T }` for backward compatibility with existing
+   * callers; internally casts to try any lang key first.
+   */
   pick: <T>(obj: { en: T; hi: T }) => T;
   ready: boolean;
 }
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
+// ---------------------------------------------------------------------------
+// Provider
+// ---------------------------------------------------------------------------
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangState] = useState<Language>("en");
+  const [lang, setLangState] = useState<LangCode>(DEFAULT_LANG);
+  const [locale, setLocale] = useState<Record<string, string>>({});
+  const [enLocale, setEnLocale] = useState<Record<string, string>>({});
   const [ready, setReady] = useState(false);
 
+  // Load EN locale once as the permanent fallback
   useEffect(() => {
-    (async () => {
+    void LOCALE_LOADERS.en().then((m) => setEnLocale(m.default));
+  }, []);
+
+  // On mount: read saved language, apply it, then listen for auth changes
+  useEffect(() => {
+    const init = async () => {
       try {
         const saved = await AsyncStorage.getItem(LANG_KEY);
-        if (saved === "en" || saved === "hi") setLangState(saved);
+        const code: LangCode =
+          saved && saved in LOCALE_LOADERS ? (saved as LangCode) : DEFAULT_LANG;
+        await loadLocale(code);
       } catch {
-        // ignore
+        await loadLocale(DEFAULT_LANG);
       } finally {
         setReady(true);
       }
-    })();
+    };
+    void init();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (event === "SIGNED_IN" && session?.user?.id) {
+          void syncWithProfile(session.user.id);
+        }
+      },
+    );
+
+    return () => subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const setLang = useCallback((l: Language) => {
-    setLangState(l);
-    AsyncStorage.setItem(LANG_KEY, l).catch(() => {});
+  const loadLocale = async (code: LangCode) => {
+    const loader = LOCALE_LOADERS[code] ?? LOCALE_LOADERS.en;
+    const m = await loader();
+    setLocale(m.default);
+    setLangState(code);
+    await AsyncStorage.setItem(LANG_KEY, code).catch(() => {});
+  };
+
+  const syncWithProfile = async (userId: string) => {
+    try {
+      const { data: profile } = await db.profiles.getById(userId);
+      if (profile?.language && profile.language in LOCALE_LOADERS) {
+        const profileCode = profile.language as LangCode;
+        const saved = await AsyncStorage.getItem(LANG_KEY);
+        if (saved !== profileCode) await loadLocale(profileCode);
+      } else {
+        const saved = ((await AsyncStorage.getItem(LANG_KEY)) ?? DEFAULT_LANG) as LangCode;
+        await db.profiles.update(userId, { language: saved });
+      }
+    } catch {
+      // profiles table may not be ready — silently skip
+    }
+  };
+
+  const setLang = useCallback((code: LangCode) => {
+    const meta = LANG_BY_CODE[code];
+    const needsRtl = RTL_LANGS.has(code);
+    const currentlyRtl = I18nManager.isRTL;
+    void loadLocale(code);
+    if (needsRtl !== currentlyRtl) {
+      I18nManager.forceRTL(needsRtl);
+      Alert.alert(
+        "Restart required",
+        `${meta?.englishName ?? code} uses a ${needsRtl ? "right-to-left" : "left-to-right"} layout. Please close and reopen the app to apply the change.`,
+        [{ text: "OK" }],
+      );
+    }
   }, []);
 
   const toggleLang = useCallback(() => {
-    setLangState((prev) => {
-      const next = prev === "en" ? "hi" : "en";
-      AsyncStorage.setItem(LANG_KEY, next).catch(() => {});
-      return next;
-    });
-  }, []);
+    setLang(lang === "hi" ? "en" : "hi");
+  }, [lang, setLang]);
 
   const t = useCallback(
-    (key: string) => {
-      const entry = STRINGS[key];
-      if (!entry) return key;
-      return entry[lang];
-    },
-    [lang],
+    (key: string): string => locale[key] ?? enLocale[key] ?? key,
+    [locale, enLocale],
   );
 
   const pick = useCallback(
-    <T,>(obj: { en: T; hi: T }): T => obj[lang],
+    <T,>(obj: { en: T; hi: T }): T =>
+      ((obj as Record<string, T | undefined>)[lang] ?? obj.en) as T,
     [lang],
   );
 
-  const value = useMemo(
+  const value = useMemo<LanguageContextValue>(
     () => ({ lang, setLang, toggleLang, t, pick, ready }),
     [lang, setLang, toggleLang, t, pick, ready],
   );

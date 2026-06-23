@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "@/components/Icon";
+import { LanguagePicker } from "@/components/LanguagePicker";
 import { Card } from "@/components/ui";
 import {
   ACCENTS,
@@ -24,7 +25,8 @@ import {
   withAlpha,
 } from "@/constants/colors";
 import type { IconName } from "@/constants/data";
-import { LANGUAGE_LABELS } from "@/constants/i18n";
+import { LANG_BY_CODE } from "@/constants/languages";
+import type { LangCode } from "@/constants/languages";
 import { useApp } from "@/context/AppContext";
 import { useI18n } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
@@ -62,14 +64,16 @@ function Row({
       >
         <Icon name={icon} size={16} color={color} />
       </View>
-      <Text style={{ flex: 1, fontSize: 13.5, fontFamily: "Inter_600SemiBold", color: c.text }}>{label}</Text>
+      <Text style={{ flex: 1, fontSize: 13.5, fontFamily: "Inter_600SemiBold", color: c.text }}>
+        {label}
+      </Text>
       {right ?? <Icon name="chevronRight" size={16} color={c.textFaint} />}
     </Pressable>
   );
 }
 
 export default function ProfileScreen() {
-  const { c, themeKey, setThemeKey, isDark, mode, setMode } = useTheme();
+  const { c, themeKey, setThemeKey, isDark, setMode } = useTheme();
   const { t, lang, setLang, pick } = useI18n();
   const { profile, settings, setSettings, setProfile } = useApp();
   const { showToast } = useToast();
@@ -82,11 +86,16 @@ export default function ProfileScreen() {
   const [draftName, setDraftName] = useState(profile.name);
   const [draftPhone, setDraftPhone] = useState(profile.phone);
 
+  // Language picker modal
+  const [langModalVisible, setLangModalVisible] = useState(false);
+
   const saveProfile = () => {
     setProfile({ name: draftName.trim() || profile.name, phone: draftPhone.trim() || profile.phone });
     setEditing(false);
     showToast(t("common.done"));
   };
+
+  const currentLangMeta = LANG_BY_CODE[lang];
 
   return (
     <ScrollView
@@ -137,6 +146,7 @@ export default function ProfileScreen() {
       </LinearGradient>
 
       <View style={{ paddingHorizontal: 18, marginTop: 16 }}>
+        {/* ── Appearance ── */}
         <Text style={styles.section}>{t("profile.appearance")}</Text>
         <Card style={{ marginBottom: 16 }}>
           <Text style={{ fontSize: 12.5, fontFamily: "Inter_600SemiBold", color: c.textMuted, marginBottom: 12 }}>
@@ -168,7 +178,6 @@ export default function ProfileScreen() {
               );
             })}
           </View>
-
           <View style={[styles.divider, { backgroundColor: c.border }]} />
           <Row
             icon={isDark ? "moon" : "sun"}
@@ -185,6 +194,7 @@ export default function ProfileScreen() {
           />
         </Card>
 
+        {/* ── Settings ── */}
         <Text style={styles.section}>{t("profile.settings")}</Text>
         <Card style={{ marginBottom: 16, paddingVertical: 6 }}>
           <Row
@@ -215,7 +225,11 @@ export default function ProfileScreen() {
             }
           />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11 }}>
+          {/* Language row — opens searchable picker modal */}
+          <Pressable
+            onPress={() => setLangModalVisible(true)}
+            style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11 }}
+          >
             <View
               style={{
                 width: 34,
@@ -231,36 +245,17 @@ export default function ProfileScreen() {
             <Text style={{ flex: 1, fontSize: 13.5, fontFamily: "Inter_600SemiBold", color: c.text }}>
               {t("profile.language")}
             </Text>
-            <View style={[styles.segment, { backgroundColor: c.cardAlt }]}>
-              {(["en", "hi"] as const).map((l) => {
-                const active = lang === l;
-                return (
-                  <Pressable
-                    key={l}
-                    onPress={() => setLang(l)}
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      borderRadius: 8,
-                      backgroundColor: active ? c.primary : "transparent",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontFamily: "Inter_700Bold",
-                        color: active ? "#fff" : c.textMuted,
-                      }}
-                    >
-                      {LANGUAGE_LABELS[l]}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={{ fontSize: 18 }}>{currentLangMeta?.flag ?? "🌐"}</Text>
+              <Text style={{ fontSize: 12.5, fontFamily: "Inter_600SemiBold", color: c.textMuted }}>
+                {currentLangMeta?.nativeName ?? lang}
+              </Text>
+              <Icon name="chevronRight" size={14} color={c.textFaint} />
             </View>
-          </View>
+          </Pressable>
         </Card>
 
+        {/* ── Premium card ── */}
         <Pressable onPress={() => router.push("/premium")}>
           <LinearGradient
             colors={[c.accent, c.accentDark]}
@@ -283,29 +278,20 @@ export default function ProfileScreen() {
           </LinearGradient>
         </Pressable>
 
+        {/* ── Account ── */}
         <Text style={[styles.section, { marginTop: 16 }]}>{t("profile.account")}</Text>
         <Card style={{ paddingVertical: 6 }}>
-          <Row icon="lock" color={c.police} label={t("profile.privacy")} onPress={() => router.push("/privacy")} />
+          <Row icon="lock"     color={c.police}  label={t("profile.privacy")} onPress={() => router.push("/privacy")} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row icon="fileText" color={c.accent} label={t("profile.terms")} onPress={() => router.push("/terms")} />
+          <Row icon="fileText" color={c.accent}  label={t("profile.terms")}   onPress={() => router.push("/terms")} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row icon="shield" color={c.success} label={t("profile.data")} onPress={() => router.push("/data")} />
+          <Row icon="shield"   color={c.success} label={t("profile.data")}    onPress={() => router.push("/data")} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row icon="info" color={c.primary} label={t("profile.about")} onPress={() => showToast("Suraksha v1.0")} />
+          <Row icon="info"     color={c.primary} label={t("profile.about")}   onPress={() => showToast("Suraksha v1.0")} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row
-            icon="helpCircle"
-            color={c.success}
-            label={t("profile.support")}
-            onPress={() => router.push("/helpline")}
-          />
+          <Row icon="helpCircle" color={c.success} label={t("profile.support")} onPress={() => router.push("/helpline")} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row
-            icon="user"
-            color={c.police}
-            label={t("account.sessions")}
-            onPress={() => router.push("/sessions" as never)}
-          />
+          <Row icon="user"    color={c.police}   label={t("account.sessions")} onPress={() => router.push("/sessions" as never)} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
           <Row
             icon="logOut"
@@ -319,6 +305,7 @@ export default function ProfileScreen() {
         </Card>
       </View>
 
+      {/* ── Edit profile modal ── */}
       <Modal visible={editing} transparent animationType="fade" onRequestClose={() => setEditing(false)}>
         <Pressable style={[styles.modalBg, { backgroundColor: c.overlay }]} onPress={() => setEditing(false)}>
           <Pressable style={[styles.modalCard, { backgroundColor: c.card }]} onPress={() => {}}>
@@ -341,16 +328,47 @@ export default function ProfileScreen() {
               placeholderTextColor={c.textFaint}
             />
             <View style={{ flexDirection: "row", gap: 10, marginTop: 18 }}>
-              <Pressable
-                onPress={() => setEditing(false)}
-                style={[styles.modalBtn, { backgroundColor: c.cardAlt }]}
-              >
+              <Pressable onPress={() => setEditing(false)} style={[styles.modalBtn, { backgroundColor: c.cardAlt }]}>
                 <Text style={{ color: c.text, fontFamily: "Inter_700Bold", fontSize: 13.5 }}>{t("common.cancel")}</Text>
               </Pressable>
               <Pressable onPress={saveProfile} style={[styles.modalBtn, { backgroundColor: c.primary }]}>
                 <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>{t("common.save")}</Text>
               </Pressable>
             </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ── Language picker modal ── */}
+      <Modal
+        visible={langModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setLangModalVisible(false)}
+      >
+        <Pressable
+          style={[styles.langModalBg, { backgroundColor: c.overlay }]}
+          onPress={() => setLangModalVisible(false)}
+        >
+          <Pressable
+            style={[styles.langModalSheet, { backgroundColor: c.card }]}
+            onPress={() => {}}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}>
+              <Text style={{ flex: 1, fontSize: 16, fontFamily: "Inter_700Bold", color: c.text }}>
+                {t("profile.language")}
+              </Text>
+              <Pressable onPress={() => setLangModalVisible(false)} hitSlop={10}>
+                <Icon name="x" size={20} color={c.textMuted} />
+              </Pressable>
+            </View>
+            <LanguagePicker
+              selected={lang}
+              onSelect={(code: LangCode) => {
+                setLang(code);
+                setLangModalVisible(false);
+              }}
+            />
           </Pressable>
         </Pressable>
       </Modal>
@@ -388,7 +406,6 @@ const styles = StyleSheet.create({
   },
   section: { fontSize: 13, fontFamily: "Inter_700Bold", marginBottom: 8, color: "#8A7FA6" },
   divider: { height: StyleSheet.hairlineWidth, marginVertical: 2 },
-  segment: { flexDirection: "row", borderRadius: 10, padding: 3 },
   premiumCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -400,4 +417,12 @@ const styles = StyleSheet.create({
   label: { fontSize: 12, fontFamily: "Inter_600SemiBold", marginBottom: 6 },
   input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14 },
   modalBtn: { flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 12 },
+  langModalBg: { flex: 1, justifyContent: "flex-end" },
+  langModalSheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 22,
+    paddingBottom: 36,
+    maxHeight: "85%",
+  },
 });

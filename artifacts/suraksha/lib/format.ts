@@ -5,7 +5,7 @@ export function fmtClock(totalSeconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export function timeAgo(ts: number, lang: "en" | "hi"): string {
+export function timeAgo(ts: number, lang: string): string {
   const diff = Math.max(0, Date.now() - ts);
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return lang === "hi" ? "अभी" : "just now";
