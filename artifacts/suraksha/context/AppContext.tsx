@@ -39,6 +39,7 @@ export interface ReportItem {
 export interface Profile {
   name: string;
   phone: string;
+  email: string;
   premium: boolean;
   avatarUrl?: string;
 }
@@ -59,7 +60,7 @@ interface PersistShape {
 const DEFAULTS: PersistShape = {
   contacts: [],
   reports: [],
-  profile: { name: "", phone: "", premium: false },
+  profile: { name: "", phone: "", email: "", premium: false },
   settings: { notifications: true, bgLocation: false },
   onboarded: false,
 };

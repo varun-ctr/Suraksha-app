@@ -2,6 +2,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { deleteAccount, signOut } from "@/lib/auth";
 import {
   ActivityIndicator,
@@ -91,6 +92,7 @@ export default function ProfileScreen() {
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(profile.name);
   const [draftPhone, setDraftPhone] = useState(profile.phone);
+  const [draftEmail, setDraftEmail] = useState(profile.email);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const [langModalVisible, setLangModalVisible] = useState(false);
@@ -100,7 +102,11 @@ export default function ProfileScreen() {
   const [deleting, setDeleting] = useState(false);
 
   const saveProfile = () => {
-    setProfile({ name: draftName.trim() || profile.name, phone: draftPhone.trim() || profile.phone });
+    setProfile({
+      name: draftName.trim() || profile.name,
+      phone: draftPhone.trim() || profile.phone,
+      email: draftEmail.trim(),
+    });
     setEditing(false);
     showToast(t("common.done"));
   };
@@ -148,14 +154,23 @@ export default function ProfileScreen() {
 
   const currentLangMeta = LANG_BY_CODE[lang];
 
+  const NOTIF_TOKEN_KEY = "suraksha.notif.token";
+
   const handleNotificationsToggle = async (v: boolean) => {
     if (v) {
-      // expo-notifications PermissionResponse fields aren't fully typed in SDK 54
       const result = await ExpoNotifications.requestPermissionsAsync() as unknown as { granted: boolean };
       if (!result.granted) {
         showToast(t("profile.notificationDenied"));
         return;
       }
+      try {
+        const tokenData = await ExpoNotifications.getExpoPushTokenAsync();
+        await AsyncStorage.setItem(NOTIF_TOKEN_KEY, tokenData.data);
+      } catch {
+        // Token fetch may fail in dev/simulator — proceed with enabling notifications anyway
+      }
+    } else {
+      await AsyncStorage.removeItem(NOTIF_TOKEN_KEY).catch(() => {});
     }
     setSettings({ notifications: v });
   };
@@ -211,9 +226,16 @@ export default function ProfileScreen() {
             <Text style={{ color: "#fff", fontSize: 20, fontFamily: "Inter_700Bold" }} numberOfLines={1}>
               {displayName}
             </Text>
-            <Text style={{ color: "rgba(255,255,255,0.85)", fontSize: 12.5, marginTop: 1 }}>
-              {profile.phone}
-            </Text>
+            {profile.phone ? (
+              <Text style={{ color: "rgba(255,255,255,0.85)", fontSize: 12.5, marginTop: 1 }}>
+                {profile.phone}
+              </Text>
+            ) : null}
+            {profile.email ? (
+              <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, marginTop: 1 }}>
+                {profile.email}
+              </Text>
+            ) : null}
             {profile.premium && (
               <View style={styles.premiumBadge}>
                 <Icon name="crown" size={12} color="#FFD66B" />
@@ -227,6 +249,7 @@ export default function ProfileScreen() {
             onPress={() => {
               setDraftName(profile.name);
               setDraftPhone(profile.phone);
+              setDraftEmail(profile.email);
               setEditing(true);
             }}
             hitSlop={10}
@@ -456,6 +479,16 @@ export default function ProfileScreen() {
               keyboardType="phone-pad"
               style={[styles.input, { backgroundColor: c.cardAlt, color: c.text, borderColor: c.border }]}
               placeholderTextColor={c.textFaint}
+            />
+            <Text style={[styles.label, { color: c.textMuted, marginTop: 10 }]}>Email</Text>
+            <TextInput
+              value={draftEmail}
+              onChangeText={setDraftEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              style={[styles.input, { backgroundColor: c.cardAlt, color: c.text, borderColor: c.border }]}
+              placeholderTextColor={c.textFaint}
+              placeholder="you@example.com"
             />
             <View style={{ flexDirection: "row", gap: 10, marginTop: 18 }}>
               <Pressable onPress={() => setEditing(false)} style={[styles.modalBtn, { backgroundColor: c.cardAlt }]}>

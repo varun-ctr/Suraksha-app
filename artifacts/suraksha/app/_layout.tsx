@@ -14,6 +14,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider, useApp } from "@/context/AppContext";
+import { BookmarksProvider } from "@/context/BookmarksContext";
 import { LanguageProvider, useI18n } from "@/context/LanguageContext";
 import { SafetyProvider } from "@/context/SafetyContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
@@ -108,9 +109,11 @@ export default function RootLayout() {
               <LanguageProvider>
                 <AppProvider>
                   <SafetyProvider>
-                    <ToastProvider>
-                      <Gate />
-                    </ToastProvider>
+                    <BookmarksProvider>
+                      <ToastProvider>
+                        <Gate />
+                      </ToastProvider>
+                    </BookmarksProvider>
                   </SafetyProvider>
                 </AppProvider>
               </LanguageProvider>
