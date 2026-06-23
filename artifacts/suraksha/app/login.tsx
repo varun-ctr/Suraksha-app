@@ -319,21 +319,27 @@ export default function LoginScreen() {
                   {t("login.otpSentTo").replace("{phone}", sentTo)}
                 </Text>
 
-                {/* 6-box OTP display */}
-                <OtpBoxes value={phoneOtp} onPress={() => otpInputRef.current?.focus()} />
-
-                {/* Hidden input that captures actual typing */}
-                <TextInput
-                  ref={otpInputRef}
-                  value={phoneOtp}
-                  onChangeText={handlePhoneOtpChange}
-                  keyboardType="number-pad"
-                  textContentType="oneTimeCode"
-                  autoComplete="sms-otp"
-                  caretHidden
-                  maxLength={6}
-                  style={{ height: 1, opacity: 0, marginBottom: 0 }}
-                />
+                {/*
+                  Transparent TextInput overlaid on the visual boxes.
+                  Giving it real dimensions (not height:1/opacity:0) lets the
+                  Android Autofill Framework and SMS Retriever detect it and
+                  surface the one-time-code suggestion in the keyboard bar.
+                  iOS uses textContentType="oneTimeCode" for the same effect.
+                */}
+                <View style={styles.otpContainer}>
+                  <OtpBoxes value={phoneOtp} onPress={() => otpInputRef.current?.focus()} />
+                  <TextInput
+                    ref={otpInputRef}
+                    value={phoneOtp}
+                    onChangeText={handlePhoneOtpChange}
+                    keyboardType="number-pad"
+                    textContentType="oneTimeCode"
+                    autoComplete="sms-otp"
+                    caretHidden
+                    maxLength={6}
+                    style={styles.otpOverlayInput}
+                  />
+                </View>
 
                 {error && <Text style={styles.error}>{error}</Text>}
 
@@ -626,6 +632,20 @@ const styles = StyleSheet.create({
   btnText: { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
   backBtn: { alignItems: "center", marginTop: 14 },
   backBtnText: { fontSize: 13, color: "rgba(40,20,70,0.6)", fontFamily: "Inter_500Medium" },
+  otpContainer: {
+    position: "relative",
+    marginBottom: 4,
+    marginTop: 4,
+  },
+  otpOverlayInput: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    color: "transparent",
+    backgroundColor: "transparent",
+  },
   linkBtn: {
     borderWidth: 1,
     borderColor: "rgba(124,58,237,0.3)",

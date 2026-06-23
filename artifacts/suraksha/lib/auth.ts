@@ -1,5 +1,5 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "./supabaseClient";
+import { secureGet, secureSet } from "./secureStore";
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
 import { Platform } from "react-native";
 
@@ -30,7 +30,7 @@ async function checkAndIncrementRateLimit(): Promise<{
   resetInMinutes?: number;
 }> {
   try {
-    const raw = await AsyncStorage.getItem(OTP_RATE_LIMIT_KEY);
+    const raw = await secureGet(OTP_RATE_LIMIT_KEY);
     const now = Date.now();
     let state: RateLimitState = raw
       ? (JSON.parse(raw) as RateLimitState)
@@ -47,7 +47,7 @@ async function checkAndIncrementRateLimit(): Promise<{
     }
 
     state.count += 1;
-    await AsyncStorage.setItem(OTP_RATE_LIMIT_KEY, JSON.stringify(state));
+    await secureSet(OTP_RATE_LIMIT_KEY, JSON.stringify(state));
     return { allowed: true };
   } catch {
     return { allowed: true };

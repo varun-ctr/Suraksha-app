@@ -19,9 +19,25 @@ import { useI18n } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useToast } from "@/context/ToastContext";
 import { deleteAccount, getCurrentUser, signOut, signOutGlobal } from "@/lib/auth";
+import { supabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 
-function timeAgoShort(isoDate: string | undefined): string {
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+interface SessionInfo {
+  id: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  userAgent: string | null;
+  ip: string | null;
+  isCurrentSession: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function timeAgoShort(isoDate: string | undefined | null): string {
   if (!isoDate) return "—";
   const diff = Date.now() - new Date(isoDate).getTime();
   const mins = Math.floor(diff / 60_000);
@@ -33,6 +49,72 @@ function timeAgoShort(isoDate: string | undefined): string {
   return `${days}d ago`;
 }
 
+function absoluteDate(isoDate: string | undefined | null): string {
+  if (!isoDate) return "—";
+  return new Date(isoDate).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function parseDeviceName(ua: string | null): string {
+  if (!ua) return "Unknown device";
+  if (/iPhone/i.test(ua)) return "iPhone";
+  if (/iPad/i.test(ua)) return "iPad";
+  if (/Android/i.test(ua)) return "Android";
+  if (/Windows/i.test(ua)) return "Windows PC";
+  if (/Macintosh|Mac OS/i.test(ua)) return "Mac";
+  if (/Linux/i.test(ua)) return "Linux";
+  return "Unknown device";
+}
+
+function parseDeviceIcon(ua: string | null): "phone" | "globe" | "user" {
+  if (!ua) return "globe";
+  if (/iPhone|iPad|Android/i.test(ua)) return "phone";
+  return "globe";
+}
+
+// ---------------------------------------------------------------------------
+// SessionCard
+// ---------------------------------------------------------------------------
+function SessionCard({ session, c }: { session: SessionInfo; c: ReturnType<typeof import("@/context/ThemeContext").useTheme>["c"] }) {
+  const device = parseDeviceName(session.userAgent);
+  const icon = parseDeviceIcon(session.userAgent);
+  return (
+    <View style={[styles.sessionCard, { borderColor: c.border, backgroundColor: c.card }]}>
+      <View style={[styles.sessionIcon, { backgroundColor: withAlpha(c.primary, 0.1) }]}>
+        <Icon name={icon} size={18} color={c.primary} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text }} numberOfLines={1}>
+            {device}
+          </Text>
+          {session.isCurrentSession && (
+            <View style={[styles.thisBadge, { backgroundColor: withAlpha(c.success, 0.12) }]}>
+              <View style={[styles.thisDot, { backgroundColor: c.success }]} />
+              <Text style={{ fontSize: 10.5, fontFamily: "Inter_700Bold", color: c.success }}>
+                This device
+              </Text>
+            </View>
+          )}
+        </View>
+        <Text style={{ fontSize: 11.5, color: c.textMuted, marginTop: 3 }}>
+          Signed in {absoluteDate(session.createdAt)}
+        </Text>
+        <Text style={{ fontSize: 11.5, color: c.textFaint, marginTop: 2 }}>
+          Last active {timeAgoShort(session.updatedAt)}
+          {session.ip ? ` · ${session.ip}` : ""}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Screen
+// ---------------------------------------------------------------------------
 export default function SessionsScreen() {
   const { c } = useTheme();
   const { t } = useI18n();
@@ -41,6 +123,8 @@ export default function SessionsScreen() {
   const router = useRouter();
 
   const [user, setUser] = useState<User | null>(null);
+  const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
 
   // Delete-account modal state
@@ -50,8 +134,38 @@ export default function SessionsScreen() {
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    getCurrentUser().then(setUser);
+    void loadData();
   }, []);
+
+  const loadData = async () => {
+    setLoadingSessions(true);
+    const [u, sessionList] = await Promise.all([
+      getCurrentUser(),
+      fetchSessions(),
+    ]);
+    setUser(u);
+    setSessions(sessionList);
+    setLoadingSessions(false);
+  };
+
+  const fetchSessions = async (): Promise<SessionInfo[]> => {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) return [];
+
+      const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL ?? "";
+      const res = await fetch(`${backendUrl}/api/auth/sessions`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) return [];
+      const body = await res.json() as { sessions?: SessionInfo[] };
+      return body.sessions ?? [];
+    } catch {
+      return [];
+    }
+  };
 
   const handleSignOutAll = () => {
     Alert.alert(
@@ -96,48 +210,40 @@ export default function SessionsScreen() {
   };
 
   const identifier = user?.email ?? user?.phone ?? "—";
-  const method = user?.email ? "email" : user?.phone ? "phone" : "—";
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <BackHeader title={t("account.sessions")} subtitle={t("account.sessionsSub")} />
 
       <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
-        {/* Current session info */}
-        <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 }}>
-            <View style={[styles.iconWrap, { backgroundColor: withAlpha(c.primary, 0.12) }]}>
-              <Icon name="user" size={18} color={c.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 13, color: c.textMuted }}>{t("account.signedInAs")}</Text>
-              <Text style={{ fontSize: 15, fontFamily: "Inter_700Bold", color: c.text }} numberOfLines={1}>
-                {identifier}
-              </Text>
-            </View>
-          </View>
 
-          <View style={[styles.row, { borderTopColor: c.border }]}>
-            <Icon name="lock" size={14} color={c.textMuted} />
-            <Text style={{ fontSize: 12.5, color: c.textMuted }}>
-              Signed in via {method}
+        {/* ── Active Sessions List ─────────────────────────────────────── */}
+        <Text style={[styles.section, { color: c.textMuted }]}>
+          {t("account.signedInAs")} {identifier}
+        </Text>
+
+        {loadingSessions ? (
+          <View style={{ alignItems: "center", paddingVertical: 28 }}>
+            <ActivityIndicator color={c.primary} />
+          </View>
+        ) : sessions.length === 0 ? (
+          <View style={[styles.emptyCard, { backgroundColor: c.card, borderColor: c.border }]}>
+            <Icon name="lock" size={20} color={c.textFaint} />
+            <Text style={{ fontSize: 13, color: c.textMuted, marginTop: 8, textAlign: "center" }}>
+              Session info unavailable
             </Text>
           </View>
-          <View style={[styles.row, { borderTopColor: c.border }]}>
-            <Icon name="clock" size={14} color={c.textMuted} />
-            <Text style={{ fontSize: 12.5, color: c.textMuted }}>
-              {t("account.lastSignIn")}: {timeAgoShort(user?.last_sign_in_at)}
-            </Text>
-          </View>
-        </View>
+        ) : (
+          sessions.map((s, i) => <SessionCard key={s.id ?? i} session={s} c={c} />)
+        )}
 
-        {/* Sign out all devices */}
+        {/* ── Sign out of all devices ──────────────────────────────────── */}
         <Pressable
           onPress={handleSignOutAll}
           disabled={signingOut}
           style={[
             styles.actionBtn,
-            { backgroundColor: c.card, borderColor: c.border, opacity: signingOut ? 0.7 : 1 },
+            { backgroundColor: c.card, borderColor: c.border, opacity: signingOut ? 0.7 : 1, marginTop: 14 },
           ]}
         >
           {signingOut ? (
@@ -150,14 +256,14 @@ export default function SessionsScreen() {
               {t("account.signOutAll")}
             </Text>
             <Text style={{ fontSize: 11.5, color: c.textMuted, marginTop: 1 }}>
-              You'll be signed out on all your devices.
+              Ends all sessions on every device
             </Text>
           </View>
           <Icon name="chevronRight" size={16} color={c.textFaint} />
         </Pressable>
 
-        {/* Danger zone */}
-        <Text style={[styles.section, { color: c.danger, marginTop: 22 }]}>Danger zone</Text>
+        {/* ── Danger zone ──────────────────────────────────────────────── */}
+        <Text style={[styles.dangerLabel, { color: c.danger, marginTop: 22 }]}>Danger zone</Text>
         <Pressable
           onPress={openDeleteModal}
           style={[
@@ -181,7 +287,7 @@ export default function SessionsScreen() {
         </Pressable>
       </ScrollView>
 
-      {/* Delete Account Modal */}
+      {/* ── Delete Account Modal ────────────────────────────────────────── */}
       {showDeleteModal && (
         <Pressable
           style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }]}
@@ -285,16 +391,41 @@ export default function SessionsScreen() {
 }
 
 const styles = StyleSheet.create({
-  card: { borderWidth: 1, borderRadius: 16, padding: 16, marginBottom: 12 },
-  section: { fontSize: 12, fontFamily: "Inter_700Bold", marginBottom: 8, letterSpacing: 0.5, textTransform: "uppercase" },
-  iconWrap: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  row: {
+  section: { fontSize: 12, fontFamily: "Inter_600SemiBold", marginBottom: 10, letterSpacing: 0.3 },
+  dangerLabel: { fontSize: 12, fontFamily: "Inter_700Bold", marginBottom: 8, letterSpacing: 0.5, textTransform: "uppercase" },
+  sessionCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 8,
+  },
+  sessionIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  thisBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingTop: 10,
-    marginTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 20,
+  },
+  thisDot: { width: 6, height: 6, borderRadius: 3 },
+  emptyCard: {
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 28,
+    marginBottom: 8,
   },
   actionBtn: {
     flexDirection: "row",
