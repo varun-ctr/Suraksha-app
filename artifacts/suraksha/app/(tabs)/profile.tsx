@@ -20,7 +20,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "@/components/Icon";
 import { LanguagePicker } from "@/components/LanguagePicker";
-import { Card } from "@/components/ui";
+import * as ExpoNotifications from "expo-notifications";
+import { Card, SectionTitle } from "@/components/ui";
 import {
   ACCENTS,
   THEME_LABELS,
@@ -147,6 +148,18 @@ export default function ProfileScreen() {
 
   const currentLangMeta = LANG_BY_CODE[lang];
 
+  const handleNotificationsToggle = async (v: boolean) => {
+    if (v) {
+      // expo-notifications PermissionResponse fields aren't fully typed in SDK 54
+      const result = await ExpoNotifications.requestPermissionsAsync() as unknown as { granted: boolean };
+      if (!result.granted) {
+        showToast(t("profile.notificationDenied"));
+        return;
+      }
+    }
+    setSettings({ notifications: v });
+  };
+
   const handleDeleteAccount = async () => {
     setDeleting(true);
     try {
@@ -225,8 +238,64 @@ export default function ProfileScreen() {
       </LinearGradient>
 
       <View style={{ paddingHorizontal: 18, marginTop: 16 }}>
+
+        {/* ── Language ── */}
+        <SectionTitle>{t("profile.language")}</SectionTitle>
+        <Card style={{ marginBottom: 16, paddingVertical: 6 }}>
+          <Pressable
+            onPress={() => setLangModalVisible(true)}
+            style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11 }}
+          >
+            <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: withAlpha(c.police, 0.12), alignItems: "center", justifyContent: "center" }}>
+              <Icon name="globe" size={16} color={c.police} />
+            </View>
+            <Text style={{ flex: 1, fontSize: 13.5, fontFamily: "Inter_600SemiBold", color: c.text }}>
+              {t("profile.language")}
+            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={{ fontSize: 18 }}>{currentLangMeta?.flag ?? "🌐"}</Text>
+              <Text style={{ fontSize: 12.5, fontFamily: "Inter_600SemiBold", color: c.textMuted }}>
+                {currentLangMeta?.nativeName ?? lang}
+              </Text>
+              <Icon name="chevronRight" size={14} color={c.textFaint} />
+            </View>
+          </Pressable>
+        </Card>
+
+        {/* ── Notifications ── */}
+        <SectionTitle top={4}>{t("profile.notifications")}</SectionTitle>
+        <Card style={{ marginBottom: 16, paddingVertical: 6 }}>
+          <Row
+            icon="bell"
+            color={c.accent}
+            label={t("profile.notifications")}
+            right={
+              <Switch
+                value={settings.notifications}
+                onValueChange={handleNotificationsToggle}
+                trackColor={{ true: c.primary, false: c.border }}
+                thumbColor="#fff"
+              />
+            }
+          />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row
+            icon="mapPin"
+            color={c.success}
+            label={t("profile.bgLocation")}
+            right={
+              <Switch
+                value={settings.bgLocation}
+                onValueChange={(v) => setSettings({ bgLocation: v })}
+                trackColor={{ true: c.primary, false: c.border }}
+                thumbColor="#fff"
+              />
+            }
+          />
+        </Card>
+
         {/* ── Appearance ── */}
-        <Text style={styles.section}>{t("profile.appearance")}</Text>
+        <SectionTitle top={4}>{t("profile.appearance")}</SectionTitle>
         <Card style={{ marginBottom: 16 }}>
           <Text style={{ fontSize: 12.5, fontFamily: "Inter_600SemiBold", color: c.textMuted, marginBottom: 12 }}>
             {t("profile.colorTheme")}
@@ -273,67 +342,24 @@ export default function ProfileScreen() {
           />
         </Card>
 
-        {/* ── Settings ── */}
-        <Text style={styles.section}>{t("profile.settings")}</Text>
+        {/* ── Privacy ── */}
+        <SectionTitle top={4}>{t("profile.privacy")}</SectionTitle>
         <Card style={{ marginBottom: 16, paddingVertical: 6 }}>
-          <Row
-            icon="bell"
-            color={c.accent}
-            label={t("profile.notifications")}
-            right={
-              <Switch
-                value={settings.notifications}
-                onValueChange={(v) => setSettings({ notifications: v })}
-                trackColor={{ true: c.primary, false: c.border }}
-                thumbColor="#fff"
-              />
-            }
-          />
+          <Row icon="lock"     color={c.police}  label={t("profile.privacy")} onPress={() => router.push("/privacy")} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row
-            icon="mapPin"
-            color={c.success}
-            label={t("profile.bgLocation")}
-            right={
-              <Switch
-                value={settings.bgLocation}
-                onValueChange={(v) => setSettings({ bgLocation: v })}
-                trackColor={{ true: c.primary, false: c.border }}
-                thumbColor="#fff"
-              />
-            }
-          />
+          <Row icon="fileText" color={c.accent}  label={t("profile.terms")}   onPress={() => router.push("/terms")} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Pressable
-            onPress={() => setLangModalVisible(true)}
-            style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11 }}
-          >
-            <View
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 10,
-                backgroundColor: withAlpha(c.police, 0.12),
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Icon name="globe" size={16} color={c.police} />
-            </View>
-            <Text style={{ flex: 1, fontSize: 13.5, fontFamily: "Inter_600SemiBold", color: c.text }}>
-              {t("profile.language")}
-            </Text>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Text style={{ fontSize: 18 }}>{currentLangMeta?.flag ?? "🌐"}</Text>
-              <Text style={{ fontSize: 12.5, fontFamily: "Inter_600SemiBold", color: c.textMuted }}>
-                {currentLangMeta?.nativeName ?? lang}
-              </Text>
-              <Icon name="chevronRight" size={14} color={c.textFaint} />
-            </View>
-          </Pressable>
+          <Row icon="shield"   color={c.success} label={t("profile.data")}    onPress={() => router.push("/data")} />
         </Card>
 
-        {/* ── Premium card ── */}
+        {/* ── Security ── */}
+        <SectionTitle top={4}>{t("profile.security")}</SectionTitle>
+        <Card style={{ marginBottom: 16, paddingVertical: 6 }}>
+          <Row icon="user" color={c.police} label={t("account.sessions")} onPress={() => router.push("/sessions" as never)} />
+        </Card>
+
+        {/* ── Subscription ── */}
+        <SectionTitle top={4}>{t("profile.subscription")}</SectionTitle>
         <Pressable onPress={() => router.push("/premium")}>
           <LinearGradient
             colors={[c.accent, c.accentDark]}
@@ -356,23 +382,28 @@ export default function ProfileScreen() {
           </LinearGradient>
         </Pressable>
 
-        {/* ── Account ── */}
-        <Text style={[styles.section, { marginTop: 16 }]}>{t("profile.account")}</Text>
-        <Card style={{ paddingVertical: 6 }}>
+        {/* ── Support ── */}
+        <SectionTitle top={16}>{t("profile.support")}</SectionTitle>
+        <Card style={{ marginBottom: 16, paddingVertical: 6 }}>
+          <Row icon="helpCircle" color={c.success} label={t("profile.support")}   onPress={() => Linking.openURL("mailto:support@suraksha.in")} />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
           <Row icon="flag"       color={c.accent}  label={t("profile.myReports")} onPress={() => router.push("/my-reports" as never)} />
-          <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row icon="lock"       color={c.police}  label={t("profile.privacy")} onPress={() => router.push("/privacy")} />
-          <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row icon="fileText"   color={c.accent}  label={t("profile.terms")}   onPress={() => router.push("/terms")} />
-          <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row icon="shield"     color={c.success} label={t("profile.data")}    onPress={() => router.push("/data")} />
-          <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row icon="info"       color={c.primary} label={t("profile.about")}   onPress={() => showToast("Suraksha v1.0")} />
-          <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row icon="helpCircle" color={c.success} label={t("profile.support")} onPress={() => Linking.openURL("mailto:support@suraksha.in")} />
-          <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row icon="user"       color={c.police}  label={t("account.sessions")} onPress={() => router.push("/sessions" as never)} />
-          <View style={[styles.divider, { backgroundColor: c.border }]} />
+        </Card>
+
+        {/* ── About ── */}
+        <SectionTitle top={4}>{t("profile.about")}</SectionTitle>
+        <Card style={{ marginBottom: 16, paddingVertical: 6 }}>
+          <Row
+            icon="info"
+            color={c.primary}
+            label={t("profile.about")}
+            right={<Text style={{ fontSize: 12, color: c.textMuted, fontFamily: "Inter_500Medium" }}>v1.0</Text>}
+            onPress={() => Linking.openURL("https://suraksha.in")}
+          />
+        </Card>
+
+        {/* ── Logout ── */}
+        <Card style={{ marginBottom: 4, paddingVertical: 6 }}>
           <Row
             icon="logOut"
             color="#E53E3E"

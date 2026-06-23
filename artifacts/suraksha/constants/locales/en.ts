@@ -205,6 +205,9 @@ const en: Record<string, string> = {
   "profile.deleteAccount": "Delete Account",
   "profile.deleteAccountSub": "Permanently erase your account and all data",
   "profile.version": "Version",
+  "profile.security": "Security",
+  "profile.subscription": "Subscription",
+  "profile.notificationDenied": "Notification permission was denied — enable it in Settings",
 
   "premium.title": "Suraksha Premium",
   "premium.sub": "Extra protection for total peace of mind",

@@ -48,7 +48,8 @@ export default function RightsScreen() {
       return (
         r.title.toLowerCase().includes(q) ||
         r.subtitle.toLowerCase().includes(q) ||
-        r.en.toLowerCase().includes(q)
+        r.en.toLowerCase().includes(q) ||
+        r.hi.toLowerCase().includes(q)
       );
     });
   }, [tab, activeCat, search, isBookmarked]);

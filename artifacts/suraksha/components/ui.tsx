@@ -41,10 +41,10 @@ export function Card({
   );
 }
 
-export function SectionTitle({ children }: { children: React.ReactNode }) {
+export function SectionTitle({ children, top }: { children: React.ReactNode; top?: number }) {
   const { c } = useTheme();
   return (
-    <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 10 }}>
+    <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: c.textMuted, marginBottom: 8, marginTop: top ?? 0, textTransform: "uppercase", letterSpacing: 0.5 }}>
       {children}
     </Text>
   );
