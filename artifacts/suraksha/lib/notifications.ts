@@ -6,24 +6,60 @@ import { db, supabase } from "@/lib/supabaseClient";
 /**
  * Suppress the system banner in the foreground — the root _layout.tsx shows
  * an in-app Toast instead via addNotificationReceivedListener.
+ *
+ * Called once at app startup. When the user disables notifications via the
+ * Profile toggle, `disableNotificationHandler()` sets this to null.
  */
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: false,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: false,
-    shouldShowList: true,
-  }),
-});
+export function enableNotificationHandler(): void {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: false,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      shouldShowBanner: false,
+      shouldShowList: true,
+    }),
+  });
+}
+
+/**
+ * Remove the handler so no foreground handling occurs while notifications
+ * are disabled by the user.
+ */
+export function disableNotificationHandler(): void {
+  Notifications.setNotificationHandler(null);
+}
+
+// Install the handler at module-load time so it's active before any
+// notification arrives during cold start.
+enableNotificationHandler();
 
 export type RegisterResult =
   | { ok: true; token: string }
   | { ok: false; denied: boolean; error?: string };
 
 /**
- * Request notification permission, obtain the Expo Push Token, and upsert it
- * into the Supabase `notification_tokens` table for the signed-in user.
+ * Returns whether the OS has granted notification permission.
+ * Does NOT prompt the user — safe to call silently on mount.
+ */
+export async function getNotificationPermissionGranted(): Promise<boolean> {
+  try {
+    const status = (await Notifications.getPermissionsAsync()) as unknown as {
+      granted: boolean;
+    };
+    return status.granted;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Request notification permission, obtain the Expo Push Token, and sync it
+ * to the Supabase `notification_tokens` table for the signed-in user.
+ *
+ * On token refresh the stale row for the same platform is deleted first so
+ * exactly one token per device exists in the table.
+ *
  * Safe to call in simulator / dev builds — token fetch failure is non-fatal.
  */
 export async function registerForPushNotifications(): Promise<RegisterResult> {
@@ -47,11 +83,11 @@ export async function registerForPushNotifications(): Promise<RegisterResult> {
     token = tokenData.data;
   } catch {
     // Token fetch fails in simulator / physical device without FCM config.
-    // Return partial ok so callers can still enable the toggle.
+    // Return a non-denied error so callers can still enable the toggle.
     return { ok: false, denied: false, error: "Token unavailable (dev build)" };
   }
 
-  // Upsert to Supabase if signed in — non-critical, failures are swallowed.
+  // Sync to Supabase if signed in — non-critical, failures are swallowed.
   try {
     const {
       data: { user },
@@ -59,6 +95,15 @@ export async function registerForPushNotifications(): Promise<RegisterResult> {
     if (user) {
       const platform: "ios" | "android" | "web" =
         Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "web";
+
+      // Delete any stale token rows for this user+platform first so token
+      // rotation (reinstall / FCM refresh) always leaves one row, not many.
+      await supabase
+        .from("notification_tokens")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("platform", platform);
+
       await db.notificationTokens.upsert(user.id, { token, platform });
     }
   } catch {

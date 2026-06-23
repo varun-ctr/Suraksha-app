@@ -57,6 +57,28 @@ const config: ExpoConfig = {
     "expo-font",
     "expo-web-browser",
     "expo-secure-store",
+    [
+      "expo-notifications",
+      {
+        /**
+         * Notification icon shown on Android (monochrome, white on transparent).
+         * Replace with a dedicated 96×96 px monochrome asset for production.
+         */
+        icon: "./assets/images/icon.png",
+        color: "#7C3AED",
+        sounds: [],
+        /**
+         * FCM (Android) setup:
+         *   1. Open Firebase Console → Project Settings → Your apps → Android app
+         *   2. Download google-services.json and place it in the project root
+         *   3. Set android.googleServicesFile = "./google-services.json" in this file
+         *
+         * APNs (iOS) setup:
+         *   1. In Expo dashboard (expo.dev) → Credentials → iOS → Add APNs key (.p8)
+         *   2. EAS Build picks it up automatically — no extra key needed here
+         */
+      },
+    ],
   ],
   experiments: {
     typedRoutes: true,

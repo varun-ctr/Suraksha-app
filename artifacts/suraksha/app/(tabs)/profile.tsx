@@ -1,7 +1,7 @@
 import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { deleteAccount, signOut } from "@/lib/auth";
 import {
@@ -21,7 +21,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "@/components/Icon";
 import { LanguagePicker } from "@/components/LanguagePicker";
-import { registerForPushNotifications } from "@/lib/notifications";
+import {
+  disableNotificationHandler,
+  getNotificationPermissionGranted,
+  registerForPushNotifications,
+} from "@/lib/notifications";
 import { Card, SectionTitle } from "@/components/ui";
 import {
   ACCENTS,
@@ -156,6 +160,18 @@ export default function ProfileScreen() {
 
   const NOTIF_TOKEN_KEY = "suraksha.notif.token";
 
+  // ── Sync toggle with real OS permission on mount ─────────────────
+  useEffect(() => {
+    void (async () => {
+      const granted = await getNotificationPermissionGranted();
+      if (!granted && settings.notifications) {
+        setSettings({ notifications: false });
+      }
+    })();
+    // Run once on mount — settings.notifications intentionally excluded
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleNotificationsToggle = async (v: boolean) => {
     if (v) {
       const result = await registerForPushNotifications();
@@ -167,6 +183,7 @@ export default function ProfileScreen() {
         await AsyncStorage.setItem(NOTIF_TOKEN_KEY, result.token).catch(() => {});
       }
     } else {
+      disableNotificationHandler();
       await AsyncStorage.removeItem(NOTIF_TOKEN_KEY).catch(() => {});
       try {
         const { data: { user } } = await supabase.auth.getUser();
