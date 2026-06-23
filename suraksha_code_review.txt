@@ -1,0 +1,1371 @@
+================================================================================
+FILE: artifacts/suraksha/lib/auth.ts
+================================================================================
+import { supabase } from "./supabaseClient";
+import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
+import { Platform } from "react-native";
+
+/**
+ * Returns the URL Supabase should redirect to after the user clicks the
+ * magic-link email. On web this must point back to the login screen so the
+ * Supabase JS client can pick up the session hash.
+ */
+function getRedirectTo(): string | undefined {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    // Return the current page URL so the magic link lands back here.
+    return `${window.location.origin}${window.location.pathname}`;
+  }
+  return undefined;
+}
+
+export async function sendOtp(email: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: {
+      shouldCreateUser: true,
+      emailRedirectTo: getRedirectTo(),
+    },
+  });
+  return { error: error?.message ?? null };
+}
+
+export async function verifyOtp(
+  email: string,
+  token: string,
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: "email",
+  });
+  return { error: error?.message ?? null };
+}
+
+export async function signOut(): Promise<void> {
+  await supabase.auth.signOut();
+}
+
+export async function getCurrentUser(): Promise<User | null> {
+  const { data } = await supabase.auth.getUser();
+  return data.user ?? null;
+}
+
+export function onAuthStateChange(
+  callback: (event: AuthChangeEvent, session: Session | null) => void,
+): { unsubscribe: () => void } {
+  const { data } = supabase.auth.onAuthStateChange(callback);
+  return { unsubscribe: () => data.subscription.unsubscribe() };
+}
+
+
+================================================================================
+FILE: artifacts/suraksha/lib/location.ts
+================================================================================
+
+/**
+ * Shared, real location helpers built on `expo-location`.
+ *
+ * Every screen that needs the user's position goes through here so the app
+ * never falls back to a hardcoded/fake place. Reverse geocoding uses the
+ * operating system's geocoder on native; on web it falls back to the free
+ * OpenStreetMap Nominatim API (no API key required).
+ */
+import * as Location from "expo-location";
+import { Platform } from "react-native";
+
+export interface GeoPoint {
+  lat: number;
+  lng: number;
+  accuracy: number | null;
+}
+
+export type LocationStatus = "idle" | "loading" | "ready" | "denied" | "error";
+
+/** Requests foreground permission and returns the current position, or null. */
+export async function getCurrentLocation(): Promise<GeoPoint | null> {
+  try {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== "granted") return null;
+    const pos = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.High,
+    });
+    return {
+      lat: pos.coords.latitude,
+      lng: pos.coords.longitude,
+      accuracy: pos.coords.accuracy ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Best-effort reverse geocode to a short human address. */
+export async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
+  // Native: use OS geocoder (fast, works offline)
+  if (Platform.OS !== "web") {
+    try {
+      const results = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+      const r = results[0];
+      if (!r) return null;
+      const parts = [r.name, r.district ?? r.subregion, r.city ?? r.region]
+        .filter((v): v is string => Boolean(v))
+        .filter((v, i, arr) => arr.indexOf(v) === i);
+      return parts.join(", ") || null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Web: use Nominatim (OpenStreetMap free geocoding — no API key needed)
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`;
+    const res = await fetch(url, {
+      headers: { "Accept-Language": "en", "User-Agent": "Suraksha-App/1.0" },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      address?: {
+        neighbourhood?: string;
+        suburb?: string;
+        city_district?: string;
+        city?: string;
+        town?: string;
+        village?: string;
+        state?: string;
+      };
+      display_name?: string;
+    };
+    const a = data.address;
+    if (!a) return null;
+    const area = a.neighbourhood ?? a.suburb ?? a.city_district ?? "";
+    const city = a.city ?? a.town ?? a.village ?? a.state ?? "";
+    const parts = [area, city].filter(Boolean).filter((v, i, arr) => arr.indexOf(v) === i);
+    return parts.join(", ") || data.display_name?.split(",").slice(0, 2).join(", ") || null;
+  } catch {
+    return null;
+  }
+}
+
+export function formatCoords(p: GeoPoint): string {
+  const acc = p.accuracy ? ` · ±${Math.round(p.accuracy)}m` : "";
+  return `Lat ${p.lat.toFixed(5)}, Lng ${p.lng.toFixed(5)}${acc}`;
+}
+
+
+================================================================================
+FILE: artifacts/suraksha/lib/native.ts
+================================================================================
+
+import * as Linking from "expo-linking";
+import { Platform, Share } from "react-native";
+
+import { toWhatsAppNumber } from "@/lib/validate";
+
+/** Sanitises a phone number for use in a `tel:` URL. */
+export function sanitizePhone(phone: string): string {
+  return phone.replace(/[^\d+]/g, "");
+}
+
+export async function callNumber(phone: string): Promise<void> {
+  const url = `tel:${sanitizePhone(phone)}`;
+  try {
+    await Linking.openURL(url);
+  } catch {
+    // No dialer available (e.g. web preview) — silently ignore.
+  }
+}
+
+export function mapsUrl(lat: number, lng: number, label?: string): string {
+  const q = label ? encodeURIComponent(label) : `${lat},${lng}`;
+  if (Platform.OS === "ios") {
+    return `https://maps.apple.com/?q=${q}&ll=${lat},${lng}`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+}
+
+/** A plain shareable link to a coordinate that opens in any maps app. */
+export function locationLink(lat: number, lng: number): string {
+  return `https://maps.google.com/?q=${lat},${lng}`;
+}
+
+/** Opens the best maps URL. On web, opens in a new browser tab. */
+async function openMapsUrl(url: string): Promise<void> {
+  if (Platform.OS === "web") {
+    try {
+      // window.open ensures it opens in a new tab, not inside the Expo web app
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch {
+      // fallback if window.open is blocked
+      await Linking.openURL(url);
+    }
+    return;
+  }
+  try {
+    await Linking.openURL(url);
+  } catch {
+    // ignore
+  }
+}
+
+export async function navigateTo(
+  lat: number,
+  lng: number,
+  label?: string,
+): Promise<void> {
+  await openMapsUrl(mapsUrl(lat, lng, label));
+}
+
+/** Opens the device SMS composer pre-filled with a recipient and message body. */
+export async function sendSms(phone: string, body: string): Promise<void> {
+  const sep = Platform.OS === "ios" ? "&" : "?";
+  const url = `sms:${sanitizePhone(phone)}${sep}body=${encodeURIComponent(body)}`;
+  try {
+    await Linking.openURL(url);
+  } catch {
+    // ignore
+  }
+}
+
+/** Opens WhatsApp (via wa.me) pre-filled with a message to the contact. */
+export async function openWhatsApp(phone: string, body: string): Promise<void> {
+  const intl = toWhatsAppNumber(phone);
+  const url = intl
+    ? `https://wa.me/${intl}?text=${encodeURIComponent(body)}`
+    : `https://wa.me/?text=${encodeURIComponent(body)}`;
+  await openMapsUrl(url);
+}
+
+/**
+ * Opens the device maps app with a category search near the given coordinates.
+ * On web, opens Google Maps in a new browser tab.
+ */
+export async function searchNearby(
+  query: string,
+  coords: { lat: number; lng: number } | null,
+): Promise<void> {
+  let url: string;
+  if (Platform.OS === "ios") {
+    url = coords
+      ? `https://maps.apple.com/?q=${encodeURIComponent(query)}&sll=${coords.lat},${coords.lng}`
+      : `https://maps.apple.com/?q=${encodeURIComponent(query)}`;
+  } else {
+    // web + android: Google Maps
+    url = coords
+      ? `https://www.google.com/maps/search/${encodeURIComponent(query)}/@${coords.lat},${coords.lng},15z`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  }
+  await openMapsUrl(url);
+}
+
+export async function shareLiveLocation(
+  coords: { lat: number; lng: number } | null,
+): Promise<void> {
+  const message = coords
+    ? `I need help. This is my current location: ${locationLink(coords.lat, coords.lng)}`
+    : `I need help. Please call me.`;
+  try {
+    await Share.share({ message });
+  } catch {
+    // ignore
+  }
+}
+
+
+================================================================================
+FILE: artifacts/suraksha/components/SakhiIcon.tsx
+================================================================================
+
+/**
+ * Custom Sakhi tab icon — a stylised 6-petal lotus / diya shape.
+ * Built with react-native-svg so it renders on both native and web.
+ */
+import React from "react";
+import Svg, { Circle, Ellipse, G } from "react-native-svg";
+
+interface Props {
+  color?: string;
+  size?: number;
+  focused?: boolean;
+}
+
+export function SakhiIcon({ color = "#7C3AED", size = 22, focused = false }: Props) {
+  const cx = size / 2;
+  const cy = size / 2;
+  // petal: a narrow vertical ellipse rotated at 0°, 60°, 120°, 180°, 240°, 300°
+  const petalRx = size * 0.11;
+  const petalRy = size * 0.26;
+  const petalOffset = size * 0.14;
+  const angles = [0, 60, 120, 180, 240, 300];
+
+  return (
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <G>
+        {angles.map((deg) => {
+          const rad = (deg * Math.PI) / 180;
+          const ex = cx + petalOffset * Math.sin(rad);
+          const ey = cy - petalOffset * Math.cos(rad);
+          return (
+            <Ellipse
+              key={deg}
+              cx={ex}
+              cy={ey}
+              rx={petalRx}
+              ry={petalRy}
+              fill={focused ? color : color}
+              opacity={focused ? 0.85 : 0.7}
+              rotation={deg}
+              origin={`${ex}, ${ey}`}
+            />
+          );
+        })}
+        {/* Centre dot */}
+        <Circle cx={cx} cy={cy} r={size * 0.1} fill={color} />
+      </G>
+    </Svg>
+  );
+}
+
+
+================================================================================
+FILE: artifacts/suraksha/app/(tabs)/_layout.tsx
+================================================================================
+
+import { Tabs } from "expo-router";
+import React from "react";
+import { Platform, StyleSheet, View } from "react-native";
+
+import { Icon } from "@/components/Icon";
+import { SakhiIcon } from "@/components/SakhiIcon";
+import type { IconName } from "@/constants/data";
+import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+
+const TABS: { name: string; icon: IconName | "sakhi_custom"; key: string }[] = [
+  { name: "index", icon: "home", key: "tab.home" },
+  { name: "map", icon: "map", key: "tab.map" },
+  { name: "sakhi", icon: "sakhi_custom", key: "tab.sakhi" },
+  { name: "rights", icon: "book", key: "tab.rights" },
+  { name: "profile", icon: "user", key: "tab.profile" },
+];
+
+export default function TabLayout() {
+  const { c } = useTheme();
+  const { t } = useI18n();
+  const isWeb = Platform.OS === "web";
+
+  return (
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: c.primary,
+        tabBarInactiveTintColor: c.textFaint,
+        tabBarLabelStyle: { fontFamily: "Inter_600SemiBold", fontSize: 11 },
+        tabBarStyle: {
+          backgroundColor: c.card,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: c.border,
+          elevation: 0,
+          ...(isWeb ? { height: 64 } : {}),
+        },
+      }}
+    >
+      {TABS.map((tab) => (
+        <Tabs.Screen
+          key={tab.name}
+          name={tab.name}
+          options={{
+            title: t(tab.key),
+            tabBarIcon: ({ color, focused }) => (
+              <View style={{ alignItems: "center", justifyContent: "center" }}>
+                {tab.icon === "sakhi_custom" ? (
+                  <SakhiIcon color={color} size={focused ? 24 : 22} focused={focused} />
+                ) : (
+                  <Icon name={tab.icon as IconName} size={focused ? 24 : 22} color={color} />
+                )}
+              </View>
+            ),
+          }}
+        />
+      ))}
+    </Tabs>
+  );
+}
+
+
+================================================================================
+FILE: artifacts/suraksha/app/login.tsx
+================================================================================
+
+import { BlurView } from "expo-blur";
+import { useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  ImageBackground,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { useI18n } from "@/context/LanguageContext";
+import { onAuthStateChange, sendOtp, verifyOtp } from "@/lib/auth";
+
+const PRIMARY = "#7C3AED";
+const loginBg = require("@/assets/images/login-bg.png");
+
+type Step = "email" | "waiting" | "code";
+
+export default function LoginScreen() {
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { t } = useI18n();
+
+  const [step, setStep] = useState<Step>("email");
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Auto-complete when the user clicks the magic link in their email.
+  // Supabase fires SIGNED_IN after processing the URL hash on web, or after
+  // the deep-link on native.
+  useEffect(() => {
+    const { unsubscribe } = onAuthStateChange((event) => {
+      if (event === "SIGNED_IN") {
+        router.replace("/(tabs)" as never);
+      }
+    });
+    return unsubscribe;
+  }, [router]);
+
+  const handleSendOtp = async () => {
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed.includes("@")) {
+      setError(t("login.invalidEmail"));
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    const { error: err } = await sendOtp(trimmed);
+    setLoading(false);
+    if (err) {
+      setError(err);
+    } else {
+      setStep("waiting");
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    const code = otp.trim();
+    if (code.length !== 6) {
+      setError(t("login.invalidCode"));
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    const { error: err } = await verifyOtp(email.trim().toLowerCase(), code);
+    setLoading(false);
+    if (err) {
+      setError(err);
+    } else {
+      router.replace("/(tabs)" as never);
+    }
+  };
+
+  const resetToEmail = () => {
+    setStep("email");
+    setOtp("");
+    setError(null);
+  };
+
+  return (
+    <ImageBackground source={loginBg} style={styles.bg} resizeMode="cover">
+      <View style={[styles.scrim, StyleSheet.absoluteFill]} />
+
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <View style={[styles.flex, { paddingTop: insets.top, paddingBottom: insets.bottom + 24 }]}>
+          <View style={styles.topSection}>
+            <Text style={styles.appName}>Suraksha</Text>
+            <Text style={styles.tagline}>{t("login.tagline")}</Text>
+          </View>
+
+          <BlurView intensity={60} tint="light" style={styles.card}>
+            {/* ── Step 1: Enter email ── */}
+            {step === "email" && (
+              <>
+                <Text style={styles.cardTitle}>{t("login.signIn")}</Text>
+                <Text style={styles.cardSub}>{t("login.signInSub")}</Text>
+
+                <Text style={styles.label}>{t("login.emailLabel")}</Text>
+                <TextInput
+                  value={email}
+                  onChangeText={(v) => { setEmail(v); setError(null); }}
+                  placeholder="you@example.com"
+                  placeholderTextColor="rgba(80,60,120,0.45)"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  style={styles.input}
+                  returnKeyType="done"
+                  onSubmitEditing={handleSendOtp}
+                />
+
+                {error && <Text style={styles.error}>{error}</Text>}
+
+                <Pressable
+                  onPress={handleSendOtp}
+                  disabled={loading}
+                  style={[styles.btn, { opacity: loading ? 0.7 : 1 }]}
+                >
+                  {loading
+                    ? <ActivityIndicator color="#fff" />
+                    : <Text style={styles.btnText}>{t("login.sendCode")}</Text>}
+                </Pressable>
+              </>
+            )}
+
+            {/* ── Step 2: Waiting for magic link click ── */}
+            {step === "waiting" && (
+              <>
+                <Text style={styles.cardTitle}>{t("login.checkEmail")}</Text>
+                <Text style={styles.cardSub}>
+                  {t("login.checkEmailSub").replace("{email}", email)}
+                </Text>
+
+                <View style={styles.waitingRow}>
+                  <ActivityIndicator color={PRIMARY} />
+                  <Text style={styles.waitingText}>{t("login.waitingForLink")}</Text>
+                </View>
+
+                <View style={styles.dividerRow}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerLabel}>{t("login.or")}</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+
+                <Pressable onPress={() => setStep("code")} style={styles.linkBtn}>
+                  <Text style={styles.linkBtnText}>{t("login.enterCodeInstead")}</Text>
+                </Pressable>
+
+                <Pressable onPress={resetToEmail} style={styles.backBtn}>
+                  <Text style={styles.backBtnText}>{t("login.useDifferentEmail")}</Text>
+                </Pressable>
+              </>
+            )}
+
+            {/* ── Step 3: Enter 6-digit OTP code ── */}
+            {step === "code" && (
+              <>
+                <Text style={styles.cardTitle}>{t("login.enterCode")}</Text>
+                <Text style={styles.cardSub}>{t("login.enterCodeSub")}</Text>
+
+                <Text style={styles.label}>{t("login.otpLabel")}</Text>
+                <TextInput
+                  value={otp}
+                  onChangeText={(v) => { setOtp(v.replace(/\D/g, "").slice(0, 6)); setError(null); }}
+                  placeholder="123456"
+                  placeholderTextColor="rgba(80,60,120,0.45)"
+                  keyboardType="number-pad"
+                  style={[styles.input, styles.otpInput]}
+                  returnKeyType="done"
+                  onSubmitEditing={handleVerifyOtp}
+                  maxLength={6}
+                />
+
+                {error && <Text style={styles.error}>{error}</Text>}
+
+                <Pressable
+                  onPress={handleVerifyOtp}
+                  disabled={loading}
+                  style={[styles.btn, { opacity: loading ? 0.7 : 1 }]}
+                >
+                  {loading
+                    ? <ActivityIndicator color="#fff" />
+                    : <Text style={styles.btnText}>{t("login.verify")}</Text>}
+                </Pressable>
+
+                <Pressable onPress={resetToEmail} style={styles.backBtn}>
+                  <Text style={styles.backBtnText}>{t("login.useDifferentEmail")}</Text>
+                </Pressable>
+              </>
+            )}
+          </BlurView>
+        </View>
+      </KeyboardAvoidingView>
+    </ImageBackground>
+  );
+}
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  bg: { flex: 1, backgroundColor: "#1A0A2E" },
+  scrim: { backgroundColor: "rgba(20,10,30,0.55)", zIndex: 0 },
+  topSection: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+    zIndex: 1,
+  },
+  appName: {
+    fontSize: 42,
+    fontFamily: "Inter_700Bold",
+    color: "#fff",
+    letterSpacing: -1,
+    textShadowColor: "rgba(0,0,0,0.4)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
+  },
+  tagline: {
+    fontSize: 15,
+    color: "rgba(255,255,255,0.8)",
+    marginTop: 6,
+    fontFamily: "Inter_400Regular",
+    textShadowColor: "rgba(0,0,0,0.3)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  card: {
+    marginHorizontal: 18,
+    borderRadius: 22,
+    padding: 24,
+    overflow: "hidden",
+    zIndex: 1,
+  },
+  cardTitle: {
+    fontSize: 22,
+    fontFamily: "Inter_700Bold",
+    color: "#1A0A2E",
+    marginBottom: 6,
+  },
+  cardSub: {
+    fontSize: 13,
+    color: "rgba(40,20,70,0.7)",
+    marginBottom: 20,
+    lineHeight: 18,
+  },
+  label: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    color: "rgba(40,20,70,0.6)",
+    marginBottom: 6,
+  },
+  input: {
+    backgroundColor: "rgba(255,255,255,0.6)",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: "#1A0A2E",
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "rgba(124,58,237,0.2)",
+  },
+  otpInput: {
+    fontSize: 24,
+    letterSpacing: 8,
+    fontFamily: "Inter_700Bold",
+    textAlign: "center",
+  },
+  error: {
+    fontSize: 12,
+    color: "#C0392B",
+    marginBottom: 10,
+    fontFamily: "Inter_500Medium",
+  },
+  btn: {
+    backgroundColor: PRIMARY,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 4,
+  },
+  btnText: { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
+  backBtn: { alignItems: "center", marginTop: 14 },
+  backBtnText: { fontSize: 13, color: "rgba(40,20,70,0.6)", fontFamily: "Inter_500Medium" },
+  waitingRow: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    backgroundColor: "rgba(124,58,237,0.08)", borderRadius: 12,
+    padding: 14, marginBottom: 18,
+  },
+  waitingText: { flex: 1, fontSize: 13, color: "rgba(40,20,70,0.75)", lineHeight: 18 },
+  dividerRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: "rgba(40,20,70,0.15)" },
+  dividerLabel: { fontSize: 11, color: "rgba(40,20,70,0.45)", fontFamily: "Inter_500Medium" },
+  linkBtn: {
+    borderWidth: 1, borderColor: "rgba(124,58,237,0.3)",
+    borderRadius: 12, paddingVertical: 12, alignItems: "center",
+  },
+  linkBtnText: { fontSize: 13, color: PRIMARY, fontFamily: "Inter_600SemiBold" },
+});
+
+
+================================================================================
+FILE: artifacts/suraksha/app/(tabs)/index.tsx
+================================================================================
+
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
+import React, { useEffect, useRef } from "react";
+import {
+  Animated,
+  Easing,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { Icon } from "@/components/Icon";
+import { Avatar, Card, IconBadge } from "@/components/ui";
+import { withAlpha } from "@/constants/colors";
+import { QUICK_ACTIONS } from "@/constants/data";
+import { useApp } from "@/context/AppContext";
+import { useI18n } from "@/context/LanguageContext";
+import { useSafety } from "@/context/SafetyContext";
+import { useTheme } from "@/context/ThemeContext";
+import { useToast } from "@/context/ToastContext";
+import { useLocation } from "@/hooks/useLocation";
+import { fmtClock } from "@/lib/format";
+import { formatCoords } from "@/lib/location";
+import { callNumber, shareLiveLocation } from "@/lib/native";
+
+function SosButton({ onPress }: { onPress: () => void }) {
+  const { c } = useTheme();
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(pulse, {
+        toValue: 1,
+        duration: 2000,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.7] });
+  const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0] });
+
+  return (
+    <View style={{ width: 168, height: 168, alignItems: "center", justifyContent: "center" }}>
+      <Animated.View
+        style={{
+          position: "absolute",
+          width: 140,
+          height: 140,
+          borderRadius: 70,
+          backgroundColor: c.accent,
+          transform: [{ scale }],
+          opacity,
+        }}
+      />
+      <Pressable onPress={onPress} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.96 : 1 }] })}>
+        <LinearGradient
+          colors={[c.accent, c.accentDark]}
+          start={{ x: 0.2, y: 0.1 }}
+          end={{ x: 0.9, y: 1 }}
+          style={styles.sosCircle}
+        >
+          <Icon name="bell" size={38} color="#fff" />
+          <Text style={styles.sosText}>SOS</Text>
+        </LinearGradient>
+      </Pressable>
+    </View>
+  );
+}
+
+export default function HomeScreen() {
+  const { c } = useTheme();
+  const { t, pick, lang, setLang } = useI18n();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { contacts, profile } = useApp();
+  const { triggerSOS, journey, setJourneyDuration, startJourney, endJourney } = useSafety();
+  const { showToast } = useToast();
+  const { point, address, status } = useLocation();
+  const [showLangPicker, setShowLangPicker] = React.useState(false);
+
+  const displayName = profile.name.trim() || t("home.guest");
+  const locLabel =
+    status === "loading"
+      ? t("home.locating")
+      : status === "denied"
+        ? t("home.locationOff")
+        : address ?? (point ? formatCoords(point) : t("home.locating"));
+  const overdue = journey.active && journey.seconds >= journey.duration * 60;
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: c.bg }}
+      contentContainerStyle={{ paddingBottom: 110 }}
+      showsVerticalScrollIndicator={false}
+    >
+      <LinearGradient
+        colors={[c.primary, c.primaryDark]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{ paddingTop: insets.top + 14, paddingHorizontal: 18, paddingBottom: 54 }}
+      >
+        <View style={styles.headerRow}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View style={styles.headerAvatar}>
+              <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 17 }}>
+                {displayName.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+            <View>
+              <Text style={styles.greeting}>{t("home.greeting")}</Text>
+              <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            {/* Language toggle — tap to cycle EN ↔ HI */}
+            <Pressable
+              style={[styles.bellBtn, { paddingHorizontal: 10 }]}
+              onPress={() => setShowLangPicker(true)}
+              hitSlop={8}
+            >
+              <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12, letterSpacing: 0.5 }}>
+                {lang.toUpperCase()}
+              </Text>
+            </Pressable>
+            <Pressable style={styles.bellBtn} onPress={() => router.push("/helpline")}>
+              <Icon name="bell" size={18} color="#fff" />
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.locPill}>
+          <Icon name="mapPin" size={13} color="#fff" />
+          <Text style={styles.locText} numberOfLines={1}>{locLabel}</Text>
+        </View>
+      </LinearGradient>
+
+      {/* Language Picker Sheet */}
+      {showLangPicker && (
+        <Pressable
+          style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(0,0,0,0.45)", zIndex: 100, justifyContent: "flex-end" }]}
+          onPress={() => setShowLangPicker(false)}
+        >
+          <Pressable onPress={() => {}} style={{ backgroundColor: c.card, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 24, paddingBottom: 36 }}>
+            <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 4 }}>
+              {t("home.selectLanguage")}
+            </Text>
+            <Text style={{ fontSize: 13, color: c.textMuted, marginBottom: 20 }}>
+              {t("home.selectLanguageSub")}
+            </Text>
+            {(["en", "hi"] as const).map((l) => {
+              const active = lang === l;
+              return (
+                <Pressable
+                  key={l}
+                  onPress={() => { setLang(l); setShowLangPicker(false); }}
+                  style={{
+                    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+                    paddingVertical: 14, paddingHorizontal: 16, borderRadius: 14, marginBottom: 10,
+                    backgroundColor: active ? withAlpha(c.primary, 0.12) : c.bg,
+                    borderWidth: 1.5, borderColor: active ? c.primary : c.border,
+                  }}
+                >
+                  <View>
+                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: active ? c.primary : c.text }}>
+                      {l === "en" ? "English" : "हिन्दी"}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: c.textMuted }}>
+                      {l === "en" ? "English" : "Hindi"}
+                    </Text>
+                  </View>
+                  {active && <Icon name="check" size={18} color={c.primary} />}
+                </Pressable>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      )}
+
+      <View style={{ alignItems: "center", marginTop: -48, marginBottom: 6 }}>
+        <SosButton onPress={triggerSOS} />
+        <Text style={{ fontSize: 12.5, color: c.textMuted, fontFamily: "Inter_500Medium", marginTop: 2 }}>
+          {t("home.tapForHelp")}
+        </Text>
+      </View>
+
+      <View style={{ paddingHorizontal: 18, marginTop: 18 }}>
+        <View style={styles.grid}>
+          {QUICK_ACTIONS.map((qa) => (
+            <Pressable
+              key={qa.key}
+              onPress={() => router.push(qa.route as never)}
+              style={[styles.qaCard, { backgroundColor: c.card, borderColor: c.border }]}
+            >
+              <IconBadge name={qa.icon} color={qa.color(c)} box={36} size={18} />
+              <Text style={[styles.qaLabel, { color: c.text }]}>{pick(qa)}</Text>
+              <Text style={[styles.qaSub, { color: c.textMuted }]}>{lang === "en" ? qa.hi : qa.en}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <Card style={{ marginBottom: 20 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 3 }}>
+            <Icon name="navigation" size={16} color={c.primary} />
+            <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text }}>
+              {t("home.journey")}
+            </Text>
+          </View>
+          <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 12 }}>{t("home.journeySub")}</Text>
+
+          {!journey.active ? (
+            <>
+              <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+                {[15, 30, 60].map((d) => {
+                  const active = journey.duration === d;
+                  return (
+                    <Pressable
+                      key={d}
+                      onPress={() => setJourneyDuration(d)}
+                      style={{
+                        flex: 1,
+                        alignItems: "center",
+                        paddingVertical: 9,
+                        borderRadius: 10,
+                        backgroundColor: active ? c.primary : c.cardAlt,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontFamily: "Inter_700Bold",
+                          color: active ? "#fff" : c.primary,
+                        }}
+                      >
+                        {d} {t("home.minutes")}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Pressable
+                onPress={() => {
+                  startJourney();
+                  showToast(t("home.sharingLive"));
+                }}
+                style={{ backgroundColor: c.primary, borderRadius: 10, paddingVertical: 11, alignItems: "center" }}
+              >
+                <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>
+                  {t("home.startSharing")}
+                </Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <View style={[styles.liveRow, { backgroundColor: overdue ? c.dangerSoft : c.successSoft }]}>
+                <View style={[styles.dot, { backgroundColor: overdue ? c.danger : c.success }]} />
+                <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: overdue ? c.danger : c.success }}>
+                  {fmtClock(journey.seconds)}
+                </Text>
+                <Text style={{ fontSize: 11, color: c.textMuted, marginLeft: "auto" }}>
+                  / {journey.duration} {t("home.minutes")}
+                </Text>
+              </View>
+              {overdue && (
+                <Text style={{ fontSize: 11.5, color: c.danger, fontFamily: "Inter_600SemiBold", marginBottom: 12 }}>
+                  {t("home.overdue")}
+                </Text>
+              )}
+              <Pressable
+                onPress={() => shareLiveLocation(point ? { lat: point.lat, lng: point.lng } : null)}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 7,
+                  borderWidth: 1.5,
+                  borderColor: c.primary,
+                  borderRadius: 10,
+                  paddingVertical: 10,
+                  marginBottom: 10,
+                }}
+              >
+                <Icon name="share" size={14} color={c.primary} />
+                <Text style={{ color: c.primary, fontFamily: "Inter_700Bold", fontSize: 13 }}>
+                  {t("home.shareLocation")}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  endJourney();
+                  showToast(t("home.arrivedSafely"));
+                }}
+                style={{ backgroundColor: c.success, borderRadius: 10, paddingVertical: 11, alignItems: "center" }}
+              >
+                <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>
+                  {t("home.arrivedSafely")}
+                </Text>
+              </Pressable>
+            </>
+          )}
+        </Card>
+
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+          <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text }}>
+            {t("home.trustedContacts")}
+          </Text>
+          <Pressable style={{ marginLeft: "auto" }} onPress={() => router.push("/contacts")}>
+            <Text style={{ fontSize: 12.5, fontFamily: "Inter_600SemiBold", color: c.primary }}>
+              {t("home.manage")}
+            </Text>
+          </Pressable>
+        </View>
+
+        {contacts.slice(0, 4).map((contact) => (
+          <View key={contact.id} style={[styles.contactRow, { backgroundColor: c.card, borderColor: c.border }]}>
+            <Avatar label={contact.name} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ fontSize: 13.5, fontFamily: "Inter_700Bold", color: c.text }} numberOfLines={1}>
+                {contact.name}
+              </Text>
+              <Text style={{ fontSize: 11.5, color: c.textMuted }}>{contact.phone}</Text>
+            </View>
+            <Pressable
+              onPress={() => {
+                showToast(`${t("common.calling")} ${contact.name}…`);
+                callNumber(contact.phone);
+              }}
+              style={[styles.callBtn, { backgroundColor: c.successSoft }]}
+            >
+              <Icon name="phone" size={15} color={c.success} />
+            </Pressable>
+          </View>
+        ))}
+      </View>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
+  headerAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  greeting: { color: "rgba(255,255,255,0.85)", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  name: { color: "#fff", fontSize: 18, fontFamily: "Inter_700Bold" },
+  bellBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  locPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255,255,255,0.16)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  locText: { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold", maxWidth: 260 },
+  sosCircle: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 5,
+    borderColor: "#fff",
+  },
+  sosText: { color: "#fff", fontFamily: "Inter_700Bold", fontSize: 17, marginTop: 4, letterSpacing: 1 },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 20 },
+  qaCard: {
+    width: "47.5%",
+    flexGrow: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+  },
+  qaLabel: { fontSize: 13.5, fontFamily: "Inter_700Bold", marginTop: 10 },
+  qaSub: { fontSize: 11.5, marginTop: 2 },
+  liveRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  dot: { width: 9, height: 9, borderRadius: 4.5 },
+  contactRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 10,
+    marginBottom: 8,
+  },
+  callBtn: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+});
+
+
+================================================================================
+FILE: artifacts/suraksha/constants/i18n.ts
+================================================================================
+
+/**
+ * Lightweight bilingual string table (English / Hindi).
+ *
+ * Access via the `useI18n()` hook (see context/LanguageContext). Keys are flat
+ * dotted strings; `t("home.tapForHelp")` returns the active-language value.
+ */
+
+export type Language = "en" | "hi";
+
+export const LANGUAGE_LABELS: Record<Language, string> = {
+  en: "English",
+  hi: "हिंदी",
+};
+
+type Strings = Record<string, { en: string; hi: string }>;
+
+export const STRINGS: Strings = {
+  // Tabs
+  "tab.home": { en: "Home", hi: "होम" },
+  "tab.map": { en: "Map", hi: "नक्शा" },
+  "tab.sakhi": { en: "Sakhi", hi: "सखी" },
+  "tab.rights": { en: "Rights", hi: "अधिकार" },
+  "tab.profile": { en: "Profile", hi: "प्रोफ़ाइल" },
+
+  // Onboarding
+  "onb.skip": { en: "Skip", hi: "छोड़ें" },
+  "onb.next": { en: "Next", hi: "आगे" },
+  "onb.getStarted": { en: "Get Started", hi: "शुरू करें" },
+  "onb.chooseLanguage": { en: "Choose your language", hi: "अपनी भाषा चुनें" },
+  "onb.langSub": { en: "You can change this anytime in Profile", hi: "इसे आप प्रोफ़ाइल में कभी भी बदल सकती हैं" },
+  "onb.title1": { en: "You are never alone", hi: "आप कभी अकेली नहीं हैं" },
+  "onb.body1": { en: "One tap on SOS shows your location so you can quickly call or message your trusted contacts.", hi: "SOS पर एक टैप आपकी लोकेशन दिखाता है, ताकि आप झट से अपने विश्वसनीय संपर्कों को कॉल या संदेश भेज सकें।" },
+  "onb.title2": { en: "Safety, all around you", hi: "हर ओर सुरक्षा" },
+  "onb.body2": { en: "Find police stations, hospitals and shelters near you using your maps app.", hi: "अपने मैप ऐप से पास के थाने, अस्पताल और आश्रय खोजें।" },
+  "onb.title3": { en: "Know your rights", hi: "अपने अधिकार जानें" },
+  "onb.body3": { en: "Learn the laws that protect you — and meet Sakhi, your private safety companion.", hi: "आपकी रक्षा करने वाले कानून जानें — और मिलें सखी से, आपकी निजी साथी।" },
+
+  // Home
+  "home.greeting": { en: "Namaste,", hi: "नमस्ते," },
+  "home.guest": { en: "friend", hi: "सखी" },
+  "home.locating": { en: "Locating…", hi: "लोकेशन ढूँढ रहे हैं…" },
+  "home.locationOff": { en: "Location off", hi: "लोकेशन बंद" },
+  "home.selectLanguage": { en: "Select Language", hi: "भाषा चुनें" },
+  "home.selectLanguageSub": { en: "You can change this any time from your profile.", hi: "आप इसे कभी भी अपनी प्रोफ़ाइल से बदल सकते हैं।" },
+  "home.tapForHelp": { en: "Tap for instant help", hi: "तुरंत सहायता के लिए दबाएँ" },
+  "home.journey": { en: "Journey Timer", hi: "यात्रा टाइमर" },
+  "home.journeySub": { en: "Time your trip and share your location with someone you trust.", hi: "अपनी यात्रा का समय रखें और किसी विश्वसनीय व्यक्ति को अपनी लोकेशन भेजें।" },
+  "home.startSharing": { en: "Start Journey", hi: "यात्रा शुरू करें" },
+  "home.sharingLive": { en: "Journey in progress", hi: "यात्रा जारी है" },
+  "home.shareLocation": { en: "Share my location", hi: "मेरी लोकेशन भेजें" },
+  "home.overdue": { en: "Overdue — let someone know", hi: "समय पार — किसी को बताएँ" },
+  "home.arrivedSafely": { en: "I've Arrived Safely", hi: "मैं सुरक्षित पहुँच गई" },
+  "home.trustedContacts": { en: "Trusted Contacts", hi: "विश्वसनीय संपर्क" },
+  "home.quickActions": { en: "Quick Actions", hi: "त्वरित क्रियाएँ" },
+  "home.manage": { en: "Manage", hi: "प्रबंधित करें" },
+  "home.noContacts": { en: "Add someone you trust", hi: "किसी विश्वसनीय व्यक्ति को जोड़ें" },
+  "home.minutes": { en: "min", hi: "मिनट" },
+
+  // SOS
+  "sos.sent": { en: "SOS Activated", hi: "SOS सक्रिय" },
+  "sos.helpComing": { en: "Alert your contacts now", hi: "अभी अपने संपर्कों को सूचित करें" },
+  "sos.notConfigured": { en: "Alerts are not sent automatically. Tap a contact to share your location and call them.", hi: "अलर्ट स्वतः नहीं भेजे जाते। लोकेशन भेजने और कॉल करने हेतु किसी संपर्क पर टैप करें।" },
+  "sos.elapsed": { en: "Elapsed time", hi: "बीता हुआ समय" },
+  "sos.liveLocation": { en: "Your location", hi: "आपकी लोकेशन" },
+  "sos.locationUnavailable": { en: "Location unavailable — enable GPS to share it.", hi: "लोकेशन अनुपलब्ध — साझा करने हेतु GPS चालू करें।" },
+  "sos.alertedContacts": { en: "Your trusted contacts", hi: "आपके विश्वसनीय संपर्क" },
+  "sos.noContacts": { en: "No trusted contacts yet. Add someone so you can reach them quickly.", hi: "अभी कोई विश्वसनीय संपर्क नहीं। शीघ्र संपर्क हेतु किसी को जोड़ें।" },
+  "sos.addContacts": { en: "Add Contacts", hi: "संपर्क जोड़ें" },
+  "sos.call": { en: "Call", hi: "कॉल" },
+  "sos.sms": { en: "SMS", hi: "SMS" },
+  "sos.whatsapp": { en: "WhatsApp", hi: "WhatsApp" },
+  "sos.smsBody": { en: "SOS! I need help. My location: {link}", hi: "SOS! मुझे मदद चाहिए। मेरी लोकेशन: {link}" },
+  "sos.smsNoLoc": { en: "SOS! I need help. Please call me.", hi: "SOS! मुझे मदद चाहिए। कृपया मुझे कॉल करें।" },
+  "sos.call112": { en: "Call Emergency 112", hi: "आपातकाल 112 पर कॉल करें" },
+  "sos.shareLocation": { en: "Share my location", hi: "मेरी लोकेशन साझा करें" },
+  "sos.imSafe": { en: "I'm Safe — Cancel Alert", hi: "मैं सुरक्षित हूँ — अलर्ट रद्द करें" },
+  "sos.gettingLocation": { en: "Getting your location…", hi: "आपकी लोकेशन ले रहे हैं…" },
+  "sos.liveTrackingOn": { en: "Live tracking is on", hi: "लाइव ट्रैकिंग चालू है" },
+
+  // Map
+  "map.title": { en: "Safety Map", hi: "सुरक्षा नक्शा" },
+  "map.sub": { en: "Find help near you", hi: "अपने पास सहायता खोजें" },
+  "map.note": { en: "Tap a category to find these places near you in your maps app.", hi: "अपने मैप ऐप में पास के ये स्थान खोजने हेतु किसी श्रेणी पर टैप करें।" },
+  "map.locationOff": { en: "Turn on location to see your position on the map.", hi: "मैप पर अपनी स्थिति देखने हेतु लोकेशन चालू करें।" },
+  "map.police": { en: "Police", hi: "पुलिस" },
+  "map.hospital": { en: "Hospital", hi: "अस्पताल" },
+  "map.pharmacy": { en: "Pharmacy", hi: "दवाख़ाना" },
+  "map.shelter": { en: "Shelter", hi: "आश्रय" },
+  "map.callNow": { en: "Call Now", hi: "अभी कॉल करें" },
+  "map.noResults": { en: "No results found nearby. Your maps app opened instead.", hi: "पास में कोई परिणाम नहीं मिला। इसके बजाय आपका मैप ऐप खुल गया।" },
+  "map.navigateTip": { en: "Tap to navigate", hi: "रास्ता देखने हेतु टैप करें" },
+
+  // Rights
+  "rights.title": { en: "Know Your Rights", hi: "अपने अधिकार जानें" },
+  "rights.sub": { en: "Laws that protect you", hi: "कानून जो आपकी रक्षा करते हैं" },
+  "rights.legalProtections": { en: "Legal Protections", hi: "कानूनी सुरक्षा" },
+  "rights.stepsToTake": { en: "Steps to take", hi: "क्या करें" },
+
+  // Sakhi
+  "sakhi.title": { en: "Sakhi", hi: "सखी" },
+  "sakhi.sub": { en: "Your private safety companion", hi: "आपकी निजी सुरक्षा साथी" },
+  "sakhi.online": { en: "Always here for you", hi: "हमेशा आपके लिए" },
+  "sakhi.placeholder": { en: "Ask me anything…", hi: "मुझसे कुछ भी पूछें…" },
+  "sakhi.greeting": {
+    en: "Hi, I'm Sakhi 💜 I'm here for you — ask me about your safety, your rights, or anything on your mind.",
+    hi: "नमस्ते, मैं सखी हूँ 💜 मैं आपके लिए हूँ — अपनी सुरक्षा, अधिकारों या मन की किसी भी बात के बारे में पूछें।",
+  },
+  "sakhi.thinking": { en: "Sakhi is typing…", hi: "सखी लिख रही है…" },
+  "sakhi.error": { en: "I couldn't reach you just now. Please try again.", hi: "अभी संपर्क नहीं हो सका। कृपया फिर प्रयास करें।" },
+  "sakhi.suggest1": { en: "I feel unsafe walking home", hi: "घर जाते हुए असुरक्षित महसूस कर रही हूँ" },
+  "sakhi.suggest2": { en: "How do I file an FIR?", hi: "FIR कैसे दर्ज करूँ?" },
+  "sakhi.suggest3": { en: "Help me make a safety plan", hi: "सुरक्षा योजना बनाने में मदद करें" },
+  "sakhi.disclaimer": { en: "Sakhi offers guidance, not legal or medical advice. In an emergency, call 112.", hi: "सखी मार्गदर्शन देती है, कानूनी या चिकित्सकीय सलाह नहीं। आपात में 112 पर कॉल करें।" },
+
+  // Contacts
+  "contacts.title": { en: "Trusted Contacts", hi: "विश्वसनीय संपर्क" },
+  "contacts.sub": { en: "For quick alerts when you need help", hi: "जरूरत पड़ने पर त्वरित संपर्क हेतु" },
+  "contacts.addNew": { en: "Add a new contact", hi: "नया संपर्क जोड़ें" },
+  "contacts.fullName": { en: "Full name", hi: "पूरा नाम" },
+  "contacts.phone": { en: "Phone number", hi: "फ़ोन नंबर" },
+  "contacts.add": { en: "Add Contact", hi: "संपर्क जोड़ें" },
+  "contacts.import": { en: "Import from phone", hi: "फ़ोन से आयात करें" },
+  "contacts.info": { en: "When you trigger SOS, you can instantly call or send each contact your location by SMS or WhatsApp.", hi: "SOS पर आप हर संपर्क को तुरंत कॉल कर सकती हैं या SMS/WhatsApp से अपनी लोकेशन भेज सकती हैं।" },
+  "contacts.empty": { en: "No contacts yet — add someone you trust.", hi: "अभी कोई संपर्क नहीं — किसी विश्वसनीय व्यक्ति को जोड़ें।" },
+  "contacts.added": { en: "Contact added", hi: "संपर्क जोड़ा गया" },
+  "contacts.removed": { en: "Contact removed", hi: "संपर्क हटाया गया" },
+  "contacts.invalid": { en: "Enter a valid 10-digit Indian mobile number.", hi: "मान्य 10-अंकीय भारतीय मोबाइल नंबर दर्ज करें।" },
+  "contacts.duplicate": { en: "This contact is already added.", hi: "यह संपर्क पहले से जोड़ा जा चुका है।" },
+
+  // Helpline
+  "helpline.title": { en: "Emergency Helplines", hi: "आपातकालीन हेल्पलाइन" },
+  "helpline.sub": { en: "Tap any number to call", hi: "कॉल करने के लिए नंबर पर टैप करें" },
+
+  // Fake call
+  "fake.title": { en: "Fake Call", hi: "नकली कॉल" },
+  "fake.sub": { en: "Schedule a call to exit unsafe situations", hi: "असुरक्षित स्थिति से निकलने हेतु कॉल शेड्यूल करें" },
+  "fake.callerName": { en: "Caller name", hi: "कॉल करने वाले का नाम" },
+  "fake.ringIn": { en: "Ring in", hi: "कॉल आएगी" },
+  "fake.schedule": { en: "Schedule Fake Call", hi: "नकली कॉल शेड्यूल करें" },
+  "fake.scheduled": { en: "Fake call scheduled", hi: "नकली कॉल शेड्यूल हुई" },
+  "fake.cancel": { en: "Cancel scheduled call", hi: "शेड्यूल की गई कॉल रद्द करें" },
+  "fake.incoming": { en: "Incoming call", hi: "आ रही कॉल" },
+  "fake.decline": { en: "Decline", hi: "अस्वीकार" },
+  "fake.accept": { en: "Accept", hi: "स्वीकार" },
+  "fake.seconds": { en: "seconds", hi: "सेकंड" },
+
+  // Report (private on-device safety journal)
+  "report.title": { en: "Safety Journal", hi: "सुरक्षा डायरी" },
+  "report.sub": { en: "Private notes saved on your device", hi: "आपके डिवाइस पर सहेजे निजी नोट्स" },
+  "report.newReport": { en: "Log an incident", hi: "घटना दर्ज करें" },
+  "report.category": { en: "Category", hi: "श्रेणी" },
+  "report.description": { en: "What happened?", hi: "क्या हुआ?" },
+  "report.addPhoto": { en: "Add photo", hi: "फ़ोटो जोड़ें" },
+  "report.attachLocation": { en: "Attach my current location", hi: "मेरी वर्तमान लोकेशन जोड़ें" },
+  "report.locationUnavailable": { en: "Location not available right now", hi: "अभी लोकेशन उपलब्ध नहीं" },
+  "report.submit": { en: "Save to Journal", hi: "डायरी में सहेजें" },
+  "report.submitted": { en: "Saved to your device", hi: "आपके डिवाइस पर सहेजा गया" },
+  "report.recent": { en: "Your journal", hi: "आपकी डायरी" },
+  "report.empty": { en: "No entries yet.", hi: "अभी कोई प्रविष्टि नहीं।" },
+  "report.anonymous": { en: "Entries are saved only on this device. Nothing is uploaded.", hi: "प्रविष्टियाँ केवल इसी डिवाइस पर सहेजी जाती हैं। कुछ भी अपलोड नहीं होता।" },
+
+  // Profile
+  "profile.premiumMember": { en: "Premium Member", hi: "प्रीमियम सदस्य" },
+  "profile.appearance": { en: "Appearance", hi: "रूप-रंग" },
+  "profile.colorTheme": { en: "Color theme", hi: "रंग थीम" },
+  "profile.darkMode": { en: "Dark mode", hi: "डार्क मोड" },
+  "profile.settings": { en: "Settings", hi: "सेटिंग्स" },
+  "profile.notifications": { en: "Notifications", hi: "सूचनाएं" },
+  "profile.bgLocation": { en: "Background Location", hi: "बैकग्राउंड लोकेशन" },
+  "profile.language": { en: "App Language", hi: "भाषा" },
+  "profile.account": { en: "Account", hi: "खाता" },
+  "profile.privacy": { en: "Privacy Policy", hi: "गोपनीयता नीति" },
+  "profile.terms": { en: "Terms of Use", hi: "उपयोग की शर्तें" },
+  "profile.data": { en: "Your Data & Account", hi: "आपका डेटा और खाता" },
+  "profile.about": { en: "About Suraksha", hi: "सुरक्षा के बारे में" },
+  "profile.support": { en: "Contact Support", hi: "सहायता से संपर्क करें" },
+  "profile.premium": { en: "Suraksha Premium", hi: "सुरक्षा प्रीमियम" },
+  "profile.editName": { en: "Edit profile", hi: "प्रोफ़ाइल संपादित करें" },
+  "profile.guest": { en: "Set up your profile", hi: "अपनी प्रोफ़ाइल सेट करें" },
+
+  // Premium
+  "premium.title": { en: "Suraksha Premium", hi: "सुरक्षा प्रीमियम" },
+  "premium.sub": { en: "Extra protection for total peace of mind", hi: "पूर्ण मन की शांति हेतु अतिरिक्त सुरक्षा" },
+  "premium.choosePlan": { en: "Planned plans", hi: "नियोजित योजनाएँ" },
+  "premium.subscribe": { en: "Coming soon", hi: "जल्द आ रहा है" },
+  "premium.currentPlan": { en: "Your current plan", hi: "आपकी वर्तमान योजना" },
+  "premium.comingSoon": { en: "Premium is not yet available. These features are planned for a future update.", hi: "प्रीमियम अभी उपलब्ध नहीं है। ये सुविधाएँ भविष्य के अपडेट हेतु नियोजित हैं।" },
+  "premium.note": { en: "Billing is not enabled in this version.", hi: "इस संस्करण में बिलिंग सक्षम नहीं है।" },
+
+  // Data & legal
+  "legal.privacyTitle": { en: "Privacy Policy", hi: "गोपनीयता नीति" },
+  "legal.termsTitle": { en: "Terms of Use", hi: "उपयोग की शर्तें" },
+  "legal.updated": { en: "Last updated: June 2026", hi: "अंतिम अपडेट: जून 2026" },
+  "data.title": { en: "Your Data & Account", hi: "आपका डेटा और खाता" },
+  "data.sub": { en: "What we store and how to remove it", hi: "हम क्या सहेजते हैं और इसे कैसे हटाएँ" },
+  "data.deleteHeading": { en: "Delete all data", hi: "सारा डेटा हटाएँ" },
+  "data.deleteBody": { en: "This permanently removes your contacts, profile, journal entries and settings from this device. This cannot be undone.", hi: "यह आपके संपर्क, प्रोफ़ाइल, डायरी प्रविष्टियाँ और सेटिंग्स इस डिवाइस से स्थायी रूप से हटा देता है। इसे पूर्ववत नहीं किया जा सकता।" },
+  "data.deleteBtn": { en: "Delete all my data", hi: "मेरा सारा डेटा हटाएँ" },
+  "data.confirmTitle": { en: "Delete everything?", hi: "सब कुछ हटाएँ?" },
+  "data.confirmBody": { en: "All your data on this device will be erased and the app will restart from onboarding.", hi: "इस डिवाइस का आपका सारा डेटा मिट जाएगा और ऐप ऑनबोर्डिंग से फिर शुरू होगा।" },
+  "data.deleted": { en: "All data deleted", hi: "सारा डेटा हटाया गया" },
+
+  // Login
+  "login.tagline": { en: "Your safety, always with you.", hi: "आपकी सुरक्षा, हमेशा आपके साथ।" },
+  "login.signIn": { en: "Sign in", hi: "साइन इन" },
+  "login.signInSub": { en: "We'll send a sign-in link to your email — no password needed.", hi: "हम आपके ईमेल पर एक साइन-इन लिंक भेजेंगे — पासवर्ड की ज़रूरत नहीं।" },
+  "login.emailLabel": { en: "Email address", hi: "ईमेल पता" },
+  "login.sendCode": { en: "Send link", hi: "लिंक भेजें" },
+  "login.checkEmail": { en: "Check your email", hi: "अपना ईमेल देखें" },
+  "login.checkEmailSub": { en: "We sent a sign-in link to {email}. Click it to continue.", hi: "{email} पर एक साइन-इन लिंक भेजा गया है। आगे बढ़ने के लिए उस पर क्लिक करें।" },
+  "login.waitingForLink": { en: "Waiting for you to click the link…", hi: "लिंक पर क्लिक करने की प्रतीक्षा है…" },
+  "login.or": { en: "or", hi: "या" },
+  "login.enterCodeInstead": { en: "Enter a 6-digit code instead", hi: "इसके बजाय 6-अंकीय कोड दर्ज करें" },
+  "login.enterCode": { en: "Enter code", hi: "कोड दर्ज करें" },
+  "login.enterCodeSub": { en: "Enter the 6-digit code from your email.", hi: "अपने ईमेल से 6-अंकीय कोड दर्ज करें।" },
+  "login.otpLabel": { en: "One-time code", hi: "एक बार का कोड" },
+  "login.verify": { en: "Verify & continue", hi: "सत्यापित करें और आगे बढ़ें" },
+  "login.useDifferentEmail": { en: "← Use a different email", hi: "← दूसरा ईमेल उपयोग करें" },
+  "login.invalidEmail": { en: "Please enter a valid email address.", hi: "कृपया मान्य ईमेल पता दर्ज करें।" },
+  "login.invalidCode": { en: "Enter the 6-digit code from your email.", hi: "अपने ईमेल से 6-अंकीय कोड दर्ज करें।" },
+
+  // Not found
+  "notFound.title": { en: "Oops!", hi: "ओह!" },
+  "notFound.body": { en: "This screen doesn't exist.", hi: "यह स्क्रीन मौजूद नहीं है।" },
+  "notFound.goHome": { en: "Go to home screen!", hi: "होम स्क्रीन पर जाएँ!" },
+
+  // Common
+  "common.save": { en: "Save", hi: "सहेजें" },
+  "common.cancel": { en: "Cancel", hi: "रद्द करें" },
+  "common.done": { en: "Done", hi: "पूर्ण" },
+  "common.calling": { en: "Calling", hi: "कॉल कर रहे हैं" },
+  "common.navigatingTo": { en: "Navigating to", hi: "रास्ता दिखा रहे हैं" },
+  "common.send": { en: "Send", hi: "भेजें" },
+  "common.name": { en: "Name", hi: "नाम" },
+};
