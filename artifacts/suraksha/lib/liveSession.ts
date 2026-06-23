@@ -1,4 +1,4 @@
-import { supabase } from "./supabaseClient";
+import { db } from "./supabaseClient";
 import { getCurrentUser } from "./auth";
 
 export interface LiveSessionResult {
@@ -17,15 +17,11 @@ export async function startLiveSession(
     const user = await getCurrentUser();
     if (!user) return null;
 
-    const { data, error } = await supabase
-      .from("live_sessions")
-      .insert({ user_id: user.id, lat, lng, accuracy })
-      .select("share_id")
-      .single();
+    const { data, error } = await db.liveSessions.insert({ lat, lng, accuracy });
 
     if (error || !data) return null;
 
-    const shareId = data.share_id as string;
+    const shareId = data.share_id;
     return { shareId, shareUrl: `${LIVE_TRACKER_URL}/${shareId}` };
   } catch {
     return null;
@@ -39,10 +35,7 @@ export async function updateLiveSession(
   accuracy: number | null,
 ): Promise<void> {
   try {
-    await supabase
-      .from("live_sessions")
-      .update({ lat, lng, accuracy, updated_at: new Date().toISOString() })
-      .eq("share_id", shareId);
+    await db.liveSessions.update(shareId, { lat, lng, accuracy });
   } catch {
     // silently ignore — network hiccups shouldn't crash SOS
   }
@@ -50,10 +43,7 @@ export async function updateLiveSession(
 
 export async function endLiveSession(shareId: string): Promise<void> {
   try {
-    await supabase
-      .from("live_sessions")
-      .update({ is_active: false })
-      .eq("share_id", shareId);
+    await db.liveSessions.end(shareId);
   } catch {
     // silently ignore on cleanup
   }
