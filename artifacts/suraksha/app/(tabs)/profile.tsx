@@ -2,9 +2,11 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { signOut } from "@/lib/auth";
+import { deleteAccount, signOut } from "@/lib/auth";
 import {
+  ActivityIndicator,
   Image,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -78,7 +80,7 @@ function Row({
 export default function ProfileScreen() {
   const { c, themeKey, setThemeKey, isDark, setMode } = useTheme();
   const { t, lang, setLang, pick } = useI18n();
-  const { profile, settings, setSettings, setProfile } = useApp();
+  const { profile, settings, setSettings, setProfile, resetAllData } = useApp();
   const { showToast } = useToast();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -91,6 +93,10 @@ export default function ProfileScreen() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const [langModalVisible, setLangModalVisible] = useState(false);
+
+  const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
+  const [deleteText, setDeleteText] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   const saveProfile = () => {
     setProfile({ name: draftName.trim() || profile.name, phone: draftPhone.trim() || profile.phone });
@@ -140,6 +146,25 @@ export default function ProfileScreen() {
   };
 
   const currentLangMeta = LANG_BY_CODE[lang];
+
+  const handleDeleteAccount = async () => {
+    setDeleting(true);
+    try {
+      const { error } = await deleteAccount();
+      if (error) {
+        showToast(error);
+        return;
+      }
+      await resetAllData();
+      await signOut();
+      setDeleteStep(0);
+      router.replace("/onboarding" as never);
+    } catch {
+      showToast(lang === "hi" ? "खाता नहीं हटा सका — पुनः प्रयास करें" : "Could not delete account — try again");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <ScrollView
@@ -344,7 +369,7 @@ export default function ProfileScreen() {
           <View style={[styles.divider, { backgroundColor: c.border }]} />
           <Row icon="info"       color={c.primary} label={t("profile.about")}   onPress={() => showToast("Suraksha v1.0")} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row icon="helpCircle" color={c.success} label={t("profile.support")} onPress={() => router.push("/helpline")} />
+          <Row icon="helpCircle" color={c.success} label={t("profile.support")} onPress={() => Linking.openURL("mailto:support@suraksha.in")} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
           <Row icon="user"       color={c.police}  label={t("account.sessions")} onPress={() => router.push("/sessions" as never)} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
@@ -358,6 +383,25 @@ export default function ProfileScreen() {
             }}
           />
         </Card>
+
+        {/* ── Delete Account danger card ── */}
+        <Pressable
+          onPress={() => { setDeleteText(""); setDeleteStep(1); }}
+          style={[styles.dangerCard, { backgroundColor: withAlpha("#E53E3E", 0.06), borderColor: withAlpha("#E53E3E", 0.2) }]}
+        >
+          <View style={[styles.dangerIcon, { backgroundColor: withAlpha("#E53E3E", 0.1) }]}>
+            <Icon name="trash" size={18} color="#E53E3E" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 13.5, fontFamily: "Inter_700Bold", color: "#E53E3E" }}>
+              {t("profile.deleteAccount")}
+            </Text>
+            <Text style={{ fontSize: 11.5, color: withAlpha("#E53E3E", 0.7), marginTop: 1 }}>
+              {t("profile.deleteAccountSub")}
+            </Text>
+          </View>
+          <Icon name="chevronRight" size={16} color={withAlpha("#E53E3E", 0.4)} />
+        </Pressable>
       </View>
 
       {/* ── Edit profile modal ── */}
@@ -390,6 +434,76 @@ export default function ProfileScreen() {
                 <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>{t("common.save")}</Text>
               </Pressable>
             </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ── Delete Account 2-step modal ── */}
+      <Modal
+        visible={deleteStep > 0}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { if (!deleting) setDeleteStep(0); }}
+      >
+        <Pressable
+          style={[styles.modalBg, { backgroundColor: c.overlay }]}
+          onPress={() => { if (!deleting) setDeleteStep(0); }}
+        >
+          <Pressable style={[styles.modalCard, { backgroundColor: c.card }]} onPress={() => {}}>
+            {deleteStep === 1 ? (
+              <>
+                <View style={[styles.dangerIcon, { backgroundColor: withAlpha("#E53E3E", 0.1), alignSelf: "center", marginBottom: 14, width: 52, height: 52, borderRadius: 26 }]}>
+                  <Icon name="trash" size={24} color="#E53E3E" />
+                </View>
+                <Text style={{ fontSize: 17, fontFamily: "Inter_700Bold", color: "#E53E3E", textAlign: "center", marginBottom: 10 }}>
+                  {t("profile.deleteAccount")}
+                </Text>
+                <Text style={{ fontSize: 13, color: c.textMuted, lineHeight: 20, textAlign: "center", marginBottom: 20 }}>
+                  {t("account.deleteWarning")}
+                </Text>
+                <View style={{ flexDirection: "row", gap: 10 }}>
+                  <Pressable onPress={() => setDeleteStep(0)} style={[styles.modalBtn, { backgroundColor: c.cardAlt }]}>
+                    <Text style={{ color: c.text, fontFamily: "Inter_700Bold", fontSize: 13.5 }}>{t("common.cancel")}</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setDeleteStep(2)} style={[styles.modalBtn, { backgroundColor: "#E53E3E" }]}>
+                    <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>Continue</Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={{ fontSize: 15, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 6 }}>
+                  {t("account.deleteTypePrompt")}
+                </Text>
+                <Text style={{ fontSize: 12.5, color: c.textMuted, marginBottom: 14 }}>
+                  {t("account.deleteAccountSub")}
+                </Text>
+                <TextInput
+                  value={deleteText}
+                  onChangeText={setDeleteText}
+                  placeholder="DELETE"
+                  placeholderTextColor={c.textFaint}
+                  autoCapitalize="characters"
+                  style={[styles.input, { backgroundColor: c.cardAlt, color: "#E53E3E", borderColor: withAlpha("#E53E3E", 0.3), fontFamily: "Inter_700Bold", fontSize: 15, letterSpacing: 2 }]}
+                />
+                <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
+                  <Pressable onPress={() => setDeleteStep(1)} disabled={deleting} style={[styles.modalBtn, { backgroundColor: c.cardAlt }]}>
+                    <Text style={{ color: c.text, fontFamily: "Inter_700Bold", fontSize: 13.5 }}>{t("common.cancel")}</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={handleDeleteAccount}
+                    disabled={deleteText !== "DELETE" || deleting}
+                    style={[styles.modalBtn, { backgroundColor: deleteText === "DELETE" ? "#E53E3E" : withAlpha("#E53E3E", 0.3) }]}
+                  >
+                    {deleting ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>{t("account.deleteConfirmBtn")}</Text>
+                    )}
+                  </Pressable>
+                </View>
+              </>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
@@ -473,6 +587,22 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   section: { fontSize: 13, fontFamily: "Inter_700Bold", marginBottom: 8, color: "#8A7FA6" },
+  dangerCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+    marginTop: 12,
+  },
+  dangerIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   divider: { height: StyleSheet.hairlineWidth, marginVertical: 2 },
   premiumCard: {
     flexDirection: "row",

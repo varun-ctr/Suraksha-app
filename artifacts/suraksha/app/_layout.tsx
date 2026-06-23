@@ -39,6 +39,7 @@ function RootLayoutNav() {
       <Stack.Screen name="terms" />
       <Stack.Screen name="data" />
       <Stack.Screen name="sessions" />
+      <Stack.Screen name="right-detail" />
     </Stack>
   );
 }
