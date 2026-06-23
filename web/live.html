@@ -115,9 +115,7 @@
 
     async function loadSession() {
       const { data, error } = await client
-        .from("live_sessions")
-        .select("lat,lng,accuracy,is_active,expires_at,updated_at")
-        .eq("share_id", shareId)
+        .rpc("get_live_session", { p_share_id: shareId })
         .single();
 
       if (error || !data) {

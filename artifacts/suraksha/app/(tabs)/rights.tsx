@@ -30,8 +30,8 @@ export default function RightsScreen() {
       showsVerticalScrollIndicator={false}
     >
       <GradientHeader
-        title={lang === "hi" ? "अपने अधिकार जानें" : "Know Your Rights"}
-        subtitle={lang === "hi" ? "Know Your Rights" : "अपने अधिकार जानें"}
+        title={t("rights.title")}
+        subtitle={t("rights.sub")}
         colors={[c.police, "#173A8C"]}
       />
 

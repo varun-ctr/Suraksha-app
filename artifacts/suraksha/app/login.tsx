@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useI18n } from "@/context/LanguageContext";
 import { sendOtp, verifyOtp } from "@/lib/auth";
 
 const PRIMARY = "#7C3AED";
@@ -22,6 +23,7 @@ const loginBg = require("@/assets/images/login-bg.png");
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useI18n();
 
   const [step, setStep] = useState<"email" | "otp">("email");
   const [email, setEmail] = useState("");
@@ -32,7 +34,7 @@ export default function LoginScreen() {
   const handleSendOtp = async () => {
     const trimmed = email.trim().toLowerCase();
     if (!trimmed.includes("@")) {
-      setError("Please enter a valid email address.");
+      setError(t("login.invalidEmail"));
       return;
     }
     setError(null);
@@ -49,7 +51,7 @@ export default function LoginScreen() {
   const handleVerifyOtp = async () => {
     const code = otp.trim();
     if (code.length !== 6) {
-      setError("Enter the 6-digit code from your email.");
+      setError(t("login.invalidCode"));
       return;
     }
     setError(null);
@@ -74,21 +76,19 @@ export default function LoginScreen() {
         <View style={[styles.flex, { paddingTop: insets.top, paddingBottom: insets.bottom + 24 }]}>
           <View style={styles.topSection}>
             <Text style={styles.appName}>Suraksha</Text>
-            <Text style={styles.tagline}>Your safety, always with you.</Text>
+            <Text style={styles.tagline}>{t("login.tagline")}</Text>
           </View>
 
           <BlurView intensity={60} tint="light" style={styles.card}>
             {step === "email" ? (
               <>
-                <Text style={styles.cardTitle}>Sign in</Text>
-                <Text style={styles.cardSub}>
-                  We'll send a one-time code to your email — no password needed.
-                </Text>
+                <Text style={styles.cardTitle}>{t("login.signIn")}</Text>
+                <Text style={styles.cardSub}>{t("login.signInSub")}</Text>
 
-                <Text style={styles.label}>Email address</Text>
+                <Text style={styles.label}>{t("login.emailLabel")}</Text>
                 <TextInput
                   value={email}
-                  onChangeText={(t) => { setEmail(t); setError(null); }}
+                  onChangeText={(v) => { setEmail(v); setError(null); }}
                   placeholder="you@example.com"
                   placeholderTextColor="rgba(80,60,120,0.45)"
                   keyboardType="email-address"
@@ -108,20 +108,21 @@ export default function LoginScreen() {
                 >
                   {loading
                     ? <ActivityIndicator color="#fff" />
-                    : <Text style={styles.btnText}>Send code</Text>}
+                    : <Text style={styles.btnText}>{t("login.sendCode")}</Text>}
                 </Pressable>
               </>
             ) : (
               <>
-                <Text style={styles.cardTitle}>Enter code</Text>
+                <Text style={styles.cardTitle}>{t("login.enterCode")}</Text>
                 <Text style={styles.cardSub}>
-                  Check <Text style={{ fontWeight: "700" }}>{email}</Text> for your 6-digit code.
+                  {t("login.enterCode")} —{" "}
+                  <Text style={{ fontWeight: "700" }}>{email}</Text>
                 </Text>
 
-                <Text style={styles.label}>One-time code</Text>
+                <Text style={styles.label}>{t("login.otpLabel")}</Text>
                 <TextInput
                   value={otp}
-                  onChangeText={(t) => { setOtp(t.replace(/\D/g, "").slice(0, 6)); setError(null); }}
+                  onChangeText={(v) => { setOtp(v.replace(/\D/g, "").slice(0, 6)); setError(null); }}
                   placeholder="123456"
                   placeholderTextColor="rgba(80,60,120,0.45)"
                   keyboardType="number-pad"
@@ -140,14 +141,14 @@ export default function LoginScreen() {
                 >
                   {loading
                     ? <ActivityIndicator color="#fff" />
-                    : <Text style={styles.btnText}>Verify & continue</Text>}
+                    : <Text style={styles.btnText}>{t("login.verify")}</Text>}
                 </Pressable>
 
                 <Pressable
                   onPress={() => { setStep("email"); setOtp(""); setError(null); }}
                   style={styles.backBtn}
                 >
-                  <Text style={styles.backBtnText}>← Use a different email</Text>
+                  <Text style={styles.backBtnText}>{t("login.useDifferentEmail")}</Text>
                 </Pressable>
               </>
             )}

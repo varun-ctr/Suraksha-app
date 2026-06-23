@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS public.live_sessions (
   is_active   boolean NOT NULL DEFAULT true,
   started_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now(),
-  expires_at  timestamptz NOT NULL DEFAULT (now() + interval '6 hours')
+  expires_at  timestamptz NOT NULL DEFAULT (now() + interval '24 hours')
 );
 
 -- Enable RLS on live_sessions

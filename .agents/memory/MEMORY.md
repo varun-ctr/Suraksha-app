@@ -5,3 +5,5 @@
 - [Suraksha live-session RLS](suraksha-live-session-rls.md) — broad public SELECT on live_sessions is a security issue; use SECURITY DEFINER RPC get_live_session(uuid) so only 1 row is returned per share_id.
 - [Suraksha i18n discipline](suraksha-i18n.md) — all user-facing strings must go through t(); hardcoded English in .tsx files will fail architect review.
 - [Suraksha TS router casts](suraksha-router-casts.md) — Expo Router typed-routes may not include dynamically added screens; cast with `as never` or `as string` at call sites to silence TS errors.
+- [Expo web + react-native-maps](expo-native-maps-web.md) — never import react-native-maps at route level; use NativeMap.tsx + NativeMap.web.tsx component wrapper so Metro resolves platform-correctly.
+- [Expo CI startup](expo-ci-startup.md) — prepend `fuser -k $PORT/tcp 2>/dev/null; CI=1` to dev script; --non-interactive flag is rejected by this Expo version, CI=1 is the correct non-interactive mode.

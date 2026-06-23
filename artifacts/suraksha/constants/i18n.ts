@@ -198,6 +198,24 @@ export const STRINGS: Strings = {
   "data.confirmBody": { en: "All your data on this device will be erased and the app will restart from onboarding.", hi: "इस डिवाइस का आपका सारा डेटा मिट जाएगा और ऐप ऑनबोर्डिंग से फिर शुरू होगा।" },
   "data.deleted": { en: "All data deleted", hi: "सारा डेटा हटाया गया" },
 
+  // Login
+  "login.tagline": { en: "Your safety, always with you.", hi: "आपकी सुरक्षा, हमेशा आपके साथ।" },
+  "login.signIn": { en: "Sign in", hi: "साइन इन" },
+  "login.signInSub": { en: "We'll send a one-time code to your email — no password needed.", hi: "हम आपके ईमेल पर एक बार का कोड भेजेंगे — पासवर्ड की ज़रूरत नहीं।" },
+  "login.emailLabel": { en: "Email address", hi: "ईमेल पता" },
+  "login.sendCode": { en: "Send code", hi: "कोड भेजें" },
+  "login.enterCode": { en: "Enter code", hi: "कोड दर्ज करें" },
+  "login.otpLabel": { en: "One-time code", hi: "एक बार का कोड" },
+  "login.verify": { en: "Verify & continue", hi: "सत्यापित करें और आगे बढ़ें" },
+  "login.useDifferentEmail": { en: "← Use a different email", hi: "← दूसरा ईमेल उपयोग करें" },
+  "login.invalidEmail": { en: "Please enter a valid email address.", hi: "कृपया मान्य ईमेल पता दर्ज करें।" },
+  "login.invalidCode": { en: "Enter the 6-digit code from your email.", hi: "अपने ईमेल से 6-अंकीय कोड दर्ज करें।" },
+
+  // Not found
+  "notFound.title": { en: "Oops!", hi: "ओह!" },
+  "notFound.body": { en: "This screen doesn't exist.", hi: "यह स्क्रीन मौजूद नहीं है।" },
+  "notFound.goHome": { en: "Go to home screen!", hi: "होम स्क्रीन पर जाएँ!" },
+
   // Common
   "common.save": { en: "Save", hi: "सहेजें" },
   "common.cancel": { en: "Cancel", hi: "रद्द करें" },
