@@ -9,6 +9,7 @@ import * as Notifications from "expo-notifications";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useState } from "react";
+import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -74,54 +75,46 @@ function Gate() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // ── Cold-start (killed-state) notification tap handling ──────────
-  // addNotificationResponseReceivedListener only fires when the app is already
-  // running. For taps that launch the app from a terminated state, Expo stores
-  // the last response; we read it once on mount and route accordingly.
+  // ── Notification listeners — native only (not available on web) ──
   useEffect(() => {
+    if (Platform.OS === "web") return;
+
+    // Cold-start: read last tapped notification so killed-state deep-links work
     void (async () => {
       const response = await Notifications.getLastNotificationResponseAsync();
       if (response) {
         const route = (response.notification.request.content.data as Record<string, unknown>)?.route;
-        if (typeof route === "string" && route) {
-          router.push(route as never);
-        }
+        if (typeof route === "string" && route) router.push(route as never);
       }
     })();
-    // Run once on mount — router intentionally excluded to avoid re-routing
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
-  // ── Push token refresh: upsert new token to Supabase ─────────────
-  useEffect(() => {
-    const sub = Notifications.addPushTokenListener(async ({ data: token }) => {
+    // Token refresh → re-upsert to Supabase
+    const tokenSub = Notifications.addPushTokenListener(async ({ data: token }) => {
       if (!token) return;
       await registerForPushNotifications();
     });
-    return () => sub.remove();
-  }, []);
 
-  // ── Foreground notification handler: show in-app toast ────────────
-  useEffect(() => {
-    const sub = Notifications.addNotificationReceivedListener((notification) => {
+    // Foreground: show in-app toast
+    const foregroundSub = Notifications.addNotificationReceivedListener((notification) => {
       const title = notification.request.content.title ?? "";
       const body = notification.request.content.body ?? "";
       const msg = [title, body].filter(Boolean).join(" — ");
       if (msg) showToast(msg);
     });
-    return () => sub.remove();
-  }, [showToast]);
 
-  // ── Tap handler: deep-link to data.route if provided ─────────────
-  useEffect(() => {
-    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+    // Tap: deep-link to data.route
+    const tapSub = Notifications.addNotificationResponseReceivedListener((response) => {
       const route = (response.notification.request.content.data as Record<string, unknown>)?.route;
-      if (typeof route === "string" && route) {
-        router.push(route as never);
-      }
+      if (typeof route === "string" && route) router.push(route as never);
     });
-    return () => sub.remove();
-  }, [router]);
+
+    return () => {
+      tokenSub.remove();
+      foregroundSub.remove();
+      tapSub.remove();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showToast]);
 
   const allReady = appReady && themeReady && langReady && authChecked;
 

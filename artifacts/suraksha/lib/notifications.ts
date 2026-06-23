@@ -6,11 +6,10 @@ import { db, supabase } from "@/lib/supabaseClient";
 /**
  * Suppress the system banner in the foreground — the root _layout.tsx shows
  * an in-app Toast instead via addNotificationReceivedListener.
- *
- * Called once at app startup. When the user disables notifications via the
- * Profile toggle, `disableNotificationHandler()` sets this to null.
+ * No-op on web (push tokens and native notification handler unavailable).
  */
 export function enableNotificationHandler(): void {
+  if (Platform.OS === "web") return;
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowAlert: false,
@@ -24,9 +23,10 @@ export function enableNotificationHandler(): void {
 
 /**
  * Remove the handler so no foreground handling occurs while notifications
- * are disabled by the user.
+ * are disabled by the user. No-op on web.
  */
 export function disableNotificationHandler(): void {
+  if (Platform.OS === "web") return;
   Notifications.setNotificationHandler(null);
 }
 
@@ -41,8 +41,10 @@ export type RegisterResult =
 /**
  * Returns whether the OS has granted notification permission.
  * Does NOT prompt the user — safe to call silently on mount.
+ * Always returns false on web (native push not available).
  */
 export async function getNotificationPermissionGranted(): Promise<boolean> {
+  if (Platform.OS === "web") return false;
   try {
     const status = (await Notifications.getPermissionsAsync()) as unknown as {
       granted: boolean;
@@ -63,6 +65,10 @@ export async function getNotificationPermissionGranted(): Promise<boolean> {
  * Safe to call in simulator / dev builds — token fetch failure is non-fatal.
  */
 export async function registerForPushNotifications(): Promise<RegisterResult> {
+  if (Platform.OS === "web") {
+    return { ok: false, denied: false, error: "Push notifications not supported on web" };
+  }
+
   let granted = false;
   try {
     const result = (await Notifications.requestPermissionsAsync()) as unknown as {
