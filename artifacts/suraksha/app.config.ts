@@ -38,6 +38,12 @@ const config: ExpoConfig = {
   },
   android: {
     package: "com.sakhisuraksha.app",
+    /**
+     * FCM: download google-services.json from Firebase Console and place it at
+     * the project root, then set GOOGLE_SERVICES_JSON env var to that path (or
+     * leave unset to use the default). EAS Build will embed it automatically.
+     */
+    googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json",
     config: {
       googleMaps: {
         apiKey: mapsKey,

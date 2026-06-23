@@ -74,6 +74,24 @@ function Gate() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // ── Cold-start (killed-state) notification tap handling ──────────
+  // addNotificationResponseReceivedListener only fires when the app is already
+  // running. For taps that launch the app from a terminated state, Expo stores
+  // the last response; we read it once on mount and route accordingly.
+  useEffect(() => {
+    void (async () => {
+      const response = await Notifications.getLastNotificationResponseAsync();
+      if (response) {
+        const route = (response.notification.request.content.data as Record<string, unknown>)?.route;
+        if (typeof route === "string" && route) {
+          router.push(route as never);
+        }
+      }
+    })();
+    // Run once on mount — router intentionally excluded to avoid re-routing
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Push token refresh: upsert new token to Supabase ─────────────
   useEffect(() => {
     const sub = Notifications.addPushTokenListener(async ({ data: token }) => {

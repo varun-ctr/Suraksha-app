@@ -23,6 +23,7 @@ import { Icon } from "@/components/Icon";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import {
   disableNotificationHandler,
+  enableNotificationHandler,
   getNotificationPermissionGranted,
   registerForPushNotifications,
 } from "@/lib/notifications";
@@ -174,6 +175,7 @@ export default function ProfileScreen() {
 
   const handleNotificationsToggle = async (v: boolean) => {
     if (v) {
+      enableNotificationHandler();
       const result = await registerForPushNotifications();
       if (!result.ok && result.denied) {
         showToast(t("profile.notificationDenied"));
