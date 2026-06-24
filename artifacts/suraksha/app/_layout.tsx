@@ -22,6 +22,7 @@ import { SafetyProvider } from "@/context/SafetyContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { ToastProvider, useToast } from "@/context/ToastContext";
 import { registerForPushNotifications } from "@/lib/notifications";
+import { signInAnonymously } from "@/lib/auth";
 import { supabase } from "@/lib/supabaseClient";
 
 SplashScreen.preventAutoHideAsync();
@@ -60,9 +61,17 @@ function Gate() {
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setAuthed(!!session);
-      setAuthChecked(true);
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session) {
+        setAuthed(true);
+        setAuthChecked(true);
+      } else {
+        // No session — sign in anonymously so every user gets a real user_id
+        // immediately, with no login screen friction.
+        await signInAnonymously();
+        // onAuthStateChange below will set authed=true when the session lands.
+        setAuthChecked(true);
+      }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
@@ -126,14 +135,15 @@ function Gate() {
     if (!allReady) return;
     const seg0 = segments[0] as string;
     const inOnboarding = seg0 === "onboarding";
-    const inLogin      = seg0 === "login";
 
-    if (!onboarded && !inOnboarding && !inLogin) {
+    // /login is now the optional "Save Your Data" link-account screen —
+    // never auto-navigate there. Only gate on onboarding completion.
+    if (!onboarded && !inOnboarding) {
       router.replace("/onboarding");
     } else if (onboarded && inOnboarding) {
-      router.replace(authed ? "/(tabs)" : "/login" as never);
+      router.replace("/(tabs)");
     }
-  }, [allReady, onboarded, authed, segments, router]);
+  }, [allReady, onboarded, segments, router]);
 
   if (!allReady) return null;
 

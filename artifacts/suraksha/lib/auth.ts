@@ -130,6 +130,25 @@ export function onAuthStateChange(
 }
 
 // ---------------------------------------------------------------------------
+// Anonymous auth — signs in silently; user gets a real user_id with no friction
+// ---------------------------------------------------------------------------
+export async function signInAnonymously(): Promise<{
+  user: User | null;
+  error: string | null;
+}> {
+  const { data, error } = await supabase.auth.signInAnonymously();
+  return { user: data.user ?? null, error: error?.message ?? null };
+}
+
+// Returns true when the currently authenticated user is an anonymous account
+// (has no linked email / phone — provider is "anonymous").
+export function isAnonymous(user: User | null): boolean {
+  if (!user) return false;
+  const provider = user.app_metadata?.provider as string | undefined;
+  return provider === "anonymous";
+}
+
+// ---------------------------------------------------------------------------
 // Account deletion — calls the api-server DELETE /api/auth/account endpoint
 // ---------------------------------------------------------------------------
 export async function deleteAccount(): Promise<{ error: string | null }> {

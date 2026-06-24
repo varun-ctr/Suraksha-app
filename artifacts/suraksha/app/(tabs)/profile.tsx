@@ -3,7 +3,7 @@ import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { deleteAccount, signOut } from "@/lib/auth";
+import { deleteAccount, isAnonymous, signOut } from "@/lib/auth";
 import {
   ActivityIndicator,
   Image,
@@ -101,6 +101,27 @@ export default function ProfileScreen() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const [langModalVisible, setLangModalVisible] = useState(false);
+
+  // Account link status
+  const [userAnonymous, setUserAnonymous] = useState<boolean | null>(null);
+  const [linkedEmail, setLinkedEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUserAnonymous(isAnonymous(user));
+      setLinkedEmail(user?.email ?? null);
+    })();
+    // Re-check when the user upgrades their account (email linked)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        const u = session?.user ?? null;
+        setUserAnonymous(isAnonymous(u));
+        setLinkedEmail(u?.email ?? null);
+      },
+    );
+    return () => subscription.unsubscribe();
+  }, []);
 
   const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
   const [deleteText, setDeleteText] = useState("");
@@ -283,6 +304,45 @@ export default function ProfileScreen() {
       </LinearGradient>
 
       <View style={{ paddingHorizontal: 18, marginTop: 16 }}>
+
+        {/* ── Account link card ── */}
+        {userAnonymous === true && (
+          <Pressable
+            onPress={() => router.push("/login" as never)}
+            style={[styles.accountCard, { backgroundColor: withAlpha(c.accent, 0.08), borderColor: withAlpha(c.accent, 0.22) }]}
+          >
+            <View style={[styles.accountIcon, { backgroundColor: withAlpha(c.accent, 0.14) }]}>
+              <Icon name="shield" size={18} color={c.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13.5, fontFamily: "Inter_700Bold", color: c.text }}>
+                Back up your data
+              </Text>
+              <Text style={{ fontSize: 11.5, color: c.textMuted, marginTop: 1 }}>
+                Link an email to save your contacts & settings
+              </Text>
+            </View>
+            <Icon name="chevronRight" size={16} color={c.textFaint} />
+          </Pressable>
+        )}
+
+        {userAnonymous === false && linkedEmail && (
+          <View
+            style={[styles.accountCard, { backgroundColor: withAlpha(c.success, 0.08), borderColor: withAlpha(c.success, 0.22) }]}
+          >
+            <View style={[styles.accountIcon, { backgroundColor: withAlpha(c.success, 0.14) }]}>
+              <Icon name="check" size={18} color={c.success} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13.5, fontFamily: "Inter_700Bold", color: c.text }}>
+                Account linked ✓
+              </Text>
+              <Text style={{ fontSize: 11.5, color: c.textMuted, marginTop: 1 }} numberOfLines={1}>
+                {linkedEmail}
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* ── Language ── */}
         <SectionTitle>{t("profile.language")}</SectionTitle>
@@ -708,5 +768,22 @@ const styles = StyleSheet.create({
     padding: 22,
     paddingBottom: 36,
     maxHeight: "85%",
+  },
+  accountCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 16,
+    minHeight: 44,
+  },
+  accountIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });
