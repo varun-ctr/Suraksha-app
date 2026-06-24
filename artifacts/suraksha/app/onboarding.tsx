@@ -1,137 +1,223 @@
+import * as ExpoLocation from "expo-location";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
   Animated,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "@/components/Icon";
-import { LanguagePicker } from "@/components/LanguagePicker";
-import type { IconName } from "@/constants/data";
-import type { LangCode } from "@/constants/languages";
 import { useApp } from "@/context/AppContext";
 import { useI18n } from "@/context/LanguageContext";
-import { useTheme } from "@/context/ThemeContext";
 
 // ---------------------------------------------------------------------------
-// Slide data (screens 0–3)
+// Design tokens
 // ---------------------------------------------------------------------------
-interface SlideData {
-  icon: IconName;
-  bg: [string, string];
-  titleKey: string;
-  bodyKey: string;
-}
-
-const SLIDES: SlideData[] = [
-  { icon: "alert",  bg: ["#7C3AED", "#5B21B6"], titleKey: "onb.title1", bodyKey: "onb.body1" },
-  { icon: "mapPin", bg: ["#0EA5E9", "#0369A1"], titleKey: "onb.title2", bodyKey: "onb.body2" },
-  { icon: "user",   bg: ["#10B981", "#059669"], titleKey: "onb.title3", bodyKey: "onb.body3" },
-  { icon: "book",   bg: ["#F59E0B", "#B45309"], titleKey: "onb.title4", bodyKey: "onb.body4" },
-];
-
-const TOTAL_STEPS = 6; // 0-3 slides, 4 language, 5 login prompt
-const LANG_STEP  = 4;
-const LOGIN_STEP = 5;
+const ROSE       = "#D4537E";
+const ROSE_DARK  = "#993556";
+const ROSE_SOFT  = "#F4C0D1";
+const ROSE_LIGHT = "#FBEAF0";
+const GREY_TEXT  = "#9CA3AF";
+const CARD_BG    = "#FFFFFF";
+const TOTAL      = 3;
 
 // ---------------------------------------------------------------------------
-// Page dots
+// Step indicator
 // ---------------------------------------------------------------------------
-function PageDots({ step }: { step: number }) {
+function StepIndicator({ step }: { step: number }) {
   return (
-    <View style={styles.dots}>
-      {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
-        <View
-          key={i}
-          style={[
-            styles.dot,
-            {
-              width: step === i ? 22 : 7,
-              backgroundColor: step === i ? "#fff" : "rgba(255,255,255,0.35)",
-            },
-          ]}
-        />
-      ))}
+    <View style={styles.stepRow}>
+      {Array.from({ length: TOTAL }).map((_, i) => {
+        const done   = i < step;
+        const active = i === step;
+        return (
+          <React.Fragment key={i}>
+            <View
+              style={[
+                styles.stepCircle,
+                done   && styles.stepDone,
+                active && styles.stepActive,
+                !done && !active && styles.stepFuture,
+              ]}
+            >
+              {done ? (
+                <Text style={styles.stepCheck}>✓</Text>
+              ) : (
+                <Text style={[styles.stepNum, active && { color: "#fff" }]}>
+                  {i + 1}
+                </Text>
+              )}
+            </View>
+            {i < TOTAL - 1 && (
+              <View
+                style={[
+                  styles.stepLine,
+                  done && { backgroundColor: ROSE },
+                ]}
+              />
+            )}
+          </React.Fragment>
+        );
+      })}
     </View>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Sub-screens
+// Constant hero card
 // ---------------------------------------------------------------------------
-function FeatureSlide({ slide, t }: { slide: SlideData; t: (k: string) => string }) {
+function Hero({ t }: { t: (k: string) => string }) {
   return (
-    <View style={styles.slideContent}>
-      <View style={styles.iconRingOuter}>
-        <View style={styles.iconRingInner}>
-          <Icon name={slide.icon} size={56} color="#fff" />
-        </View>
-      </View>
-      <Text style={styles.slideTitle}>{t(slide.titleKey)}</Text>
-      <Text style={styles.slideBody}>{t(slide.bodyKey)}</Text>
+    <LinearGradient
+      colors={[ROSE, ROSE_DARK]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.hero}
+    >
+      <Text style={styles.heroEmoji}>🌸</Text>
+      <Text style={styles.heroName}>Suraksha</Text>
+      <Text style={styles.heroTagline}>{t("onb.tagline")}</Text>
+    </LinearGradient>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Labelled rose input
+// ---------------------------------------------------------------------------
+function RoseInput({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType,
+  autoCapitalize,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (v: string) => void;
+  placeholder?: string;
+  keyboardType?: "default" | "phone-pad" | "email-address";
+  autoCapitalize?: "none" | "words" | "sentences";
+}) {
+  return (
+    <View style={{ marginBottom: 14 }}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={GREY_TEXT}
+        keyboardType={keyboardType ?? "default"}
+        autoCapitalize={autoCapitalize ?? "words"}
+        style={styles.fieldInput}
+      />
     </View>
   );
 }
 
-function LanguageScreen({
-  selected,
-  onSelect,
+// ---------------------------------------------------------------------------
+// Step 0 — Name
+// ---------------------------------------------------------------------------
+function NameStep({
+  name,
+  setName,
   t,
 }: {
-  selected: LangCode;
-  onSelect: (l: LangCode) => void;
+  name: string;
+  setName: (v: string) => void;
   t: (k: string) => string;
 }) {
   return (
-    <View style={styles.langWrap}>
-      <View style={styles.langIconRing}>
-        <Icon name="globe" size={36} color="#fff" />
-      </View>
-      <Text style={styles.langTitle}>{t("onb.langTitle")}</Text>
-      <Text style={styles.langBody}>{t("onb.langBody")}</Text>
-      <View style={styles.pickerBox}>
-        <LanguagePicker selected={selected} onSelect={onSelect} />
-      </View>
+    <View style={styles.formCard}>
+      <Text style={styles.formHeading}>{t("onb.nameHeading")}</Text>
+      <Text style={styles.formSub}>{t("onb.nameSub")}</Text>
+      <RoseInput
+        label={t("onb.nameLabel")}
+        value={name}
+        onChangeText={setName}
+        placeholder={t("onb.namePlaceholder")}
+      />
     </View>
   );
 }
 
-function LoginPromptScreen({
+// ---------------------------------------------------------------------------
+// Step 1 — Trusted contacts
+// ---------------------------------------------------------------------------
+function ContactsStep({
+  contactName,
+  setContactName,
+  contactPhone,
+  setContactPhone,
   t,
-  primaryColor,
-  onSignIn,
-  onSkip,
 }: {
+  contactName: string;
+  setContactName: (v: string) => void;
+  contactPhone: string;
+  setContactPhone: (v: string) => void;
   t: (k: string) => string;
-  primaryColor: string;
-  onSignIn: () => void;
-  onSkip: () => void;
 }) {
   return (
-    <View style={styles.loginContent}>
-      <View style={styles.iconRingOuter}>
-        <View style={styles.iconRingInner}>
-          <Icon name="shield" size={52} color="#fff" />
-        </View>
+    <View style={styles.formCard}>
+      <Text style={styles.formHeading}>{t("onb.contactHeading")}</Text>
+      <Text style={styles.formSub}>{t("onb.contactSub")}</Text>
+      <RoseInput
+        label={t("onb.contactNameLabel")}
+        value={contactName}
+        onChangeText={setContactName}
+        placeholder={t("onb.contactNamePlaceholder")}
+      />
+      <RoseInput
+        label={t("onb.contactPhoneLabel")}
+        value={contactPhone}
+        onChangeText={setContactPhone}
+        placeholder={t("onb.contactPhonePlaceholder")}
+        keyboardType="phone-pad"
+        autoCapitalize="none"
+      />
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Step 2 — Location
+// ---------------------------------------------------------------------------
+function LocationStep({
+  granted,
+  onAllow,
+  t,
+}: {
+  granted: boolean;
+  onAllow: () => void;
+  t: (k: string) => string;
+}) {
+  return (
+    <View style={styles.formCard}>
+      <View style={styles.locationIconWrap}>
+        <Icon name="mapPin" size={28} color={ROSE} />
       </View>
-      <Text style={styles.loginAppName}>Suraksha</Text>
-      <Text style={styles.loginAppNameHi}>सुरक्षा</Text>
-      <Text style={styles.loginTitle}>{t("onb.loginTitle")}</Text>
-      <Text style={styles.loginBody}>{t("onb.loginBody")}</Text>
-      <Pressable onPress={onSignIn} style={styles.signInBtn}>
-        <Text style={[styles.signInBtnText, { color: primaryColor }]}>
-          {t("onb.loginCta")}
-        </Text>
-      </Pressable>
-      <Pressable onPress={onSkip} hitSlop={12} style={{ marginTop: 14 }}>
-        <Text style={styles.skipLoginText}>{t("onb.skipLogin")}</Text>
-      </Pressable>
+      <Text style={styles.formHeading}>{t("onb.locationHeading")}</Text>
+      <Text style={styles.formSub}>{t("onb.locationSub")}</Text>
+      {granted ? (
+        <View style={styles.grantedBadge}>
+          <Icon name="check" size={16} color="#fff" />
+          <Text style={styles.grantedText}>{t("onb.locationGranted")}</Text>
+        </View>
+      ) : (
+        <Pressable onPress={onAllow} style={styles.allowBtn}>
+          <Icon name="mapPin" size={16} color={ROSE} />
+          <Text style={styles.allowBtnText}>{t("onb.locationAllow")}</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -140,252 +226,322 @@ function LoginPromptScreen({
 // Main screen
 // ---------------------------------------------------------------------------
 export default function Onboarding() {
-  const { c } = useTheme();
-  const { t, lang, setLang } = useI18n();
-  const { completeOnboarding } = useApp();
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const { t }                  = useI18n();
+  const { completeOnboarding, setProfile, addContact } = useApp();
+  const router                 = useRouter();
+  const insets                 = useSafeAreaInsets();
 
-  const [step, setStep] = useState(0);
+  const [step, setStep]               = useState(0);
+  const [name, setName]               = useState("");
+  const [contactName, setContactName] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [locationGranted, setLocationGranted] = useState(false);
+  const [error, setError]             = useState("");
+
   const fade = useRef(new Animated.Value(1)).current;
 
-  const goTo = (next: number) => {
+  const animateTo = (next: number) => {
     Animated.sequence([
-      Animated.timing(fade, { toValue: 0, duration: 110, useNativeDriver: true }),
-      Animated.timing(fade, { toValue: 1, duration: 190, useNativeDriver: true }),
+      Animated.timing(fade, { toValue: 0, duration: 100, useNativeDriver: true }),
+      Animated.timing(fade, { toValue: 1, duration: 180, useNativeDriver: true }),
     ]).start();
     setStep(next);
+    setError("");
   };
 
-  const handleNext  = () => { if (step < TOTAL_STEPS - 1) goTo(step + 1); };
-  const handleSkip  = () => goTo(LOGIN_STEP);
-
-  const handleSignIn = () => {
-    completeOnboarding();
-    router.replace("/login" as never);
+  const handleAllowLocation = async () => {
+    if (Platform.OS === "web") {
+      setLocationGranted(true);
+      return;
+    }
+    const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
+    setLocationGranted(status === "granted");
   };
 
-  const handleSkipLogin = () => {
+  const handleSkip = () => {
+    setError("");
+    if (step < TOTAL - 1) {
+      animateTo(step + 1);
+    } else {
+      finish();
+    }
+  };
+
+  const handleNext = () => {
+    setError("");
+
+    if (step === 0) {
+      if (!name.trim()) {
+        setError(t("onb.nameError"));
+        return;
+      }
+      setProfile({ name: name.trim() });
+      animateTo(1);
+      return;
+    }
+
+    if (step === 1) {
+      const hasName  = contactName.trim().length > 0;
+      const hasPhone = contactPhone.trim().length > 0;
+      if (hasName || hasPhone) {
+        const result = addContact(contactName.trim(), contactPhone.trim());
+        if (!result.ok) {
+          if (result.error === "invalid") {
+            setError(t("onb.invalidPhone"));
+            return;
+          }
+          if (result.error === "duplicate") {
+            setError(t("onb.duplicatePhone"));
+            return;
+          }
+        }
+      }
+      animateTo(2);
+      return;
+    }
+
+    if (step === 2) {
+      finish();
+    }
+  };
+
+  const finish = () => {
     completeOnboarding();
     router.replace("/(tabs)" as never);
   };
 
-  const slide        = step < SLIDES.length ? SLIDES[step] : null;
-  const gradColors: [string, string] = slide
-    ? slide.bg
-    : step === LANG_STEP
-    ? [c.primary, c.primaryDark]
-    : ["#1E1B4B", "#312E81"];
+  const primaryLabel =
+    step === 0 ? t("onb.continue")
+    : step === 1 ? (contactName.trim() || contactPhone.trim() ? t("onb.contactAddContinue") : t("onb.continue"))
+    : t("onb.getStarted");
 
-  const isLangStep  = step === LANG_STEP;
-  const isLoginStep = step === LOGIN_STEP;
+  const skipLabel =
+    step === 0 ? "" // no skip on name step
+    : step === 1 ? t("onb.skipForNow")
+    : t("onb.skip");
 
   return (
     <LinearGradient
-      colors={gradColors}
+      colors={[ROSE_LIGHT, "#ffffff"]}
       start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
+      end={{ x: 0, y: 1 }}
       style={{ flex: 1 }}
     >
-      {/* Skip button */}
-      <View style={[styles.topBar, { paddingTop: insets.top + 14 }]}>
-        {!isLoginStep && (
-          <Pressable onPress={handleSkip} hitSlop={12} style={{ marginLeft: "auto" }}>
-            <Text style={styles.skipText}>{t("onb.skip")}</Text>
-          </Pressable>
-        )}
-      </View>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={0}
+      >
+        <ScrollView
+          contentContainerStyle={[
+            styles.scroll,
+            { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 32 },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Step indicator */}
+          <StepIndicator step={step} />
 
-      {/* Animated content area */}
-      <Animated.View style={{ flex: 1, opacity: fade }}>
-        {isLoginStep ? (
-          <LoginPromptScreen
-            t={t}
-            primaryColor={c.primary}
-            onSignIn={handleSignIn}
-            onSkip={handleSkipLogin}
-          />
-        ) : isLangStep ? (
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 24, flexGrow: 1 }}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            <LanguageScreen selected={lang} onSelect={setLang} t={t} />
-          </ScrollView>
-        ) : (
-          <View style={{ flex: 1, paddingHorizontal: 28 }}>
-            <FeatureSlide slide={SLIDES[step]!} t={t} />
-          </View>
-        )}
-      </Animated.View>
+          {/* Hero */}
+          <Hero t={t} />
 
-      {/* Dots + Next CTA (hidden on login prompt screen) */}
-      {!isLoginStep && (
-        <View style={[styles.bottom, { paddingBottom: insets.bottom + 22 }]}>
-          <PageDots step={step} />
-          <Pressable onPress={handleNext} style={styles.cta}>
-            <Text style={[styles.ctaText, { color: gradColors[0] }]}>
-              {isLangStep ? t("onb.getStarted") : t("onb.next")}
-            </Text>
-          </Pressable>
-        </View>
-      )}
+          {/* Animated form content */}
+          <Animated.View style={{ opacity: fade }}>
+            {step === 0 && (
+              <NameStep name={name} setName={setName} t={t} />
+            )}
+            {step === 1 && (
+              <ContactsStep
+                contactName={contactName}
+                setContactName={setContactName}
+                contactPhone={contactPhone}
+                setContactPhone={setContactPhone}
+                t={t}
+              />
+            )}
+            {step === 2 && (
+              <LocationStep
+                granted={locationGranted}
+                onAllow={handleAllowLocation}
+                t={t}
+              />
+            )}
+
+            {/* Error */}
+            {!!error && <Text style={styles.errorText}>{error}</Text>}
+
+            {/* Primary button */}
+            <Pressable onPress={handleNext} style={styles.primaryBtn}>
+              <Text style={styles.primaryBtnText}>{primaryLabel}</Text>
+            </Pressable>
+
+            {/* Skip */}
+            {!!skipLabel && (
+              <Pressable onPress={handleSkip} hitSlop={12} style={styles.skipWrap}>
+                <Text style={styles.skipText}>{skipLabel}</Text>
+              </Pressable>
+            )}
+          </Animated.View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </LinearGradient>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
 const styles = StyleSheet.create({
-  topBar: {
+  scroll: {
+    paddingHorizontal: 20,
+    flexGrow: 1,
+  },
+
+  // Step indicator
+  stepRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 22,
-    height: 52,
+    justifyContent: "center",
+    marginBottom: 22,
   },
-  skipText: {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
+  stepCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: ROSE_SOFT,
   },
+  stepActive:  { backgroundColor: ROSE, borderColor: ROSE },
+  stepDone:    { backgroundColor: ROSE, borderColor: ROSE },
+  stepFuture:  { backgroundColor: "#fff", borderColor: ROSE_SOFT },
+  stepCheck:   { color: "#fff", fontSize: 14, fontFamily: "Inter_700Bold" },
+  stepNum:     { color: ROSE_SOFT, fontSize: 13, fontFamily: "Inter_700Bold" },
+  stepLine:    { flex: 1, height: 2, backgroundColor: ROSE_SOFT, marginHorizontal: 6, maxWidth: 40 },
 
-  // Feature slide
-  slideContent: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingBottom: 16,
-  },
-  iconRingOuter: {
-    width: 144,
-    height: 144,
-    borderRadius: 72,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconRingInner: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  slideTitle: {
-    color: "#fff",
-    fontSize: 26,
-    fontFamily: "Inter_700Bold",
-    textAlign: "center",
-    marginTop: 34,
-  },
-  slideBody: {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: 15,
-    lineHeight: 23,
-    textAlign: "center",
-    marginTop: 14,
-    paddingHorizontal: 10,
-  },
-
-  // Language screen
-  langWrap: { flex: 1, paddingTop: 8, minHeight: 480 },
-  langIconRing: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    alignItems: "center",
-    justifyContent: "center",
-    alignSelf: "center",
-    marginBottom: 12,
-  },
-  langTitle: {
-    color: "#fff",
-    fontSize: 22,
-    fontFamily: "Inter_700Bold",
-    textAlign: "center",
-  },
-  langBody: {
-    color: "rgba(255,255,255,0.82)",
-    fontSize: 13.5,
-    textAlign: "center",
-    lineHeight: 20,
-    marginTop: 6,
-    marginBottom: 14,
-    paddingHorizontal: 6,
-  },
-  pickerBox: {
-    flex: 1,
+  // Hero
+  hero: {
     borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.97)",
-    padding: 14,
-    minHeight: 340,
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  heroEmoji:   { fontSize: 36, marginBottom: 6 },
+  heroName:    { color: "#fff", fontSize: 30, fontFamily: "Inter_700Bold", letterSpacing: 0.5 },
+  heroTagline: {
+    color: "rgba(255,255,255,0.88)",
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    marginTop: 4,
+    textAlign: "center",
   },
 
-  // Login prompt
-  loginContent: {
-    flex: 1,
+  // Form card
+  formCard: {
+    backgroundColor: CARD_BG,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: ROSE_SOFT,
+    padding: 20,
+    marginBottom: 16,
+  },
+  formHeading: {
+    fontSize: 17,
+    fontFamily: "Inter_700Bold",
+    color: ROSE_DARK,
+    marginBottom: 6,
+  },
+  formSub: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    color: "#6B7280",
+    lineHeight: 19,
+    marginBottom: 18,
+  },
+
+  // Field
+  fieldLabel: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    color: ROSE,
+    marginBottom: 6,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  fieldInput: {
+    borderWidth: 1.5,
+    borderColor: ROSE_SOFT,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    fontFamily: "Inter_400Regular",
+    color: "#111827",
+    backgroundColor: "#fff",
+  },
+
+  // Location step
+  locationIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#FDF2F6",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 32,
-    paddingBottom: 24,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: ROSE_SOFT,
   },
-  loginAppName: {
-    color: "#fff",
-    fontSize: 34,
-    fontFamily: "Inter_700Bold",
-    marginTop: 22,
+  allowBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: ROSE,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    alignSelf: "flex-start",
+    marginTop: 4,
+    backgroundColor: "#FDF2F6",
   },
-  loginAppNameHi: {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: 20,
+  allowBtnText: { color: ROSE, fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  grantedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: ROSE,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignSelf: "flex-start",
+    marginTop: 4,
+  },
+  grantedText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+
+  // Error
+  errorText: {
+    color: "#B91C1C",
+    fontSize: 13,
     fontFamily: "Inter_400Regular",
-    marginTop: 2,
+    marginBottom: 10,
+    marginLeft: 2,
   },
-  loginTitle: {
-    color: "#fff",
-    fontSize: 18,
-    fontFamily: "Inter_700Bold",
-    textAlign: "center",
-    marginTop: 24,
-  },
-  loginBody: {
-    color: "rgba(255,255,255,0.82)",
-    fontSize: 14,
-    lineHeight: 21,
-    textAlign: "center",
-    marginTop: 10,
-    marginBottom: 28,
-  },
-  signInBtn: {
-    backgroundColor: "#fff",
+
+  // Primary button
+  primaryBtn: {
+    backgroundColor: ROSE,
     borderRadius: 16,
     paddingVertical: 15,
-    paddingHorizontal: 40,
     alignItems: "center",
-    width: "100%",
+    marginBottom: 12,
   },
-  signInBtnText: { fontSize: 16, fontFamily: "Inter_700Bold" },
-  skipLoginText: {
-    color: "rgba(255,255,255,0.7)",
-    fontSize: 13,
-    fontFamily: "Inter_500Medium",
-  },
+  primaryBtnText: { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
 
-  // Bottom nav
-  bottom: { paddingHorizontal: 22, gap: 14 },
-  dots: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 7,
-  },
-  dot: { height: 7, borderRadius: 3.5 },
-  cta: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    paddingVertical: 15,
-    alignItems: "center",
-  },
-  ctaText: { fontSize: 15.5, fontFamily: "Inter_700Bold" },
+  // Skip
+  skipWrap: { alignItems: "center", paddingVertical: 4 },
+  skipText:  { color: GREY_TEXT, fontSize: 13, fontFamily: "Inter_500Medium" },
 });
