@@ -6,7 +6,9 @@ export interface LiveSessionResult {
   shareUrl: string;
 }
 
-const LIVE_TRACKER_URL = process.env.EXPO_PUBLIC_LIVE_TRACKER_URL ?? "";
+import { optionalPublicEnv } from "./env";
+
+const LIVE_TRACKER_URL = optionalPublicEnv("EXPO_PUBLIC_LIVE_TRACKER_URL") ?? "";
 
 export async function startLiveSession(
   lat: number,

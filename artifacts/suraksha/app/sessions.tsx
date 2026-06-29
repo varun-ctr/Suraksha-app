@@ -19,6 +19,7 @@ import { useI18n } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useToast } from "@/context/ToastContext";
 import { deleteAccount, getCurrentUser, signOut, signOutGlobal } from "@/lib/auth";
+import { getBackendUrl } from "@/lib/env";
 import { supabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 
@@ -154,7 +155,7 @@ export default function SessionsScreen() {
       const token = sessionData.session?.access_token;
       if (!token) return [];
 
-      const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL ?? "";
+      const backendUrl = getBackendUrl();
       const res = await fetch(`${backendUrl}/api/auth/sessions`, {
         headers: { Authorization: `Bearer ${token}` },
       });

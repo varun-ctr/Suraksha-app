@@ -17,6 +17,7 @@ import { Icon } from "@/components/Icon";
 import { useI18n } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
 import { supabase } from "@/lib/supabaseClient";
+import { getBackendUrl } from "@/lib/env";
 
 type Msg = { id: string; role: "user" | "assistant"; content: string };
 type SendResult =
@@ -31,10 +32,10 @@ async function sendSakhiMessage(
   const token = sessionData.session?.access_token;
   if (!token) return { ok: false, reason: "auth_required" };
 
-  const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL;
+  const backendUrl = getBackendUrl();
 
   try {
-    const res = await fetch(`${backendUrl}/sakhi-chat`, {
+    const res = await fetch(`${backendUrl}/api/sakhi-chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -1,8 +1,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
+import { requiredEnv } from "./../lib/env";
 
 const router: IRouter = Router();
 
-const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY!;
+const GOOGLE_PLACES_API_KEY = requiredEnv("GOOGLE_PLACES_API_KEY");
 
 type Category = "police" | "hospital" | "pharmacy" | "shelter";
 

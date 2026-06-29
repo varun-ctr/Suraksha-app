@@ -1,4 +1,6 @@
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL ?? "";
+import { getBackendUrl } from "./env";
+
+const BACKEND_URL = getBackendUrl();
 
 export interface NearbyPlace {
   id: string;
@@ -16,7 +18,7 @@ export async function fetchNearbyPlaces(
   category: PlaceCategory,
 ): Promise<NearbyPlace[]> {
   try {
-    const url = `${BACKEND_URL}/nearby-places?lat=${lat}&lng=${lng}&type=${category}`;
+    const url = `${BACKEND_URL}/api/nearby-places?lat=${lat}&lng=${lng}&type=${category}`;
     const res = await fetch(url);
     if (!res.ok) return [];
     const data = (await res.json()) as { places?: NearbyPlace[] };

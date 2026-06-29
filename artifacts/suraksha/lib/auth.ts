@@ -1,5 +1,6 @@
 import { supabase } from "./supabaseClient";
 import { secureGet, secureSet } from "./secureStore";
+import { getBackendUrl } from "./env";
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
 import { Platform } from "react-native";
 
@@ -157,7 +158,7 @@ export async function deleteAccount(): Promise<{ error: string | null }> {
     const token = sessionData.session?.access_token;
     if (!token) return { error: "Not signed in" };
 
-    const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL ?? "";
+    const backendUrl = getBackendUrl();
     const res = await fetch(`${backendUrl}/api/auth/account`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
