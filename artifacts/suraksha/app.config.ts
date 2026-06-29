@@ -1,7 +1,11 @@
+import fs from "fs";
+import path from "path";
 import type { ExpoConfig } from "expo/config";
 
 const mapsKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() || "YOUR_GOOGLE_MAPS_API_KEY";
 const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL?.trim() || "https://example.com";
+const googleServicesPath = path.resolve(__dirname, "google-services.json");
+const googleServicesFile = process.env.GOOGLE_SERVICES_JSON ?? (fs.existsSync(googleServicesPath) ? "./google-services.json" : undefined);
 
 const config: ExpoConfig = {
   name: "Sakhi Suraksha",
@@ -41,7 +45,7 @@ const config: ExpoConfig = {
       "READ_EXTERNAL_STORAGE",
       "WRITE_EXTERNAL_STORAGE",
     ],
-    googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json",
+    googleServicesFile,
     config: {
       googleMaps: {
         apiKey: mapsKey,

@@ -1,17 +1,14 @@
-export function requiredPublicEnv(name: string): string {
-  const value = process.env[name];
-  if (!value || value.trim() === "") {
-    throw new Error(`Environment variable ${name} is required but was not provided.`);
-  }
-  return value;
+export function requiredPublicEnv(name: string, fallback = ""): string {
+  const value = process.env[name]?.trim();
+  return value || fallback;
 }
 
 export function optionalPublicEnv(name: string): string | undefined {
-  const value = process.env[name];
-  return value?.trim() || undefined;
+  const value = process.env[name]?.trim();
+  return value || undefined;
 }
 
 export function getBackendUrl(): string {
-  const backendUrl = requiredPublicEnv("EXPO_PUBLIC_BACKEND_URL");
+  const backendUrl = optionalPublicEnv("EXPO_PUBLIC_BACKEND_URL") ?? "https://example.com";
   return backendUrl.replace(/\/+$/, "");
 }
