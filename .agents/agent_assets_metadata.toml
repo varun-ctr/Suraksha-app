@@ -35,3 +35,9 @@ id = "BstyBNESvfK_PkmF_FLKI"
 uri = "file://suraksha-source.tar.gz"
 type = "unspecified"
 title = "Suraksha — Full Source Code"
+
+[[outputs]]
+id = "yDdtvClMadx_Ep8F3KCJE"
+uri = "file://suraksha-qr.png"
+type = "image"
+title = "Suraksha — Expo Go QR Code"
