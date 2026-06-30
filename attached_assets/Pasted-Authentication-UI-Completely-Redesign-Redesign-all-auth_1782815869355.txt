@@ -1,0 +1,268 @@
+Authentication UI (Completely Redesign)
+
+Redesign all authentication screens using a premium, modern, safety-focused interface.
+
+Screens include:
+
+* Welcome
+* Login
+* Register
+* Phone OTP
+* Forgot Password
+* Reset Password
+
+The design language should match Google Pixel, Apple, Uber, and Life360.
+
+Do not use plain forms.
+
+⸻
+
+Welcome Section
+
+Top 35% of the screen should include:
+
+* Suraksha logo
+* App name
+* Tagline
+
+Example:
+
+Suraksha
+
+“Your Safety. Our Priority.”
+
+Below this, include a soft vector illustration of a person using the Suraksha app while walking in a city.
+
+Use a subtle city skyline, shield icon, location pins, and soft gradients in the background.
+
+The illustration should feel calming, trustworthy, and modern.
+
+⸻
+
+Login Screen Layout
+
+Large headline:
+
+Welcome Back 👋
+
+Subtitle:
+
+Continue protecting yourself and your loved ones.
+
+Below this, display a premium white rounded authentication card.
+
+Fields:
+
+* Email or Phone Number
+* Password
+
+Each input should have:
+
+* Rounded corners (18–20px)
+* Leading icon
+* Soft shadow
+* Focus animation
+* Error state
+* Success state
+
+Password field includes a show/hide visibility icon.
+
+⸻
+
+Login Button
+
+Large full-width button.
+
+Blue gradient:
+
+* #2563EB
+* #3B82F6
+
+Rounded:
+
+20px
+
+Icon:
+
+Shield icon before the text.
+
+Text:
+
+Login Securely
+
+Add a subtle ripple animation when tapped.
+
+⸻
+
+Social Login
+
+Divider:
+
+or continue with
+
+Large rounded buttons for:
+
+* Google
+* Apple (iOS only)
+* Phone Number
+
+Each button should use a premium card style with icons.
+
+⸻
+
+Registration Link
+
+Bottom text:
+
+New to Suraksha? Create Account
+
+Only “Create Account” should be highlighted in blue.
+
+⸻
+
+Safety Trust Card
+
+At the bottom, include a small informational card.
+
+Example:
+
+🛡 Your privacy comes first
+
+Your personal information and emergency contacts are encrypted and never shared without your permission.
+
+Use a shield icon and a chevron.
+
+⸻
+
+OTP Verification Screen
+
+Premium OTP interface.
+
+Illustration at top.
+
+Headline:
+
+Verify Your Number
+
+Display:
+
++91 XXXXX XXXXX
+
+Six OTP boxes with:
+
+* Rounded corners
+* Active animation
+* Auto focus
+* Auto submit
+
+Circular countdown indicator.
+
+Buttons:
+
+* Resend OTP
+* Change Number
+
+⸻
+
+Register Screen
+
+Illustration at top.
+
+Fields:
+
+* Full Name
+* Mobile Number
+* Email
+* Password
+* Confirm Password
+
+Checkbox:
+
+“I agree to Terms & Privacy Policy”
+
+Large CTA:
+
+Create Account
+
+⸻
+
+Forgot Password
+
+Simple illustration.
+
+Email field.
+
+Button:
+
+Send Reset Link
+
+After success:
+
+Show an elegant success animation with a green shield icon.
+
+⸻
+
+Animations
+
+Use Reanimated.
+
+Add:
+
+* Fade-in transitions
+* Slide-up cards
+* Button press animation
+* Floating illustration
+* Smooth keyboard transitions
+
+No abrupt changes.
+
+Maintain 60 FPS.
+
+⸻
+
+UI Style
+
+* Material Design 3
+* Soft gradients
+* White premium cards
+* Deep blue primary color
+* Rounded design
+* Spacious layout
+* Glassmorphism only where appropriate
+
+Avoid dark, cluttered, or outdated login screens.
+
+⸻
+
+Accessibility
+
+* Large touch targets
+* High contrast
+* Dynamic font scaling
+* VoiceOver/TalkBack support
+* Haptic feedback for successful login
+
+⸻
+
+Keep Existing Functionality
+
+Do not modify:
+
+* Supabase authentication
+* Firebase authentication
+* Phone OTP flow
+* Google Sign-In
+* Apple Sign-In
+* Session handling
+* API calls
+* Validation logic
+
+Only redesign the UI while preserving all existing authentication functionality.
+
+⸻
+
+Additional instruction for Replit AI
+
+At the very top of your complete prompt, add:
+
+“Design every screen to a production-quality standard comparable to Google Pixel, Uber, Life360, and Apple’s Human Interface Guidelines. The UI should be App Store and Play Store showcase quality, with smooth animations, consistent spacing, reusable components, dark mode support, and no placeholder designs.”

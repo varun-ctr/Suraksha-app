@@ -1,9 +1,10 @@
 import * as ExpoLocation from "expo-location";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
+  Easing,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -19,20 +20,96 @@ import { Icon } from "@/components/Icon";
 import { useApp } from "@/context/AppContext";
 import { useI18n } from "@/context/LanguageContext";
 
-// ---------------------------------------------------------------------------
-// Design tokens
-// ---------------------------------------------------------------------------
-const ROSE       = "#D4537E";
-const ROSE_DARK  = "#993556";
-const ROSE_SOFT  = "#F4C0D1";
-const ROSE_LIGHT = "#FBEAF0";
+// ── Design tokens ─────────────────────────────────────────────────────────────
+const BLUE       = "#2563EB";
+const BLUE_DARK  = "#1D4ED8";
+const BLUE_LIGHT = "#EFF6FF";
+const BLUE_MUTED = "#BFDBFE";
+const SUCCESS    = "#22C55E";
 const GREY_TEXT  = "#9CA3AF";
-const CARD_BG    = "#FFFFFF";
 const TOTAL      = 3;
 
-// ---------------------------------------------------------------------------
-// Step indicator
-// ---------------------------------------------------------------------------
+// ── City illustration (pure RN primitives) ───────────────────────────────────
+function CityIllustration() {
+  const float = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(float, { toValue: -8, duration: 2000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(float, { toValue: 0,  duration: 2000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    ).start();
+  }, [float]);
+
+  return (
+    <View style={ill.wrap} pointerEvents="none">
+      {/* Buildings */}
+      <View style={[ill.building, { height: 54, width: 24, left: 18, bottom: 0 }]} />
+      <View style={[ill.building, { height: 80, width: 20, left: 50, bottom: 0 }]} />
+      <View style={[ill.building, { height: 40, width: 28, left: 78, bottom: 0 }]} />
+      <View style={[ill.building, { height: 96, width: 22, left: 114, bottom: 0 }]} />
+      <View style={[ill.building, { height: 60, width: 30, left: 144, bottom: 0 }]} />
+      <View style={[ill.building, { height: 72, width: 18, left: 182, bottom: 0 }]} />
+      <View style={[ill.building, { height: 44, width: 26, left: 208, bottom: 0 }]} />
+      <View style={[ill.building, { height: 88, width: 22, left: 242, bottom: 0 }]} />
+
+      {/* Location pins */}
+      <View style={[ill.pin, { left: 60, bottom: 88 }]}>
+        <Text style={{ fontSize: 20 }}>📍</Text>
+      </View>
+      <View style={[ill.pin, { left: 152, bottom: 104 }]}>
+        <Text style={{ fontSize: 16 }}>📍</Text>
+      </View>
+
+      {/* Floating shield */}
+      <Animated.View style={[ill.shieldWrap, { transform: [{ translateY: float }] }]}>
+        <LinearGradient colors={["#fff", "#EFF6FF"]} style={ill.shield}>
+          <Text style={{ fontSize: 28 }}>🛡️</Text>
+        </LinearGradient>
+      </Animated.View>
+    </View>
+  );
+}
+
+const ill = StyleSheet.create({
+  wrap: {
+    height: 120,
+    position: "relative",
+    marginTop: 8,
+    marginBottom: 0,
+    overflow: "hidden",
+    alignSelf: "stretch",
+  },
+  building: {
+    position: "absolute",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 4,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    borderBottomWidth: 0,
+  },
+  pin: { position: "absolute" },
+  shieldWrap: {
+    position: "absolute",
+    right: 30,
+    bottom: 68,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  shield: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});
+
+// ── Step indicator ────────────────────────────────────────────────────────────
 function StepIndicator({ step }: { step: number }) {
   return (
     <View style={styles.stepRow}>
@@ -41,29 +118,15 @@ function StepIndicator({ step }: { step: number }) {
         const active = i === step;
         return (
           <React.Fragment key={i}>
-            <View
-              style={[
-                styles.stepCircle,
-                done   && styles.stepDone,
-                active && styles.stepActive,
-                !done && !active && styles.stepFuture,
-              ]}
-            >
+            <View style={[styles.stepDot, done && styles.stepDotDone, active && styles.stepDotActive, !done && !active && styles.stepDotFuture]}>
               {done ? (
-                <Text style={styles.stepCheck}>✓</Text>
+                <Icon name="check" size={12} color="#fff" />
               ) : (
-                <Text style={[styles.stepNum, active && { color: "#fff" }]}>
-                  {i + 1}
-                </Text>
+                <Text style={[styles.stepNum, active && { color: "#fff" }]}>{i + 1}</Text>
               )}
             </View>
             {i < TOTAL - 1 && (
-              <View
-                style={[
-                  styles.stepLine,
-                  done && { backgroundColor: ROSE },
-                ]}
-              />
+              <View style={[styles.stepLine, done && { backgroundColor: BLUE }]} />
             )}
           </React.Fragment>
         );
@@ -72,34 +135,15 @@ function StepIndicator({ step }: { step: number }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Constant hero card
-// ---------------------------------------------------------------------------
-function Hero({ t }: { t: (k: string) => string }) {
-  return (
-    <LinearGradient
-      colors={[ROSE, ROSE_DARK]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.hero}
-    >
-      <Text style={styles.heroEmoji}>🌸</Text>
-      <Text style={styles.heroName}>Suraksha</Text>
-      <Text style={styles.heroTagline}>{t("onb.tagline")}</Text>
-    </LinearGradient>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Labelled rose input
-// ---------------------------------------------------------------------------
-function RoseInput({
+// ── Premium input ─────────────────────────────────────────────────────────────
+function PremiumInput({
   label,
   value,
   onChangeText,
   placeholder,
   keyboardType,
   autoCapitalize,
+  icon,
 }: {
   label: string;
   value: string;
@@ -107,202 +151,232 @@ function RoseInput({
   placeholder?: string;
   keyboardType?: "default" | "phone-pad" | "email-address";
   autoCapitalize?: "none" | "words" | "sentences";
+  icon: string;
 }) {
+  const [focused, setFocused] = useState(false);
+  const border = useRef(new Animated.Value(0)).current;
+
+  const handleFocus = () => {
+    setFocused(true);
+    Animated.timing(border, { toValue: 1, duration: 160, useNativeDriver: false }).start();
+  };
+  const handleBlur = () => {
+    setFocused(false);
+    Animated.timing(border, { toValue: 0, duration: 160, useNativeDriver: false }).start();
+  };
+
+  const borderColor = border.interpolate({
+    inputRange: [0, 1],
+    outputRange: [BLUE_MUTED, BLUE],
+  });
+
   return (
     <View style={{ marginBottom: 14 }}>
       <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={GREY_TEXT}
-        keyboardType={keyboardType ?? "default"}
-        autoCapitalize={autoCapitalize ?? "words"}
-        style={styles.fieldInput}
-      />
+      <Animated.View style={[styles.inputWrap, { borderColor }]}>
+        <View style={[styles.inputIcon, focused && { backgroundColor: BLUE_LIGHT }]}>
+          <Icon name={icon as never} size={15} color={focused ? BLUE : GREY_TEXT} />
+        </View>
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          placeholder={placeholder}
+          placeholderTextColor={GREY_TEXT}
+          keyboardType={keyboardType ?? "default"}
+          autoCapitalize={autoCapitalize ?? "words"}
+          style={styles.fieldInput}
+        />
+        {value.length > 0 && (
+          <View style={styles.inputCheck}>
+            <Icon name="check" size={13} color={SUCCESS} />
+          </View>
+        )}
+      </Animated.View>
     </View>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Step 0 — Name
-// ---------------------------------------------------------------------------
-function NameStep({
-  name,
-  setName,
-  t,
-}: {
-  name: string;
-  setName: (v: string) => void;
-  t: (k: string) => string;
-}) {
+// ── Name step ─────────────────────────────────────────────────────────────────
+function NameStep({ name, setName, t }: { name: string; setName: (v: string) => void; t: (k: string) => string }) {
   return (
     <View style={styles.formCard}>
+      <View style={styles.cardIconRow}>
+        <View style={[styles.cardIcon, { backgroundColor: BLUE_LIGHT }]}>
+          <Icon name="user" size={20} color={BLUE} />
+        </View>
+      </View>
       <Text style={styles.formHeading}>{t("onb.nameHeading")}</Text>
       <Text style={styles.formSub}>{t("onb.nameSub")}</Text>
-      <RoseInput
+      <PremiumInput
         label={t("onb.nameLabel")}
         value={name}
         onChangeText={setName}
         placeholder={t("onb.namePlaceholder")}
+        icon="user"
       />
+      <View style={styles.trustRow}>
+        <Icon name="lock" size={12} color={GREY_TEXT} />
+        <Text style={styles.trustText}>Your data stays private and encrypted</Text>
+      </View>
     </View>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Step 1 — Trusted contacts
-// ---------------------------------------------------------------------------
+// ── Contacts step ─────────────────────────────────────────────────────────────
 function ContactsStep({
-  contactName,
-  setContactName,
-  contactPhone,
-  setContactPhone,
-  t,
+  contactName, setContactName, contactPhone, setContactPhone, t,
 }: {
-  contactName: string;
-  setContactName: (v: string) => void;
-  contactPhone: string;
-  setContactPhone: (v: string) => void;
+  contactName: string; setContactName: (v: string) => void;
+  contactPhone: string; setContactPhone: (v: string) => void;
   t: (k: string) => string;
 }) {
   return (
     <View style={styles.formCard}>
+      <View style={styles.cardIconRow}>
+        <View style={[styles.cardIcon, { backgroundColor: "#F0FDF4" }]}>
+          <Icon name="users" size={20} color={SUCCESS} />
+        </View>
+      </View>
       <Text style={styles.formHeading}>{t("onb.contactHeading")}</Text>
       <Text style={styles.formSub}>{t("onb.contactSub")}</Text>
-      <RoseInput
+      <PremiumInput
         label={t("onb.contactNameLabel")}
         value={contactName}
         onChangeText={setContactName}
         placeholder={t("onb.contactNamePlaceholder")}
+        icon="user"
       />
-      <RoseInput
+      <PremiumInput
         label={t("onb.contactPhoneLabel")}
         value={contactPhone}
         onChangeText={setContactPhone}
         placeholder={t("onb.contactPhonePlaceholder")}
         keyboardType="phone-pad"
         autoCapitalize="none"
+        icon="phone"
       />
+      <View style={styles.trustRow}>
+        <Icon name="bell" size={12} color={GREY_TEXT} />
+        <Text style={styles.trustText}>They'll receive your SOS alerts instantly</Text>
+      </View>
     </View>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Step 2 — Location
-// ---------------------------------------------------------------------------
-function LocationStep({
-  granted,
-  onAllow,
-  t,
-}: {
-  granted: boolean;
-  onAllow: () => void;
-  t: (k: string) => string;
-}) {
+// ── Location step ─────────────────────────────────────────────────────────────
+function LocationStep({ granted, onAllow, t }: { granted: boolean; onAllow: () => void; t: (k: string) => string }) {
+  const pulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!granted) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulse, { toValue: 1.12, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(pulse, { toValue: 1,    duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        ])
+      ).start();
+    }
+  }, [granted, pulse]);
+
   return (
     <View style={styles.formCard}>
-      <View style={styles.locationIconWrap}>
-        <Icon name="mapPin" size={28} color={ROSE} />
+      <View style={styles.cardIconRow}>
+        <Animated.View style={[styles.cardIcon, { backgroundColor: BLUE_LIGHT, transform: [{ scale: pulse }] }]}>
+          <Icon name="mapPin" size={20} color={BLUE} />
+        </Animated.View>
       </View>
       <Text style={styles.formHeading}>{t("onb.locationHeading")}</Text>
       <Text style={styles.formSub}>{t("onb.locationSub")}</Text>
+
       {granted ? (
-        <View style={styles.grantedBadge}>
-          <Icon name="check" size={16} color="#fff" />
-          <Text style={styles.grantedText}>{t("onb.locationGranted")}</Text>
+        <View style={styles.grantedRow}>
+          <View style={[styles.grantedIcon, { backgroundColor: "#F0FDF4" }]}>
+            <Icon name="check" size={16} color={SUCCESS} />
+          </View>
+          <Text style={[styles.grantedText, { color: SUCCESS }]}>{t("onb.locationGranted")}</Text>
         </View>
       ) : (
-        <Pressable onPress={onAllow} style={styles.allowBtn}>
-          <Icon name="mapPin" size={16} color={ROSE} />
+        <Pressable onPress={onAllow} style={({ pressed }) => [styles.allowBtn, { opacity: pressed ? 0.85 : 1 }]}>
+          <Icon name="mapPin" size={16} color="#fff" />
           <Text style={styles.allowBtnText}>{t("onb.locationAllow")}</Text>
         </Pressable>
       )}
+
+      <View style={[styles.trustRow, { marginTop: 14 }]}>
+        <Icon name="lock" size={12} color={GREY_TEXT} />
+        <Text style={styles.trustText}>Used only for SOS alerts — never tracked in background</Text>
+      </View>
     </View>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Main screen
-// ---------------------------------------------------------------------------
+// ── Main screen ───────────────────────────────────────────────────────────────
 export default function Onboarding() {
-  const { t }                  = useI18n();
+  const { t }              = useI18n();
   const { completeOnboarding, setProfile, addContact } = useApp();
-  const router                 = useRouter();
-  const insets                 = useSafeAreaInsets();
+  const router             = useRouter();
+  const insets             = useSafeAreaInsets();
 
-  const [step, setStep]               = useState(0);
-  const [name, setName]               = useState("");
-  const [contactName, setContactName] = useState("");
-  const [contactPhone, setContactPhone] = useState("");
+  const [step, setStep]                   = useState(0);
+  const [name, setName]                   = useState("");
+  const [contactName, setContactName]     = useState("");
+  const [contactPhone, setContactPhone]   = useState("");
   const [locationGranted, setLocationGranted] = useState(false);
-  const [error, setError]             = useState("");
+  const [error, setError]                 = useState("");
 
-  const fade = useRef(new Animated.Value(1)).current;
+  const slideY  = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(1)).current;
 
   const animateTo = (next: number) => {
-    Animated.sequence([
-      Animated.timing(fade, { toValue: 0, duration: 100, useNativeDriver: true }),
-      Animated.timing(fade, { toValue: 1, duration: 180, useNativeDriver: true }),
-    ]).start();
-    setStep(next);
-    setError("");
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 0, duration: 120, useNativeDriver: true }),
+      Animated.timing(slideY,  { toValue: 20, duration: 120, useNativeDriver: true }),
+    ]).start(() => {
+      setStep(next);
+      setError("");
+      slideY.setValue(-20);
+      Animated.parallel([
+        Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.timing(slideY,  { toValue: 0, duration: 200, easing: Easing.out(Easing.back(1.2)), useNativeDriver: true }),
+      ]).start();
+    });
   };
 
   const handleAllowLocation = async () => {
-    if (Platform.OS === "web") {
-      setLocationGranted(true);
-      return;
-    }
+    if (Platform.OS === "web") { setLocationGranted(true); return; }
     const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
     setLocationGranted(status === "granted");
   };
 
   const handleSkip = () => {
     setError("");
-    if (step < TOTAL - 1) {
-      animateTo(step + 1);
-    } else {
-      finish();
-    }
+    if (step < TOTAL - 1) animateTo(step + 1);
+    else finish();
   };
 
   const handleNext = () => {
     setError("");
-
     if (step === 0) {
-      if (!name.trim()) {
-        setError(t("onb.nameError"));
-        return;
-      }
+      if (!name.trim()) { setError(t("onb.nameError")); return; }
       setProfile({ name: name.trim() });
       animateTo(1);
       return;
     }
-
     if (step === 1) {
       const hasName  = contactName.trim().length > 0;
       const hasPhone = contactPhone.trim().length > 0;
       if (hasName || hasPhone) {
         const result = addContact(contactName.trim(), contactPhone.trim());
         if (!result.ok) {
-          if (result.error === "invalid") {
-            setError(t("onb.invalidPhone"));
-            return;
-          }
-          if (result.error === "duplicate") {
-            setError(t("onb.duplicatePhone"));
-            return;
-          }
+          if (result.error === "invalid")   { setError(t("onb.invalidPhone"));   return; }
+          if (result.error === "duplicate") { setError(t("onb.duplicatePhone")); return; }
         }
       }
       animateTo(2);
       return;
     }
-
-    if (step === 2) {
-      finish();
-    }
+    if (step === 2) finish();
   };
 
   const finish = () => {
@@ -316,86 +390,130 @@ export default function Onboarding() {
     : t("onb.getStarted");
 
   const skipLabel =
-    step === 0 ? "" // no skip on name step
+    step === 0 ? ""
     : step === 1 ? t("onb.skipForNow")
     : t("onb.skip");
 
   return (
-    <LinearGradient
-      colors={[ROSE_LIGHT, "#ffffff"]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0, y: 1 }}
-      style={{ flex: 1 }}
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: "#F8FAFC" }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={0}
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingTop: insets.top, paddingBottom: insets.bottom + 32 }]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <ScrollView
-          contentContainerStyle={[
-            styles.scroll,
-            { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 32 },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+        {/* ── Hero header ─────────────────────────────────── */}
+        <LinearGradient
+          colors={[BLUE, BLUE_DARK]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.hero}
         >
-          {/* Step indicator */}
+          {/* Logo row */}
+          <View style={styles.logoRow}>
+            <View style={styles.logoIcon}>
+              <Text style={{ fontSize: 22 }}>🛡️</Text>
+            </View>
+            <View>
+              <Text style={styles.heroName}>Suraksha</Text>
+              <Text style={styles.heroTagline}>Your Safety. Our Priority.</Text>
+            </View>
+          </View>
+
+          {/* City illustration */}
+          <CityIllustration />
+        </LinearGradient>
+
+        {/* ── Step indicator ───────────────────────────────── */}
+        <View style={{ paddingHorizontal: 20, paddingTop: 18, paddingBottom: 6 }}>
           <StepIndicator step={step} />
+        </View>
 
-          {/* Hero */}
-          <Hero t={t} />
+        {/* ── Animated form ────────────────────────────────── */}
+        <Animated.View style={{ opacity, transform: [{ translateY: slideY }], paddingHorizontal: 20 }}>
+          {step === 0 && <NameStep name={name} setName={setName} t={t} />}
+          {step === 1 && (
+            <ContactsStep
+              contactName={contactName} setContactName={setContactName}
+              contactPhone={contactPhone} setContactPhone={setContactPhone}
+              t={t}
+            />
+          )}
+          {step === 2 && <LocationStep granted={locationGranted} onAllow={handleAllowLocation} t={t} />}
 
-          {/* Animated form content */}
-          <Animated.View style={{ opacity: fade }}>
-            {step === 0 && (
-              <NameStep name={name} setName={setName} t={t} />
-            )}
-            {step === 1 && (
-              <ContactsStep
-                contactName={contactName}
-                setContactName={setContactName}
-                contactPhone={contactPhone}
-                setContactPhone={setContactPhone}
-                t={t}
-              />
-            )}
-            {step === 2 && (
-              <LocationStep
-                granted={locationGranted}
-                onAllow={handleAllowLocation}
-                t={t}
-              />
-            )}
+          {/* Error */}
+          {!!error && (
+            <View style={styles.errorRow}>
+              <Icon name="info" size={13} color="#EF4444" />
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          )}
 
-            {/* Error */}
-            {!!error && <Text style={styles.errorText}>{error}</Text>}
-
-            {/* Primary button */}
-            <Pressable onPress={handleNext} style={styles.primaryBtn}>
+          {/* Primary button */}
+          <Pressable onPress={handleNext} style={({ pressed }) => ({ opacity: pressed ? 0.88 : 1 })}>
+            <LinearGradient
+              colors={[BLUE, BLUE_DARK]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.primaryBtn}
+            >
+              <Icon name="shield" size={18} color="#fff" />
               <Text style={styles.primaryBtnText}>{primaryLabel}</Text>
-            </Pressable>
+            </LinearGradient>
+          </Pressable>
 
-            {/* Skip */}
-            {!!skipLabel && (
-              <Pressable onPress={handleSkip} hitSlop={12} style={styles.skipWrap}>
-                <Text style={styles.skipText}>{skipLabel}</Text>
-              </Pressable>
-            )}
-          </Animated.View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </LinearGradient>
+          {/* Skip */}
+          {!!skipLabel && (
+            <Pressable onPress={handleSkip} hitSlop={12} style={styles.skipWrap}>
+              <Text style={styles.skipText}>{skipLabel}</Text>
+            </Pressable>
+          )}
+        </Animated.View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
+// ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  scroll: {
-    paddingHorizontal: 20,
-    flexGrow: 1,
+  scroll: { flexGrow: 1 },
+
+  // Hero
+  hero: {
+    paddingTop: 28,
+    paddingHorizontal: 24,
+    paddingBottom: 0,
+    overflow: "hidden",
+  },
+  logoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    marginBottom: 16,
+  },
+  logoIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.3)",
+  },
+  heroName: {
+    color: "#fff",
+    fontSize: 28,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.3,
+  },
+  heroTagline: {
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 12.5,
+    fontFamily: "Inter_500Medium",
+    marginTop: 2,
   },
 
   // Step indicator
@@ -403,56 +521,51 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 22,
+    gap: 0,
+    marginBottom: 8,
   },
-  stepCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  stepDot: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
-    borderColor: ROSE_SOFT,
+    borderColor: BLUE_MUTED,
   },
-  stepActive:  { backgroundColor: ROSE, borderColor: ROSE },
-  stepDone:    { backgroundColor: ROSE, borderColor: ROSE },
-  stepFuture:  { backgroundColor: "#fff", borderColor: ROSE_SOFT },
-  stepCheck:   { color: "#fff", fontSize: 14, fontFamily: "Inter_700Bold" },
-  stepNum:     { color: ROSE_SOFT, fontSize: 13, fontFamily: "Inter_700Bold" },
-  stepLine:    { flex: 1, height: 2, backgroundColor: ROSE_SOFT, marginHorizontal: 6, maxWidth: 40 },
-
-  // Hero
-  hero: {
-    borderRadius: 20,
-    paddingVertical: 28,
-    paddingHorizontal: 24,
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  heroEmoji:   { fontSize: 36, marginBottom: 6 },
-  heroName:    { color: "#fff", fontSize: 30, fontFamily: "Inter_700Bold", letterSpacing: 0.5 },
-  heroTagline: {
-    color: "rgba(255,255,255,0.88)",
-    fontSize: 14,
-    fontFamily: "Inter_400Regular",
-    marginTop: 4,
-    textAlign: "center",
-  },
+  stepDotActive:  { backgroundColor: BLUE, borderColor: BLUE },
+  stepDotDone:    { backgroundColor: BLUE, borderColor: BLUE },
+  stepDotFuture:  { backgroundColor: "#fff", borderColor: BLUE_MUTED },
+  stepNum:        { color: BLUE_MUTED, fontSize: 13, fontFamily: "Inter_700Bold" },
+  stepLine:       { flex: 1, height: 2, backgroundColor: BLUE_MUTED, marginHorizontal: 6, maxWidth: 48 },
 
   // Form card
   formCard: {
-    backgroundColor: CARD_BG,
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: ROSE_SOFT,
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
     padding: 20,
     marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  cardIconRow: { marginBottom: 12 },
+  cardIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
   },
   formHeading: {
     fontSize: 17,
     fontFamily: "Inter_700Bold",
-    color: ROSE_DARK,
-    marginBottom: 6,
+    color: "#111827",
+    marginBottom: 5,
   },
   formSub: {
     fontSize: 13,
@@ -462,86 +575,129 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
 
-  // Field
+  // Input
   fieldLabel: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontFamily: "Inter_600SemiBold",
-    color: ROSE,
-    marginBottom: 6,
+    color: "#374151",
+    marginBottom: 7,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
-  fieldInput: {
+  inputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 1.5,
-    borderColor: ROSE_SOFT,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: "#F9FAFB",
+    overflow: "hidden",
+  },
+  inputIcon: {
+    width: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "stretch",
+    borderRightWidth: 1,
+    borderRightColor: "#E5E7EB",
+  },
+  fieldInput: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 13,
     fontSize: 15,
     fontFamily: "Inter_400Regular",
     color: "#111827",
-    backgroundColor: "#fff",
+  },
+  inputCheck: {
+    paddingRight: 12,
+  },
+
+  // Trust row
+  trustRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 4,
+  },
+  trustText: {
+    fontSize: 11.5,
+    color: GREY_TEXT,
+    fontFamily: "Inter_400Regular",
+    flex: 1,
   },
 
   // Location step
-  locationIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "#FDF2F6",
+  grantedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: "#F0FDF4",
+    borderRadius: 12,
+    marginTop: 4,
+  },
+  grantedIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: ROSE_SOFT,
+  },
+  grantedText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
   },
   allowBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    borderWidth: 1.5,
-    borderColor: ROSE,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    alignSelf: "flex-start",
-    marginTop: 4,
-    backgroundColor: "#FDF2F6",
-  },
-  allowBtnText: { color: ROSE, fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  grantedBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: ROSE,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    backgroundColor: BLUE,
+    borderRadius: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 20,
     alignSelf: "flex-start",
     marginTop: 4,
   },
-  grantedText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  allowBtnText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
 
   // Error
+  errorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+  },
   errorText: {
-    color: "#B91C1C",
+    color: "#EF4444",
     fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    marginBottom: 10,
-    marginLeft: 2,
+    fontFamily: "Inter_500Medium",
+    flex: 1,
   },
 
   // Primary button
   primaryBtn: {
-    backgroundColor: ROSE,
-    borderRadius: 16,
-    paddingVertical: 15,
+    borderRadius: 20,
+    paddingVertical: 16,
     alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 10,
     marginBottom: 12,
+    shadowColor: BLUE,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 5,
   },
   primaryBtnText: { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
 
   // Skip
-  skipWrap: { alignItems: "center", paddingVertical: 4 },
-  skipText:  { color: GREY_TEXT, fontSize: 13, fontFamily: "Inter_500Medium" },
+  skipWrap: { alignItems: "center", paddingVertical: 6 },
+  skipText:  { color: GREY_TEXT, fontSize: 13.5, fontFamily: "Inter_500Medium" },
 });
