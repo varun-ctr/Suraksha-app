@@ -46,6 +46,10 @@ const hi: Record<string, string> = {
   "onb.tagline": "आपकी व्यक्तिगत सुरक्षा साथी",
 
   "home.greeting": "नमस्ते,",
+  "home.greetingMorning": "सुप्रभात,",
+  "home.greetingAfternoon": "नमस्ते,",
+  "home.greetingEvening": "शुभ संध्या,",
+  "home.greetingNight": "शुभ रात्रि,",
   "home.guest": "सखी",
   "home.locating": "लोकेशन ढूँढ रहे हैं…",
   "home.locationOff": "लोकेशन बंद",

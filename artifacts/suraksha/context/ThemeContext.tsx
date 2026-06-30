@@ -35,7 +35,7 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const system = useColorScheme();
-  const [themeKey, setThemeKeyState] = useState<ThemeKey>("purple");
+  const [themeKey, setThemeKeyState] = useState<ThemeKey>("blue");
   const [mode, setModeState] = useState<ColorMode>("light");
   const [ready, setReady] = useState(false);
 

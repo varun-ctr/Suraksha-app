@@ -1,0 +1,669 @@
+Objective
+
+Redesign the entire Suraksha mobile application UI into a modern, premium, Google Material 3 + Apple Human Interface inspired safety application.
+
+IMPORTANT:
+Do NOT modify business logic, APIs, Supabase integration, Firebase integration, RevenueCat integration, authentication, database schema, navigation routes, or existing functionality.
+
+Only redesign the UI/UX.
+
+⸻
+
+Design Philosophy
+
+The application should feel like:
+
+* Google Pixel
+* Uber
+* Apple Find My
+* Google Maps
+* Life360
+
+The interface must feel:
+
+* Modern
+* Premium
+* Calm
+* Minimal
+* Trustworthy
+* Safety focused
+
+Avoid clutter.
+
+Everything should be accessible using one hand.
+
+⸻
+
+Global Theme
+
+Use Material 3.
+
+Rounded Corners:
+
+24px
+
+Cards:
+
+18px radius
+
+Buttons:
+
+20px radius
+
+Soft shadows
+
+Glass effect only where appropriate.
+
+Spacing:
+
+8
+16
+24
+32
+
+Typography:
+
+Large Bold headings
+
+Medium subtitles
+
+Regular body
+
+Small captions
+
+⸻
+
+Colors
+
+Primary
+
+Deep Blue
+
+#2563EB
+
+Success
+
+#22C55E
+
+Warning
+
+#F59E0B
+
+Danger
+
+#EF4444
+
+Background
+
+#F8FAFC
+
+Cards
+
+White
+
+Text
+
+#111827
+
+Secondary text
+
+#6B7280
+
+Dark mode compatible.
+
+⸻
+
+Home Screen
+
+Replace current layout.
+
+Top Section
+
+Greeting
+
+Good Morning, {Name}
+
+Below it
+
+Current Safety Status
+
+Example
+
+🟢 Safe Area
+
+or
+
+🟡 Moderate Risk
+
+Right side
+
+Notification icon
+
+Profile avatar
+
+⸻
+
+Safety Card
+
+Large premium card.
+
+Contains
+
+Safety Score
+
+Example
+
+92 / 100
+
+Status
+
+Low Risk
+
+Location
+
+Weather Summary
+
+Example
+
+Rain after 8 PM
+
+Police distance
+
+Hospital distance
+
+Green gradient background.
+
+⸻
+
+SOS Section
+
+Center of screen.
+
+Very large circular button.
+
+Red gradient.
+
+Text
+
+HOLD
+
+FOR
+
+SOS
+
+Below button
+
+Press and hold for 3 seconds
+
+During countdown
+
+Animate
+
+3
+
+2
+
+1
+
+Pulse animation.
+
+After activation
+
+Show
+
+Finding location…
+
+Sending alerts…
+
+Calling emergency contacts…
+
+Sharing live location…
+
+⸻
+
+Quick Actions
+
+Horizontal cards
+
+Safe Route
+
+Emergency Contacts
+
+Share Live Location
+
+Fake Call
+
+Each card
+
+Rounded
+
+Soft shadow
+
+Large icon
+
+Subtitle
+
+⸻
+
+Today’s Safety Card
+
+Include
+
+Weather
+
+Traffic
+
+Safety Suggestions
+
+Examples
+
+Carry umbrella
+
+Avoid poorly lit streets
+
+Heavy rain expected
+
+Low visibility tonight
+
+⸻
+
+Nearby Help
+
+Cards
+
+Police Station
+
+Hospital
+
+Pharmacy
+
+Shelter
+
+Distance
+
+Direction arrow
+
+Tap opens map.
+
+⸻
+
+Community Alerts
+
+Modern feed.
+
+Each alert contains
+
+Icon
+
+Category
+
+Location
+
+Time
+
+Risk badge
+
+Example
+
+High Risk
+
+Moderate
+
+Low
+
+⸻
+
+Bottom Navigation
+
+Five Tabs
+
+Home
+
+Map
+
+Center Floating Action Button
+
+Safety
+
+Profile
+
+Center FAB opens
+
+Report Incident
+
+Fake Call
+
+Voice SOS
+
+Share Location
+
+⸻
+
+Map Screen
+
+Google Maps full screen.
+
+Overlay floating chips
+
+Police
+
+Hospitals
+
+Pharmacy
+
+Community Reports
+
+Weather
+
+Traffic
+
+Safe Route
+
+Floating search bar.
+
+Bottom draggable sheet.
+
+⸻
+
+Safety Dashboard
+
+New screen.
+
+Show
+
+Current Safety Score
+
+Weather Risk
+
+Nearby Help
+
+Recent Reports
+
+Trusted Contacts
+
+Battery Status
+
+Network Status
+
+GPS Status
+
+Everything inside beautiful cards.
+
+⸻
+
+Emergency Contacts
+
+Modern cards.
+
+Avatar
+
+Name
+
+Relationship
+
+Quick buttons
+
+Call
+
+SMS
+
+Share
+
+Swipe actions
+
+Edit
+
+Delete
+
+⸻
+
+Profile
+
+Premium design.
+
+Sections
+
+Personal Information
+
+Premium
+
+Emergency Contacts
+
+Privacy
+
+Notifications
+
+About
+
+Support
+
+Logout
+
+⸻
+
+Incident Reporting
+
+Step based UI
+
+Step 1
+
+Choose Category
+
+Harassment
+
+Accident
+
+Medical
+
+Unsafe Area
+
+Fire
+
+Other
+
+Step 2
+
+Photo
+
+Step 3
+
+Description
+
+Step 4
+
+Location
+
+Step 5
+
+Submit
+
+⸻
+
+Live Tracking Screen
+
+Beautiful live status.
+
+Show
+
+Map
+
+Contacts receiving location
+
+Tracking duration
+
+Battery
+
+Internet
+
+Stop button
+
+⸻
+
+Premium Screen
+
+Modern pricing page.
+
+Glass cards.
+
+Features
+
+AI Safe Routes
+
+Emergency Recording
+
+Unlimited Contacts
+
+Weather Safety Alerts
+
+Family Tracking
+
+Travel Guardian
+
+Priority Support
+
+⸻
+
+Weather Integration
+
+Integrate weather into safety.
+
+Do NOT create a separate Weather page.
+
+Instead show
+
+Today’s Weather
+
+Rain warnings
+
+Heatwave alerts
+
+Storm alerts
+
+Visibility
+
+Weather Risk
+
+Example
+
+🌧 Heavy Rain Expected
+
+⚠ Moderate Safety Risk
+
+⸻
+
+Safety Intelligence
+
+Create a Safety Score.
+
+Based on
+
+Weather
+
+Time
+
+Nearby Police
+
+Nearby Hospital
+
+Community Reports
+
+Current Location
+
+Display
+
+Green
+
+Yellow
+
+Red
+
+⸻
+
+Animations
+
+Use Reanimated.
+
+Smooth transitions.
+
+Card fade.
+
+Scale animation.
+
+SOS pulse.
+
+Bottom sheet animation.
+
+Floating action animation.
+
+⸻
+
+Accessibility
+
+Large touch targets
+
+High contrast
+
+VoiceOver support
+
+Dynamic font scaling
+
+Haptic feedback
+
+⸻
+
+Performance
+
+Avoid unnecessary rerenders.
+
+Lazy load screens.
+
+Memoize heavy components.
+
+Keep 60 FPS animations.
+
+⸻
+
+Keep Existing Features
+
+Do NOT remove
+
+Authentication
+
+Supabase
+
+Firebase
+
+RevenueCat
+
+SOS
+
+Emergency Contacts
+
+Nearby Places
+
+Community Reporting
+
+Notifications
+
+Maps
+
+Subscriptions
+
+Live Location
+
+Backend APIs
+
+⸻
+
+Deliverables
+
+1. Completely redesigned UI
+2. Responsive for Android and iPhone
+3. Material 3 design
+4. Dark Mode
+5. Smooth animations
+6. Premium appearance
+7. No functionality changes
+8. No breaking existing APIs
+9. Keep existing folder structure
+10. Production-ready code

@@ -1,16 +1,15 @@
 /**
- * Suraksha theme system.
+ * Suraksha theme system — Material 3 edition.
  *
  * The app ships a small "theme engine": the user can pick an accent theme
- * (purple / rose / ocean / sunset) and a colour mode (light / dark / system).
+ * (blue / purple / rose / ocean / sunset) and a colour mode (light / dark / system).
  * `buildPalette(themeKey, isDark)` composes a full palette from a neutral set
  * (driven by the mode) plus an accent set (driven by the theme).
  *
- * The default export keeps the scaffold `useColors()` hook working by exposing
- * a light/dark palette plus `radius`.
+ * Default theme: "blue" (Material 3 Deep Blue, #2563EB primary).
  */
 
-export type ThemeKey = "purple" | "rose" | "ocean" | "sunset";
+export type ThemeKey = "blue" | "purple" | "rose" | "ocean" | "sunset";
 export type ColorMode = "light" | "dark" | "system";
 
 export interface AccentSet {
@@ -46,9 +45,16 @@ export interface Palette extends AccentSet {
   overlay: string;
 }
 
-export const THEME_ORDER: ThemeKey[] = ["purple", "rose", "ocean", "sunset"];
+export const THEME_ORDER: ThemeKey[] = ["blue", "purple", "rose", "ocean", "sunset"];
 
 export const ACCENTS: Record<ThemeKey, AccentSet> = {
+  blue: {
+    primary: "#2563EB",
+    primaryDark: "#1D4ED8",
+    primaryLight: "#93C5FD",
+    accent: "#EF4444",
+    accentDark: "#DC2626",
+  },
   purple: {
     primary: "#5B2FBF",
     primaryDark: "#3F1F8C",
@@ -80,63 +86,65 @@ export const ACCENTS: Record<ThemeKey, AccentSet> = {
 };
 
 export const THEME_LABELS: Record<ThemeKey, { en: string; hi: string }> = {
+  blue:   { en: "Blue",   hi: "गहरा नीला" },
   purple: { en: "Purple", hi: "बैंगनी" },
-  rose: { en: "Rose", hi: "गुलाबी" },
-  ocean: { en: "Ocean", hi: "नीला" },
+  rose:   { en: "Rose",   hi: "गुलाबी" },
+  ocean:  { en: "Ocean",  hi: "समुद्री" },
   sunset: { en: "Sunset", hi: "नारंगी" },
 };
 
 const LIGHT_NEUTRALS = {
-  success: "#0E9B6B",
-  successSoft: "#E9F9F2",
-  warning: "#C47D0E",
-  danger: "#D92D20",
-  dangerSoft: "#FBEAF1",
-  police: "#2454C7",
-  hospital: "#D91A7A",
-  shelter: "#0E9B6B",
-  shops: "#C47D0E",
-  bg: "#F6F3FB",
+  success: "#22C55E",
+  successSoft: "#DCFCE7",
+  warning: "#F59E0B",
+  danger: "#EF4444",
+  dangerSoft: "#FEE2E2",
+  police: "#2563EB",
+  hospital: "#EC4899",
+  shelter: "#22C55E",
+  shops: "#F59E0B",
+  bg: "#F8FAFC",
   card: "#FFFFFF",
-  cardAlt: "#F1ECFA",
-  text: "#1A1035",
-  textMuted: "#6E6485",
-  textFaint: "#A099B4",
-  border: "#E9E3F4",
+  cardAlt: "#F1F5F9",
+  text: "#111827",
+  textMuted: "#6B7280",
+  textFaint: "#9CA3AF",
+  border: "#E5E7EB",
   inputBg: "#FFFFFF",
   onColor: "#FFFFFF",
-  overlay: "rgba(20,10,40,0.45)",
+  overlay: "rgba(17,24,39,0.5)",
 };
 
 const DARK_NEUTRALS = {
-  success: "#1FB985",
-  successSoft: "#13352A",
-  warning: "#E0A130",
-  danger: "#F0635A",
-  dangerSoft: "#3A1622",
-  police: "#5B83E8",
-  hospital: "#EC5FA0",
-  shelter: "#1FB985",
-  shops: "#E0A130",
-  bg: "#100A1E",
-  card: "#1B1430",
-  cardAlt: "#271C40",
-  text: "#F4F1FA",
-  textMuted: "#B5ABCC",
-  textFaint: "#7C7196",
-  border: "#2E2348",
-  inputBg: "#241A3C",
+  success: "#4ADE80",
+  successSoft: "#14532D",
+  warning: "#FCD34D",
+  danger: "#F87171",
+  dangerSoft: "#7F1D1D",
+  police: "#60A5FA",
+  hospital: "#F9A8D4",
+  shelter: "#4ADE80",
+  shops: "#FCD34D",
+  bg: "#0F172A",
+  card: "#1E293B",
+  cardAlt: "#334155",
+  text: "#F1F5F9",
+  textMuted: "#94A3B8",
+  textFaint: "#64748B",
+  border: "#334155",
+  inputBg: "#1E293B",
   onColor: "#FFFFFF",
-  overlay: "rgba(0,0,0,0.6)",
+  overlay: "rgba(0,0,0,0.65)",
 };
 
 export function buildPalette(themeKey: ThemeKey, isDark: boolean): Palette {
-  const accent = ACCENTS[themeKey] ?? ACCENTS.purple;
+  const accent = ACCENTS[themeKey] ?? ACCENTS.blue;
   const neutrals = isDark ? DARK_NEUTRALS : LIGHT_NEUTRALS;
   return { isDark, ...accent, ...neutrals };
 }
 
-export const RADIUS = 16;
+/** Card radius per Material 3 spec. */
+export const RADIUS = 18;
 
 /** Adds an alpha channel to a 6-digit hex colour. */
 export function withAlpha(hex: string, alpha: number): string {
@@ -171,8 +179,8 @@ function toScaffold(p: Palette) {
 }
 
 const colors = {
-  light: toScaffold(buildPalette("purple", false)),
-  dark: toScaffold(buildPalette("purple", true)),
+  light: toScaffold(buildPalette("blue", false)),
+  dark: toScaffold(buildPalette("blue", true)),
   radius: RADIUS,
 };
 

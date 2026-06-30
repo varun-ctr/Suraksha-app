@@ -32,6 +32,11 @@ export function Card({
           borderWidth: 1,
           borderRadius: radius,
           padding: 16,
+          elevation: 1,
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.05,
+          shadowRadius: 4,
         },
         style,
       ]}
@@ -44,7 +49,7 @@ export function Card({
 export function SectionTitle({ children, top }: { children: React.ReactNode; top?: number }) {
   const { c } = useTheme();
   return (
-    <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: c.textMuted, marginBottom: 8, marginTop: top ?? 0, textTransform: "uppercase", letterSpacing: 0.5 }}>
+    <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color: c.textMuted, marginBottom: 8, marginTop: top ?? 0, textTransform: "uppercase", letterSpacing: 0.6 }}>
       {children}
     </Text>
   );
@@ -108,7 +113,7 @@ export function IconBadge({
       style={{
         width: box,
         height: box,
-        borderRadius: box * 0.28,
+        borderRadius: box * 0.3,
         backgroundColor: withAlpha(color, 0.12),
         alignItems: "center",
         justifyContent: "center",
@@ -159,9 +164,9 @@ export function Button({
       style={({ pressed }) => [
         {
           backgroundColor: bg,
-          borderRadius: radius * 0.7,
-          paddingVertical: small ? 9 : 12,
-          paddingHorizontal: 14,
+          borderRadius: radius + 2,
+          paddingVertical: small ? 9 : 13,
+          paddingHorizontal: 16,
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "center",
@@ -178,7 +183,7 @@ export function Button({
           {icon && <Icon name={icon} size={small ? 14 : 16} color={fg} />}
           <Text
             style={[
-              { color: fg, fontFamily: "Inter_700Bold", fontSize: small ? 13 : 14 },
+              { color: fg, fontFamily: "Inter_700Bold", fontSize: small ? 13 : 14.5 },
               textStyle,
             ]}
           >
@@ -208,8 +213,8 @@ export function Chip({
       onPress={onPress}
       style={{
         paddingHorizontal: 16,
-        paddingVertical: 7,
-        borderRadius: 18,
+        paddingVertical: 8,
+        borderRadius: 20,
         backgroundColor: active ? activeColor : c.card,
         borderWidth: 1,
         borderColor: active ? activeColor : c.border,

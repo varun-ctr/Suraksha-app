@@ -46,6 +46,10 @@ const en: Record<string, string> = {
   "onb.tagline": "Your personal safety companion",
 
   "home.greeting": "Namaste,",
+  "home.greetingMorning": "Good morning,",
+  "home.greetingAfternoon": "Good afternoon,",
+  "home.greetingEvening": "Good evening,",
+  "home.greetingNight": "Good night,",
   "home.guest": "friend",
   "home.locating": "Locating…",
   "home.locationOff": "Location off",
