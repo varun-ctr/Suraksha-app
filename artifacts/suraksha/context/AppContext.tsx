@@ -10,6 +10,13 @@ import React, {
 } from "react";
 
 import { secureDelete, secureGet, secureSet } from "@/lib/secureStore";
+import {
+  deleteAllContactsFromDb,
+  deleteContactFromDb,
+  syncContactsOnLoad,
+  upsertContactToDb,
+} from "@/lib/contactsSync";
+import { supabase } from "@/lib/supabaseClient";
 import { normalizePhone } from "@/lib/validate";
 
 /** Sensitive data (PII) lives in the OS keystore; the rest in plain storage. */
@@ -108,9 +115,10 @@ function persist(next: PersistShape) {
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<PersistShape>(DEFAULTS);
   const [ready, setReady] = useState(false);
-  /** Mirrors the latest committed state so handlers can read it synchronously. */
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  // ── Load from local storage ───────────────────────────────────────
 
   useEffect(() => {
     (async () => {
@@ -141,6 +149,59 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
+  // ── Supabase sync — runs once local data is ready ─────────────────
+
+  useEffect(() => {
+    if (!ready) return;
+
+    const doSync = async (userId: string) => {
+      try {
+        const merged = await syncContactsOnLoad(userId, stateRef.current.contacts);
+        const current = stateRef.current.contacts;
+        // Only update if the list actually changed
+        const changed =
+          merged.length !== current.length ||
+          merged.some((m, i) => m.id !== current[i]?.id || m.name !== current[i]?.name);
+        if (changed) {
+          setState((prev) => {
+            const next = { ...prev, contacts: merged };
+            persist(next);
+            return next;
+          });
+        }
+      } catch {
+        // Table may not exist yet — silently continue with local data
+      }
+    };
+
+    // Sync immediately if already signed in
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) void doSync(session.user.id);
+    }).catch(() => {});
+
+    // Re-sync on auth state changes (sign-in / sign-out)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" && session?.user) {
+        void doSync(session.user.id);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [ready]);
+
+  // ── Helpers ───────────────────────────────────────────────────────
+
+  const getUserId = useCallback(async (): Promise<string | null> => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      return session?.user?.id ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // ── Mutations ─────────────────────────────────────────────────────
+
   const addContact = useCallback(
     (name: string, phone: string): AddContactResult => {
       const trimmedName = name.trim();
@@ -152,20 +213,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         (c) => normalizePhone(c.phone) === normalized,
       );
       if (exists) return { ok: false, error: "duplicate" };
+      const newContact: Contact = { id: uid(), name: trimmedName, phone: normalized };
       const next = {
         ...prev,
-        contacts: [...prev.contacts, { id: uid(), name: trimmedName, phone: normalized }],
+        contacts: [...prev.contacts, newContact],
       };
       stateRef.current = next;
       setState(next);
       persist(next);
+      // Sync to Supabase in background
+      getUserId().then((uid) => {
+        if (uid) upsertContactToDb(uid, newContact).catch(() => {});
+      }).catch(() => {});
       return { ok: true };
     },
-    [],
+    [getUserId],
   );
 
   const addContacts = useCallback((items: { name: string; phone: string }[]) => {
     let added = 0;
+    let freshContacts: Contact[] = [];
     setState((prev) => {
       const existing = new Set(
         prev.contacts
@@ -173,7 +240,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           .filter((v): v is string => Boolean(v)),
       );
       const slots = MAX_CONTACTS - prev.contacts.length;
-      const fresh = items
+      freshContacts = items
         .map((i) => ({ name: i.name.trim(), normalized: normalizePhone(i.phone) }))
         .filter((i): i is { name: string; normalized: string } => Boolean(i.name) && Boolean(i.normalized))
         .filter((i) => {
@@ -183,14 +250,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         })
         .slice(0, slots)
         .map((i) => ({ id: uid(), name: i.name, phone: i.normalized }));
-      added = fresh.length;
+      added = freshContacts.length;
       if (added === 0) return prev;
-      const next = { ...prev, contacts: [...prev.contacts, ...fresh] };
+      const next = { ...prev, contacts: [...prev.contacts, ...freshContacts] };
       persist(next);
       return next;
     });
+    // Sync batch to Supabase
+    if (freshContacts.length > 0) {
+      getUserId().then((uid) => {
+        if (!uid) return;
+        freshContacts.forEach((c) => upsertContactToDb(uid, c).catch(() => {}));
+      }).catch(() => {});
+    }
     return added;
-  }, []);
+  }, [getUserId]);
 
   const editContact = useCallback(
     (id: string, patch: Partial<Pick<Contact, "name" | "phone" | "avatarUrl">>): AddContactResult => {
@@ -210,20 +284,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const trimmedName = patch.name !== undefined ? patch.name.trim() : target.name;
       if (!trimmedName) return { ok: false, error: "invalid" };
 
+      const updated: Contact = {
+        ...target,
+        name: trimmedName,
+        phone: normalized,
+        avatarUrl: patch.avatarUrl ?? target.avatarUrl,
+      };
       const next = {
         ...prev,
-        contacts: prev.contacts.map((c) =>
-          c.id === id
-            ? { ...c, name: trimmedName, phone: normalized, avatarUrl: patch.avatarUrl ?? c.avatarUrl }
-            : c,
-        ),
+        contacts: prev.contacts.map((c) => (c.id === id ? updated : c)),
       };
       stateRef.current = next;
       setState(next);
       persist(next);
+      // Sync to Supabase
+      getUserId().then((userId) => {
+        if (userId) upsertContactToDb(userId, updated).catch(() => {});
+      }).catch(() => {});
       return { ok: true };
     },
-    [],
+    [getUserId],
   );
 
   const deleteContact = useCallback((id: string) => {
@@ -232,7 +312,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       persist(next);
       return next;
     });
-  }, []);
+    // Delete from Supabase
+    getUserId().then((userId) => {
+      if (userId) deleteContactFromDb(userId, id).catch(() => {});
+    }).catch(() => {});
+  }, [getUserId]);
 
   const addReport = useCallback((r: Omit<ReportItem, "id" | "createdAt">) => {
     setState((prev) => {
@@ -278,6 +362,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const resetAllData = useCallback(async () => {
+    // Delete from Supabase first
+    const userId = await getUserId();
+    if (userId) {
+      await deleteAllContactsFromDb(userId).catch(() => {});
+    }
     await Promise.all([
       secureDelete(SECURE_KEY),
       AsyncStorage.removeItem(PLAIN_KEY).catch(() => {}),
@@ -285,7 +374,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     ]);
     stateRef.current = DEFAULTS;
     setState(DEFAULTS);
-  }, []);
+  }, [getUserId]);
 
   const value = useMemo<AppContextValue>(
     () => ({

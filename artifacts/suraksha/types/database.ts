@@ -188,6 +188,24 @@ export interface LiveSessionPublic {
 }
 
 // ------------------------------------------------------------------
+// emergency_contacts
+// ------------------------------------------------------------------
+export interface EmergencyContactRow {
+  id: string;
+  user_id: string;
+  name: string;
+  phone: string;
+  avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type EmergencyContactInsert = Pick<EmergencyContactRow, "id" | "user_id" | "name" | "phone"> &
+  Partial<Pick<EmergencyContactRow, "avatar_url">>;
+
+export type EmergencyContactUpdate = Partial<Pick<EmergencyContactRow, "name" | "phone" | "avatar_url" | "updated_at">>;
+
+// ------------------------------------------------------------------
 // Convenience union — all table row types
 // ------------------------------------------------------------------
 export type AnyRow =
