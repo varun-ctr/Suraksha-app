@@ -191,7 +191,9 @@ export default function LinkAccountScreen() {
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "USER_UPDATED") setStep("linked");
+      // USER_UPDATED  = email changed on an existing account
+      // SIGNED_IN     = OTP verified, new or upgraded session
+      if (event === "USER_UPDATED" || event === "SIGNED_IN") setStep("linked");
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -202,7 +204,17 @@ export default function LinkAccountScreen() {
     if (!trimmed.includes("@")) { setError("Enter a valid email address."); return; }
     setError(null);
     setLoading(true);
-    const { error: err } = await supabase.auth.updateUser({ email: trimmed });
+
+    // signInWithOtp works regardless of auth state:
+    //  • Anonymous session  → upgrades account to email-linked
+    //  • No session at all  → creates a new account
+    //  • Existing session   → re-authenticates / updates email
+    // updateUser({ email }) only works for already-authenticated non-anonymous
+    // users and was causing "Auth session missing!" for new/anonymous users.
+    const { error: err } = await supabase.auth.signInWithOtp({
+      email: trimmed,
+      options: { shouldCreateUser: true },
+    });
     setLoading(false);
     if (err) { setError(err.message); } else { setStep("sent"); }
   }, [email]);
