@@ -45,16 +45,18 @@ router.post("/sakhi-chat", async (req: Request, res: Response) => {
 
   const userId = userData.user.id;
 
-  const { data: profile, error: profileError } = await serviceSupabase
+  const { data: profileRaw } = await serviceSupabase
     .from("profiles")
     .select("is_premium, premium_until, sakhi_message_count")
     .eq("id", userId)
     .single();
 
-  if (profileError || !profile) {
-    res.status(500).json({ error: "server", message: "Could not load user profile." });
-    return;
-  }
+  // Default to free tier if profile is missing or columns not yet added
+  const profile = {
+    is_premium: profileRaw?.is_premium ?? false,
+    premium_until: profileRaw?.premium_until ?? null,
+    sakhi_message_count: profileRaw?.sakhi_message_count ?? 0,
+  };
 
   const isPremiumActive =
     profile.is_premium &&

@@ -32,6 +32,18 @@ BEGIN
                  WHERE table_schema='public' AND table_name='profiles' AND column_name='phone') THEN
     ALTER TABLE public.profiles ADD COLUMN phone TEXT;
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_schema='public' AND table_name='profiles' AND column_name='is_premium') THEN
+    ALTER TABLE public.profiles ADD COLUMN is_premium BOOLEAN NOT NULL DEFAULT FALSE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_schema='public' AND table_name='profiles' AND column_name='premium_until') THEN
+    ALTER TABLE public.profiles ADD COLUMN premium_until TIMESTAMPTZ;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_schema='public' AND table_name='profiles' AND column_name='sakhi_message_count') THEN
+    ALTER TABLE public.profiles ADD COLUMN sakhi_message_count INTEGER NOT NULL DEFAULT 0;
+  END IF;
 END $$;
 
 -- Trigger: keep updated_at current
