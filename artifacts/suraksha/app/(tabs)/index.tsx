@@ -243,7 +243,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { contacts, profile } = useApp();
-  const { triggerSOS, journey, setJourneyDuration, startJourney, endJourney, safetyStatus } =
+  const { triggerSOS, journey, setJourneyDuration, startJourney, endJourney, checkInJourney, safetyStatus } =
     useSafety();
   const { showToast } = useToast();
   const { point, address, status } = useLocation();
@@ -550,18 +550,66 @@ export default function HomeScreen() {
                   / {journey.duration} {t("home.minutes")}
                 </Text>
               </View>
-              {overdue && (
-                <Text
+              {/* ── Overdue "Are you safe?" banner ─── */}
+              {journey.overdue && (
+                <View
                   style={{
-                    fontSize: 12,
-                    color: c.danger,
-                    fontFamily: "Inter_600SemiBold",
+                    backgroundColor: c.dangerSoft,
+                    borderRadius: 14,
+                    padding: 14,
                     marginBottom: 12,
+                    borderWidth: 1,
+                    borderColor: withAlpha(c.danger, 0.3),
                   }}
                 >
-                  {t("home.overdue")}
-                </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <Icon name="alert" size={16} color={c.danger} />
+                    <Text style={{ fontSize: 15, fontFamily: "Inter_700Bold", color: c.danger }}>
+                      Are you safe?
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 12.5, color: c.textMuted, marginBottom: 12, lineHeight: 18 }}>
+                    Your journey timer has ended.{" "}
+                    {journey.overdueSeconds > 0 && (
+                      `Auto-SOS in ${journey.overdueSeconds}s if no response.`
+                    )}
+                  </Text>
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    <Pressable
+                      onPress={() => {
+                        checkInJourney();
+                        showToast(t("home.arrivedSafely"));
+                      }}
+                      style={{
+                        flex: 1,
+                        backgroundColor: c.success,
+                        borderRadius: 12,
+                        paddingVertical: 11,
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13 }}>
+                        I'm Safe
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={triggerSOS}
+                      style={{
+                        flex: 1,
+                        backgroundColor: c.danger,
+                        borderRadius: 12,
+                        paddingVertical: 11,
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13 }}>
+                        Send SOS
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
               )}
+
               <Pressable
                 onPress={() =>
                   shareLiveLocation(point ? { lat: point.lat, lng: point.lng } : null)
@@ -583,22 +631,24 @@ export default function HomeScreen() {
                   {t("home.shareLocation")}
                 </Text>
               </Pressable>
-              <Pressable
-                onPress={() => {
-                  endJourney();
-                  showToast(t("home.arrivedSafely"));
-                }}
-                style={{
-                  backgroundColor: c.success,
-                  borderRadius: 14,
-                  paddingVertical: 13,
-                  alignItems: "center",
-                }}
-              >
-                <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 14 }}>
-                  {t("home.arrivedSafely")}
-                </Text>
-              </Pressable>
+              {!journey.overdue && (
+                <Pressable
+                  onPress={() => {
+                    endJourney();
+                    showToast(t("home.arrivedSafely"));
+                  }}
+                  style={{
+                    backgroundColor: c.success,
+                    borderRadius: 14,
+                    paddingVertical: 13,
+                    alignItems: "center",
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 14 }}>
+                    {t("home.arrivedSafely")}
+                  </Text>
+                </Pressable>
+              )}
             </>
           )}
         </View>

@@ -31,9 +31,7 @@ export type SafetyStatus = "safe" | "caution" | "emergency";
 
 export interface SosState {
   phase: SosPhase;
-  /** Counts 3 → 2 → 1 → 0 before SOS activates */
   countdown: number;
-  /** Elapsed seconds since SOS became active */
   seconds: number;
   coords: Coords | null;
   address: string | null;
@@ -42,10 +40,14 @@ export interface SosState {
   eventId: string | null;
 }
 
-interface JourneyState {
+export interface JourneyState {
   active: boolean;
   seconds: number;
   duration: number;
+  /** True once seconds >= duration*60 and user hasn't checked in */
+  overdue: boolean;
+  /** Countdown seconds before auto-SOS fires (60 → 0) */
+  overdueSeconds: number;
 }
 
 interface SafetyContextValue {
@@ -57,9 +59,12 @@ interface SafetyContextValue {
   setJourneyDuration: (d: number) => void;
   startJourney: () => void;
   endJourney: () => void;
+  /** User confirms they're safe — clears overdue state and ends journey */
+  checkInJourney: () => void;
 }
 
-const COUNTDOWN_START = 3;
+const COUNTDOWN_START   = 3;
+const OVERDUE_GRACE_SEC = 60; // seconds before auto-SOS fires after journey expires
 
 const SOS_DEFAULTS: SosState = {
   phase: "idle",
@@ -72,36 +77,28 @@ const SOS_DEFAULTS: SosState = {
   eventId: null,
 };
 
+const JOURNEY_DEFAULTS: JourneyState = {
+  active: false,
+  seconds: 0,
+  duration: 15,
+  overdue: false,
+  overdueSeconds: OVERDUE_GRACE_SEC,
+};
+
 const SafetyContext = createContext<SafetyContextValue | null>(null);
 
 export function SafetyProvider({ children }: { children: React.ReactNode }) {
-  const [sos, setSos] = useState<SosState>(SOS_DEFAULTS);
-  const [journey, setJourney] = useState<JourneyState>({
-    active: false,
-    seconds: 0,
-    duration: 15,
-  });
+  const [sos, setSos]         = useState<SosState>(SOS_DEFAULTS);
+  const [journey, setJourney] = useState<JourneyState>(JOURNEY_DEFAULTS);
 
-  const countdownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const sosTimer       = useRef<ReturnType<typeof setInterval> | null>(null);
-  const journeyTimer   = useRef<ReturnType<typeof setInterval> | null>(null);
-  const shareIdRef     = useRef<string | null>(null);
-  const watchRef       = useRef<Location.LocationSubscription | null>(null);
-
-  /**
-   * Run-ID cancellation guard.
-   * Incremented on every triggerSOS() and cancelSOS() call.
-   * Async callbacks close over the runId at launch time and check
-   * `sosRunIdRef.current === runId` before touching state or starting
-   * side-effects — stale closures from a prior (cancelled) trigger are
-   * simply discarded.
-   */
-  const sosRunIdRef = useRef(0);
-  /**
-   * Prevents duplicate sos_events inserts within one SOS activation.
-   * Reset to false whenever phase returns to "idle".
-   */
-  const insertingRef = useRef(false);
+  const countdownTimer  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sosTimer        = useRef<ReturnType<typeof setInterval> | null>(null);
+  const journeyTimer    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const overdueTimer    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const shareIdRef      = useRef<string | null>(null);
+  const watchRef        = useRef<Location.LocationSubscription | null>(null);
+  const sosRunIdRef     = useRef(0);
+  const insertingRef    = useRef(false);
 
   // ── Live-tracking helpers ─────────────────────────────────────────
 
@@ -113,14 +110,9 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  /**
-   * Fetches GPS + reverse-geocodes + starts a live session.
-   * Every async step checks `runId` against `sosRunIdRef.current`
-   * so a cancel mid-flight doesn't leak tracking or DB records.
-   */
   const fetchLocationAndStartTracking = useCallback(async (runId: number) => {
     const point = await getCurrentLocation();
-    if (sosRunIdRef.current !== runId) return; // cancelled
+    if (sosRunIdRef.current !== runId) return;
 
     if (!point) {
       setSos((s) => s.phase !== "idle" ? { ...s, loading: false } : s);
@@ -129,12 +121,11 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
     setSos((s) => s.phase !== "idle" ? { ...s, loading: false, coords: point } : s);
 
     const addr = await reverseGeocode(point.lat, point.lng);
-    if (sosRunIdRef.current !== runId) return; // cancelled after geocode
+    if (sosRunIdRef.current !== runId) return;
     setSos((s) => s.phase !== "idle" ? { ...s, address: addr } : s);
 
     const session = await startLiveSession(point.lat, point.lng, point.accuracy);
     if (sosRunIdRef.current !== runId) {
-      // Cancelled while starting session — clean it up immediately
       if (session) await endLiveSession(session.shareId);
       return;
     }
@@ -147,7 +138,7 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
         const sub = await Location.watchPositionAsync(
           { accuracy: Location.Accuracy.High, timeInterval: 10000, distanceInterval: 10 },
           (loc) => {
-            if (sosRunIdRef.current !== runId) return; // guard each update too
+            if (sosRunIdRef.current !== runId) return;
             if (shareIdRef.current) {
               void updateLiveSession(
                 shareIdRef.current,
@@ -163,7 +154,6 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
             }
           },
         );
-        // Final guard after watchPositionAsync resolves (it itself is async)
         if (sosRunIdRef.current !== runId) { sub.remove(); return; }
         watchRef.current = sub;
       } catch {
@@ -172,11 +162,7 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // ── Supabase sos_events record when phase goes active ─────────────
-  //
-  // Resilient: waits until coords are available before inserting, then
-  // re-checks phase. If cancelled between insert-start and insert-complete,
-  // the late-arriving eventId is immediately resolved.
+  // ── Supabase sos_events record ────────────────────────────────────
 
   const activateSosDb = useCallback(
     (runId: number, coords: Coords | null, address: string | null) => {
@@ -184,15 +170,14 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
         if (sosRunIdRef.current !== runId || !coords) return;
 
         const { data: { user } } = await supabase.auth.getUser();
-        if (sosRunIdRef.current !== runId || !user) return; // cancelled while awaiting auth
+        if (sosRunIdRef.current !== runId || !user) return;
 
         const id = await insertSosEvent(user.id, coords.lat, coords.lng, address);
         if (!id) return;
 
-        // Write eventId — but if phase is now idle (cancelled), resolve immediately
         setSos((s) => {
           if (s.phase === "idle") {
-            void resolveSosEvent(id); // late write: auto-resolve the orphaned record
+            void resolveSosEvent(id);
             return s;
           }
           return { ...s, eventId: id };
@@ -209,7 +194,6 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
       if (countdownTimer.current) { clearInterval(countdownTimer.current); countdownTimer.current = null; }
       return;
     }
-    // Haptic for the first displayed number
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
     countdownTimer.current = setInterval(() => {
@@ -230,16 +214,11 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
     };
   }, [sos.phase]);
 
-  // ── Write sos_events once coords are available in active phase ───
-  //
-  // Keyed on (phase, coords, eventId) so the insert is retried whenever
-  // coords arrive after the countdown finishes (slow GPS / permission
-  // prompt). insertingRef guards against duplicate concurrent inserts;
-  // it resets to false when phase returns to idle.
+  // ── Write sos_events once coords are available in active phase ────
 
   useEffect(() => {
     if (sos.phase === "idle") {
-      insertingRef.current = false; // reset for next activation
+      insertingRef.current = false;
       return;
     }
     if (sos.phase === "active" && sos.coords !== null && sos.eventId === null && !insertingRef.current) {
@@ -248,7 +227,7 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
     }
   }, [sos.phase, sos.coords, sos.eventId, sos.address, activateSosDb]);
 
-  // ── Elapsed timer (active only) ───────────────────────────────────
+  // ── Elapsed SOS timer ─────────────────────────────────────────────
 
   useEffect(() => {
     if (sos.phase === "active") {
@@ -268,17 +247,17 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => () => { void stopLiveTracking(); }, [stopLiveTracking]);
 
-  // ── Public API ────────────────────────────────────────────────────
+  // ── Public SOS API ────────────────────────────────────────────────
 
   const triggerSOS = useCallback(() => {
-    const runId = ++sosRunIdRef.current; // invalidates any prior in-flight ops
+    const runId = ++sosRunIdRef.current;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setSos({ ...SOS_DEFAULTS, phase: "countdown", countdown: COUNTDOWN_START, loading: true });
     void fetchLocationAndStartTracking(runId);
   }, [fetchLocationAndStartTracking]);
 
   const cancelSOS = useCallback(() => {
-    sosRunIdRef.current++; // invalidate all in-flight async ops
+    sosRunIdRef.current++;
     setSos((s) => {
       if (s.eventId) void resolveSosEvent(s.eventId);
       return { ...SOS_DEFAULTS };
@@ -287,16 +266,49 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [stopLiveTracking]);
 
-  // ── Journey ───────────────────────────────────────────────────────
+  // ── Journey timer ─────────────────────────────────────────────────
 
-  const setJourneyDuration = useCallback((d: number) => setJourney((j) => ({ ...j, duration: d })), []);
-  const startJourney  = useCallback(() => setJourney((j) => ({ ...j, active: true, seconds: 0 })), []);
-  const endJourney    = useCallback(() => setJourney((j) => ({ ...j, active: false, seconds: 0 })), []);
+  const setJourneyDuration = useCallback(
+    (d: number) => setJourney((j) => ({ ...j, duration: d })),
+    [],
+  );
 
+  const startJourney = useCallback(
+    () => setJourney({ ...JOURNEY_DEFAULTS, active: true, duration: JOURNEY_DEFAULTS.duration }),
+    [],
+  );
+
+  const endJourney = useCallback(
+    () => {
+      if (overdueTimer.current) { clearInterval(overdueTimer.current); overdueTimer.current = null; }
+      setJourney((j) => ({ ...JOURNEY_DEFAULTS, duration: j.duration }));
+    },
+    [],
+  );
+
+  /** User taps "I'm Safe" during an overdue journey. Clears overdue + ends journey. */
+  const checkInJourney = useCallback(
+    () => {
+      if (overdueTimer.current) { clearInterval(overdueTimer.current); overdueTimer.current = null; }
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setJourney((j) => ({ ...JOURNEY_DEFAULTS, duration: j.duration }));
+    },
+    [],
+  );
+
+  // Journey elapsed-seconds tick
   useEffect(() => {
-    if (journey.active) {
+    if (journey.active && !journey.overdue) {
       journeyTimer.current = setInterval(
-        () => setJourney((j) => ({ ...j, seconds: j.seconds + 1 })),
+        () => setJourney((j) => {
+          if (!j.active) return j;
+          const next = j.seconds + 1;
+          // Transition to overdue when timer elapses
+          if (!j.overdue && next >= j.duration * 60) {
+            return { ...j, seconds: next, overdue: true, overdueSeconds: OVERDUE_GRACE_SEC };
+          }
+          return { ...j, seconds: next };
+        }),
         1000,
       );
     } else {
@@ -305,14 +317,42 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
     return () => {
       if (journeyTimer.current) { clearInterval(journeyTimer.current); journeyTimer.current = null; }
     };
-  }, [journey.active]);
+  }, [journey.active, journey.overdue]);
 
-  // ── Journey local notification ────────────────────────────────────
-  // Fires "are you safe?" after the journey duration expires.
-  // Cancelled immediately when the user ends the journey.
-
+  // Overdue countdown → auto-SOS
   useEffect(() => {
-    if (journey.active) {
+    if (!journey.overdue) {
+      if (overdueTimer.current) { clearInterval(overdueTimer.current); overdueTimer.current = null; }
+      return;
+    }
+
+    // Haptic alert to let user know they're overdue
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+
+    overdueTimer.current = setInterval(() => {
+      setJourney((j) => {
+        if (!j.overdue) return j;
+        const next = j.overdueSeconds - 1;
+        if (next <= 0) {
+          // Auto-trigger SOS — clear interval and fire
+          if (overdueTimer.current) { clearInterval(overdueTimer.current); overdueTimer.current = null; }
+          // Trigger SOS on next tick to avoid setState-during-render
+          setTimeout(() => triggerSOS(), 0);
+          return { ...j, overdueSeconds: 0 };
+        }
+        return { ...j, overdueSeconds: next };
+      });
+    }, 1000);
+
+    return () => {
+      if (overdueTimer.current) { clearInterval(overdueTimer.current); overdueTimer.current = null; }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [journey.overdue]);
+
+  // Schedule / cancel the local "are you safe?" notification
+  useEffect(() => {
+    if (journey.active && !journey.overdue) {
       void scheduleLocalNotification(
         "Journey Timer Ended",
         "Your journey timer has ended — are you safe?",
@@ -333,8 +373,18 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
   }, [sos.phase, sos.seconds]);
 
   const value = useMemo<SafetyContextValue>(
-    () => ({ sos, safetyStatus, triggerSOS, cancelSOS, journey, setJourneyDuration, startJourney, endJourney }),
-    [sos, safetyStatus, triggerSOS, cancelSOS, journey, setJourneyDuration, startJourney, endJourney],
+    () => ({
+      sos,
+      safetyStatus,
+      triggerSOS,
+      cancelSOS,
+      journey,
+      setJourneyDuration,
+      startJourney,
+      endJourney,
+      checkInJourney,
+    }),
+    [sos, safetyStatus, triggerSOS, cancelSOS, journey, setJourneyDuration, startJourney, endJourney, checkInJourney],
   );
 
   return (
