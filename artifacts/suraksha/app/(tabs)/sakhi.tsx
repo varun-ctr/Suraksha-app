@@ -35,7 +35,7 @@ async function sendSakhiMessage(
   const backendUrl = getBackendUrl();
 
   try {
-    const res = await fetch(`${backendUrl}/api/sakhi-chat`, {
+    const res = await fetch(`${backendUrl}/sakhi-chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
