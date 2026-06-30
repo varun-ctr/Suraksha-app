@@ -7,3 +7,4 @@
 - [Suraksha TS router casts](suraksha-router-casts.md) — Expo Router typed-routes may not include dynamically added screens; cast with `as never` or `as string` at call sites to silence TS errors.
 - [Expo web + react-native-maps](expo-native-maps-web.md) — never import react-native-maps at route level; use NativeMap.tsx + NativeMap.web.tsx component wrapper so Metro resolves platform-correctly.
 - [Expo CI startup](expo-ci-startup.md) — prepend `fuser -k $PORT/tcp 2>/dev/null; CI=1` to dev script; --non-interactive flag is rejected by this Expo version, CI=1 is the correct non-interactive mode.
+- [Supabase key naming](supabase-key-naming.md) — EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY must be set as a Replit secret with the real anon key from Supabase dashboard; static .replit value was confirmed invalid. API routes use SUPABASE_URL (added as shared env alias). Sakhi AI uses sakhi.ts (Replit OpenAI integration) at /sakhi/chat — no SUPABASE_SERVICE_ROLE_KEY needed.

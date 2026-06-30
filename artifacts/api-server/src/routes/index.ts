@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
-import sakhiRouter from "./sakhi-new";
+import sakhiRouter from "./sakhi";
 import nearbyPlacesRouter from "./nearby-places";
 import revenuecatRouter from "./revenuecat";
 import authRouter from "./auth";

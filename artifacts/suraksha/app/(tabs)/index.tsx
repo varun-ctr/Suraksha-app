@@ -136,16 +136,13 @@ function SafetyScoreCard({
   );
 }
 
-// ── Hold-to-SOS Button ────────────────────────────────────────────────────────
+// ── One-Tap SOS Button ────────────────────────────────────────────────────────
 
 function HoldSOSButton({ onTrigger }: { onTrigger: () => void }) {
   const { c } = useTheme();
   const { t } = useI18n();
   const pulse = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(1)).current;
-  const [holding, setHolding] = useState(false);
-  const [holdCount, setHoldCount] = useState<number | null>(null);
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -160,36 +157,15 @@ function HoldSOSButton({ onTrigger }: { onTrigger: () => void }) {
     return () => loop.stop();
   }, [pulse]);
 
-  const clearTimers = () => {
-    timers.current.forEach(clearTimeout);
-    timers.current = [];
-  };
-
-  const handlePressIn = () => {
-    setHolding(true);
-    setHoldCount(3);
-    Animated.timing(scale, { toValue: 0.93, duration: 3000, useNativeDriver: true }).start();
-
-    timers.current.push(setTimeout(() => setHoldCount(2), 1000));
-    timers.current.push(setTimeout(() => setHoldCount(1), 2000));
-    timers.current.push(
-      setTimeout(() => {
-        setHolding(false);
-        setHoldCount(null);
-        if (Platform.OS !== "web") {
-          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-        }
-        onTrigger();
-      }, 3000),
-    );
-  };
-
-  const handlePressOut = () => {
-    if (timers.current.length === 0) return;
-    clearTimers();
-    setHolding(false);
-    setHoldCount(null);
-    Animated.spring(scale, { toValue: 1, friction: 5, tension: 200, useNativeDriver: true }).start();
+  const handlePress = () => {
+    if (Platform.OS !== "web") {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    }
+    Animated.sequence([
+      Animated.timing(scale, { toValue: 0.88, duration: 100, useNativeDriver: true }),
+      Animated.spring(scale, { toValue: 1, friction: 4, tension: 300, useNativeDriver: true }),
+    ]).start();
+    onTrigger();
   };
 
   const pulseScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1.75] });
@@ -201,13 +177,10 @@ function HoldSOSButton({ onTrigger }: { onTrigger: () => void }) {
         <Animated.View
           style={[
             styles.sosRing,
-            {
-              transform: [{ scale: pulseScale }],
-              opacity: holding ? 0 : pulseOpacity,
-            },
+            { transform: [{ scale: pulseScale }], opacity: pulseOpacity },
           ]}
         />
-        <Pressable onPressIn={handlePressIn} onPressOut={handlePressOut}>
+        <Pressable onPress={handlePress}>
           <Animated.View style={{ transform: [{ scale }] }}>
             <LinearGradient
               colors={["#EF4444", "#B91C1C"]}
@@ -215,22 +188,12 @@ function HoldSOSButton({ onTrigger }: { onTrigger: () => void }) {
               end={{ x: 0.8, y: 1 }}
               style={styles.sosCircle}
             >
-              {holdCount !== null ? (
-                <Text style={styles.sosCountdown}>{holdCount}</Text>
-              ) : (
-                <>
-                  <Text style={styles.sosHoldLine}>HOLD</Text>
-                  <Text style={styles.sosHoldLine}>FOR</Text>
-                  <Text style={styles.sosHoldLine}>SOS</Text>
-                </>
-              )}
+              <Text style={styles.sosHoldLine}>SOS</Text>
             </LinearGradient>
           </Animated.View>
         </Pressable>
       </View>
-      <Text style={[styles.sosSub, { color: c.textMuted }]}>
-        {holding ? "Keep holding…" : t("home.tapForHelp")}
-      </Text>
+      <Text style={[styles.sosSub, { color: c.textMuted }]}>{t("home.tapForHelp")}</Text>
     </View>
   );
 }

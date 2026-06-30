@@ -30,17 +30,16 @@ async function sendSakhiMessage(
 ): Promise<SendResult> {
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData.session?.access_token;
-  if (!token) return { ok: false, reason: "auth_required" };
 
   const backendUrl = getBackendUrl();
 
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
   try {
-    const res = await fetch(`${backendUrl}/sakhi-chat`, {
+    const res = await fetch(`${backendUrl}/sakhi/chat`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers,
       body: JSON.stringify({ messages, language }),
     });
 
@@ -104,8 +103,8 @@ export default function SakhiScreen() {
           id: `e${Date.now()}`,
           role: "assistant",
           content: lang === "hi"
-            ? "सखी का उपयोग करने के लिए कृपया लॉग इन करें।"
-            : "Please log in to use Sakhi.",
+            ? "कुछ गड़बड़ हो गई। कृपया दोबारा कोशिश करें।"
+            : "Something went wrong. Please try again in a moment.",
         },
       ]);
     } else {
