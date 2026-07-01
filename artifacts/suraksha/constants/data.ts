@@ -10,6 +10,7 @@ import type { Palette } from "./colors";
 export type IconName =
   | "bell"
   | "alert"
+  | "alertCircle"
   | "mapPin"
   | "home"
   | "map"
@@ -52,7 +53,15 @@ export type IconName =
   | "flag"
   | "bookmark"
   | "bookmarkFilled"
-  | "mapPin2";
+  | "mapPin2"
+  | "truck"
+  | "zap"
+  | "activity"
+  | "mic"
+  | "video"
+  | "battery"
+  | "wifi"
+  | "wifiOff";
 
 export interface QuickAction {
   key: "safe" | "rights" | "addcontact" | "helpline" | "sakhi" | "fakecall" | "community" | "journey";
@@ -249,4 +258,39 @@ export const REPORT_CATEGORIES: { key: string; en: string; hi: string; icon: Ico
   { key: "stalking",   en: "Stalking",     hi: "पीछा करना",        icon: "user" },
   { key: "poorLighting", en: "Poor Lighting", hi: "खराब रोशनी",    icon: "sun" },
   { key: "other",      en: "Other",        hi: "अन्य",              icon: "info" },
+];
+
+export type IncidentTypeKey =
+  | "harassment"
+  | "accident"
+  | "medical"
+  | "unsafe_area"
+  | "suspicious_activity"
+  | "road_block"
+  | "fire"
+  | "flood"
+  | "animal_attack"
+  | "stalking"
+  | "other";
+
+export interface IncidentType {
+  key: IncidentTypeKey;
+  en: string;
+  hi: string;
+  icon: IconName;
+  color: (c: Palette) => string;
+}
+
+export const INCIDENT_TYPES: IncidentType[] = [
+  { key: "harassment",          en: "Harassment",           hi: "उत्पीड़न",          icon: "alert",       color: (c) => c.danger  },
+  { key: "accident",            en: "Accident",             hi: "दुर्घटना",           icon: "alertCircle", color: (c) => c.warning },
+  { key: "medical",             en: "Medical Emergency",    hi: "चिकित्सा आपात",      icon: "hospital",    color: (c) => c.danger  },
+  { key: "unsafe_area",         en: "Unsafe Area",          hi: "असुरक्षित क्षेत्र",   icon: "mapPin",      color: (c) => c.warning },
+  { key: "suspicious_activity", en: "Suspicious Activity",  hi: "संदिग्ध गतिविधि",   icon: "alert",       color: (c) => c.warning },
+  { key: "road_block",          en: "Road Block",           hi: "सड़क अवरोध",         icon: "truck",       color: (c) => c.textMuted },
+  { key: "fire",                en: "Fire",                 hi: "आग",                icon: "zap",         color: (c) => c.danger  },
+  { key: "flood",               en: "Flood",                hi: "बाढ़",               icon: "activity",    color: (c) => c.primary },
+  { key: "animal_attack",       en: "Animal Attack",        hi: "जानवर का हमला",      icon: "alert",       color: (c) => c.warning },
+  { key: "stalking",            en: "Stalking",             hi: "पीछा करना",          icon: "user",        color: (c) => c.warning },
+  { key: "other",               en: "Other",                hi: "अन्य",               icon: "info",        color: (c) => c.textMuted },
 ];

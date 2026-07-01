@@ -6,6 +6,7 @@ import type { IconName } from "@/constants/data";
 const MAP: Record<IconName, React.ComponentProps<typeof Feather>["name"]> = {
   bell: "bell",
   alert: "alert-triangle",
+  alertCircle: "alert-circle",
   mapPin: "map-pin",
   home: "home",
   map: "map",
@@ -49,6 +50,14 @@ const MAP: Record<IconName, React.ComponentProps<typeof Feather>["name"]> = {
   bookmark: "bookmark",
   bookmarkFilled: "bookmark",
   mapPin2: "map-pin",
+  truck: "truck",
+  zap: "zap",
+  activity: "activity",
+  mic: "mic",
+  video: "video",
+  battery: "battery",
+  wifi: "wifi",
+  wifiOff: "wifi-off",
 };
 
 interface Props {

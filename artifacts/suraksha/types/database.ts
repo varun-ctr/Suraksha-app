@@ -81,7 +81,14 @@ export type CommunityReportType =
   | "unsafe_area"
   | "harassment"
   | "stalking"
-  | "suspicious_activity";
+  | "suspicious_activity"
+  | "accident"
+  | "medical"
+  | "road_block"
+  | "fire"
+  | "flood"
+  | "animal_attack"
+  | "other";
 
 export type ModerationStatus = "pending" | "reviewed" | "removed";
 

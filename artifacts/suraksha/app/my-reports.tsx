@@ -27,10 +27,17 @@ interface TypeMeta {
 }
 
 const TYPE_META: Record<CommunityReportType, TypeMeta> = {
-  unsafe_area:         { labelKey: "community.unsafeArea",        icon: "mapPin", colorFn: (c) => c.danger  },
-  harassment:          { labelKey: "community.harassment",         icon: "alert",  colorFn: (c) => c.warning },
-  stalking:            { labelKey: "community.stalking",           icon: "user",   colorFn: (c) => c.police  },
-  suspicious_activity: { labelKey: "community.suspiciousActivity", icon: "flag",   colorFn: (c) => c.accent  },
+  unsafe_area:         { labelKey: "community.unsafeArea",        icon: "mapPin",      colorFn: (c) => c.danger  },
+  harassment:          { labelKey: "community.harassment",         icon: "alert",       colorFn: (c) => c.warning },
+  stalking:            { labelKey: "community.stalking",           icon: "user",        colorFn: (c) => c.police  },
+  suspicious_activity: { labelKey: "community.suspiciousActivity", icon: "flag",        colorFn: (c) => c.accent  },
+  accident:            { labelKey: "community.accident",           icon: "alertCircle", colorFn: (c) => c.warning },
+  medical:             { labelKey: "community.medical",            icon: "hospital",    colorFn: (c) => c.danger  },
+  road_block:          { labelKey: "community.roadBlock",          icon: "truck",       colorFn: (c) => c.textMuted },
+  fire:                { labelKey: "community.fire",               icon: "zap",         colorFn: (c) => c.danger  },
+  flood:               { labelKey: "community.flood",              icon: "activity",    colorFn: (c) => c.primary },
+  animal_attack:       { labelKey: "community.animalAttack",       icon: "alert",       colorFn: (c) => c.warning },
+  other:               { labelKey: "community.other",              icon: "info",        colorFn: (c) => c.textMuted },
 };
 
 interface StatusBadgeProps {

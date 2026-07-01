@@ -31,10 +31,48 @@ export interface AlertStatus {
 
 // ── Message builder ───────────────────────────────────────────────────────────
 
+export async function buildEmergencyMessageAsync(
+  userName: string,
+  coords: Coords | null,
+  shareUrl: string | null,
+  address: string | null,
+): Promise<string> {
+  const link = shareUrl ?? (coords ? locationLink(coords.lat, coords.lng) : null);
+  const now = new Date();
+  const date = now.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  const time = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+
+  const lines = [
+    "🚨 EMERGENCY ALERT",
+    "",
+    `${userName || "Someone"} may be in danger and needs immediate help!`,
+    `📅 ${date} at ${time}`,
+  ];
+
+  if (address) {
+    lines.push(`📍 Location: ${address}`);
+  } else if (coords) {
+    lines.push(`📍 Coordinates: ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`);
+  }
+
+  if (link) {
+    lines.push("", "🗺️ Live tracking:", link);
+  }
+
+  lines.push(
+    "",
+    "Please call them or go to their location right away.",
+    "— Sent via Suraksha Safety App",
+  );
+  return lines.join("\n");
+}
+
+/** Synchronous fallback (no battery, no async) — used when async is unavailable */
 export function buildEmergencyMessage(
   userName: string,
   coords: Coords | null,
   shareUrl: string | null,
+  address?: string | null,
 ): string {
   const link = shareUrl ?? (coords ? locationLink(coords.lat, coords.lng) : null);
   const time = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
@@ -43,11 +81,19 @@ export function buildEmergencyMessage(
     "🚨 EMERGENCY ALERT",
     "",
     `${userName || "Someone"} may be in danger and needs immediate help!`,
-    `Time: ${time}`,
+    `⏰ Time: ${time}`,
   ];
-  if (link) {
-    lines.push("", "📍 Live Location:", link);
+
+  if (address) {
+    lines.push(`📍 Location: ${address}`);
+  } else if (coords) {
+    lines.push(`📍 Coordinates: ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`);
   }
+
+  if (link) {
+    lines.push("", "🗺️ Live tracking:", link);
+  }
+
   lines.push(
     "",
     "Please call them or go to their location right away.",
@@ -63,10 +109,11 @@ export async function sendSosAlerts(
   coords: Coords | null,
   shareUrl: string | null,
   userName: string,
+  address?: string | null,
 ): Promise<AlertStatus[]> {
   if (contacts.length === 0) return [];
 
-  const message = buildEmergencyMessage(userName, coords, shareUrl);
+  const message = await buildEmergencyMessageAsync(userName, coords, shareUrl, address ?? null);
   const backendUrl = (process.env.EXPO_PUBLIC_BACKEND_URL ?? "").replace(/\/$/, "");
 
   // Initial statuses — all pending
@@ -121,7 +168,6 @@ export async function sendSosAlerts(
   // ── 2. Native SMS fallback (opens SMS app, pre-filled) ───────────
   if (!backendSent) {
     try {
-      // Multi-recipient SMS — Android supports comma-separated numbers in URL
       const phones = contacts.map((c) => c.phone).join(",");
       await sendSms(phones, message);
       statuses.forEach((s) => { s.sms = "opening"; });

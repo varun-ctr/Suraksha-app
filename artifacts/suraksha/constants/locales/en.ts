@@ -331,6 +331,43 @@ const en: Record<string, string> = {
 
   "weather.label": "Weather",
   "weather.loading": "Fetching weather…",
+
+  "community.accident":           "Accident",
+  "community.medical":            "Medical Emergency",
+  "community.roadBlock":          "Road Block",
+  "community.fire":               "Fire",
+  "community.flood":              "Flood",
+  "community.animalAttack":       "Animal Attack",
+  "community.other":              "Other",
+
+  "tab.incident": "Report",
+
+  "incident.title": "Report Incident",
+  "incident.sub": "Flag a safety concern in your area",
+  "incident.typeLabel": "Type of incident",
+  "incident.descLabel": "What happened?",
+  "incident.descPlaceholder": "Describe what you saw or experienced…",
+  "incident.addPhoto": "Add photo evidence",
+  "incident.photoAdded": "Photo added",
+  "incident.removePhoto": "Remove photo",
+  "incident.location": "Your location",
+  "incident.anonymous": "Submit anonymously",
+  "incident.anonymousSub": "Your name won't appear on this report",
+  "incident.submit": "Submit Report",
+  "incident.submitting": "Submitting…",
+  "incident.submitted": "Report submitted — thank you for keeping your community safe.",
+  "incident.loginRequired": "Sign in to submit incident reports.",
+  "incident.error": "Could not submit. Check your connection and try again.",
+  "incident.noLocation": "Location unavailable — enable GPS to attach location",
+  "incident.myReports": "My Reports",
+  "incident.newReport": "New Report",
+  "incident.empty": "No reports yet. Be the first to flag a safety concern.",
+  "incident.pending": "Under review",
+  "incident.reviewed": "Reviewed",
+  "incident.removed": "Removed",
+  "incident.note": "Reports are reviewed by moderators before appearing on the community map.",
+  "incident.weatherLabel": "Current weather",
+  "incident.timestamp": "Reported at",
 };
 
 export default en;

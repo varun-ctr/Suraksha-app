@@ -1,0 +1,284 @@
+Do NOT recreate or replace any existing working functionality.
+
+Keep all existing screens, components, APIs and business logic intact.
+
+Enhance only the following features.
+
+=========================
+1. Bottom Navigation
+=========================
+
+Modify the existing bottom navigation.
+
+Current screens must remain.
+
+Add:
+
+• Incident Reporting
+
+Place it next to the SOS button.
+
+Do not remove Home, Map or Profile.
+
+=========================
+2. Incident Reporting
+=========================
+
+Create a new Incident screen.
+
+Allow users to:
+
+• Select incident type
+
+Harassment
+Accident
+Medical Emergency
+Unsafe Area
+Suspicious Activity
+Road Block
+Fire
+Flood
+Animal Attack
+Other
+
+Support
+
+• Photo upload
+• Video upload
+• Voice recording
+• Description
+• GPS location
+• Current address
+• Timestamp
+• Weather
+• Anonymous reporting
+
+Save into Supabase.
+
+Allow users to view previous reports.
+
+=========================
+3. AI Safety Assistant
+=========================
+
+Improve the existing AI module.
+
+Capabilities
+
+• Safety advice
+
+• Women's safety
+
+• Child safety
+
+• Senior citizen safety
+
+• Nearby police
+
+• Nearby hospital
+
+• Nearby pharmacy
+
+• Safe route recommendation
+
+• Analyse uploaded images
+
+• Analyse uploaded voice recordings
+
+• Generate emergency message
+
+• Translate emergency messages
+
+• First Aid guidance
+
+• Travel safety tips
+
+• Emergency checklist
+
+Do not remove existing AI implementation.
+
+Extend it.
+
+=========================
+4. SOS Improvements
+=========================
+
+Keep existing SOS.
+
+Enhance it.
+
+When SOS is pressed
+
+Immediately
+
+Start background location.
+
+Automatically share live location with trusted contacts that the user has already configured and opted in for.
+
+Generate secure Guardian Tracking session.
+
+Continue updating location until SOS stops.
+
+Send
+
+Google Maps link
+
+Battery %
+
+Current address
+
+Speed
+
+Heading
+
+Timestamp
+
+Medical information (if enabled)
+
+Retry automatically if offline.
+
+Store SOS history.
+
+=========================
+5. Journey Mode
+=========================
+
+Enhance existing Start Journey.
+
+Settings
+
+Auto Share Journey
+
+If enabled
+
+Start Journey immediately shares live location with trusted contacts without asking again.
+
+Track
+
+ETA
+
+Battery
+
+Speed
+
+Journey progress
+
+Notify contacts
+
+Journey Started
+
+Journey Delayed
+
+Journey Completed
+
+=========================
+6. Guardian Dashboard
+=========================
+
+Generate secure tracking session.
+
+Trusted contacts receive secure link.
+
+Dashboard displays
+
+Live location
+
+Current address
+
+Battery
+
+ETA
+
+Journey route
+
+SOS status
+
+Medical information (optional)
+
+Guardian can
+
+Call user
+
+Navigate
+
+Share location
+
+=========================
+7. Smart Safety Monitoring
+=========================
+
+While SOS or Journey is active
+
+Detect
+
+Phone battery critical
+
+Unexpected route deviation
+
+No movement for long duration
+
+Network disconnected
+
+Phone switched off
+
+Notify guardians when appropriate.
+
+=========================
+8. Safety Score
+=========================
+
+Home Screen
+
+Show
+
+Current Area Safety Score
+
+Nearby incidents
+
+Nearby hospitals
+
+Nearby police
+
+Weather warning
+
+=========================
+9. Push Notifications
+=========================
+
+Firebase Cloud Messaging
+
+Journey Started
+
+Journey Completed
+
+SOS Activated
+
+SOS Cancelled
+
+Incident Updates
+
+Weather Alerts
+
+Guardian Alerts
+
+=========================
+10. Performance
+=========================
+
+Do not break existing code.
+
+Reuse current components.
+
+Maintain current UI theme.
+
+Only extend functionality.
+
+Keep Expo compatibility.
+
+Keep Firebase Authentication.
+
+Keep Supabase Database.
+
+Keep Google Maps integration.
+
+Generate production-quality code only.
