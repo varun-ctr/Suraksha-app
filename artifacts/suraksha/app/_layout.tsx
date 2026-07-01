@@ -22,8 +22,8 @@ import { SafetyProvider } from "@/context/SafetyContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { ToastProvider, useToast } from "@/context/ToastContext";
 import { registerForPushNotifications } from "@/lib/notifications";
-import { signInAnonymously } from "@/lib/auth";
-import { supabase } from "@/lib/supabaseClient";
+import { onFirebaseAuthStateChanged } from "@/lib/firebaseAuth";
+import { AuthProvider } from "@/context/AuthContext";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -61,27 +61,14 @@ function Gate() {
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session) {
-        setAuthed(true);
-        setAuthChecked(true);
-      } else {
-        // No session — sign in anonymously so every user gets a real user_id
-        // immediately, with no login screen friction.
-        await signInAnonymously();
-        // onAuthStateChange below will set authed=true when the session lands.
-        setAuthChecked(true);
+    const unsub = onFirebaseAuthStateChanged((user) => {
+      setAuthed(!!user);
+      setAuthChecked(true);
+      if (user && !user.isAnonymous) {
+        void registerForPushNotifications();
       }
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setAuthed(!!session);
-        if (event === "SIGNED_IN") {
-          void registerForPushNotifications();
-        }
-      },
-    );
-    return () => subscription.unsubscribe();
+    return unsub;
   }, []);
 
   // ── Notification listeners — native only (not available on web) ──
@@ -166,6 +153,7 @@ export default function RootLayout() {
         <GestureHandlerRootView style={{ flex: 1 }}>
           <KeyboardProvider>
             <ThemeProvider>
+              <AuthProvider>
               <LanguageProvider>
                 <AppProvider>
                   <SafetyProvider>
@@ -177,6 +165,7 @@ export default function RootLayout() {
                   </SafetyProvider>
                 </AppProvider>
               </LanguageProvider>
+              </AuthProvider>
             </ThemeProvider>
           </KeyboardProvider>
         </GestureHandlerRootView>

@@ -58,11 +58,10 @@ function SakhiFABButton({ onPress, onLongPress, accessibilityState }: TabBtnProp
 }
 
 const SIDE_TABS: { name: string; icon: IconName; key: string }[] = [
-  { name: "index",    icon: "home",  key: "tab.home"     },
-  { name: "map",      icon: "map",   key: "tab.map"      },
-  { name: "incident", icon: "flag",  key: "tab.incident" },
-  { name: "rights",   icon: "book",  key: "tab.rights"   },
-  { name: "profile",  icon: "user",  key: "tab.profile"  },
+  { name: "index",   icon: "home", key: "tab.home"    },
+  { name: "map",     icon: "map",  key: "tab.map"     },
+  { name: "rights",  icon: "book", key: "tab.rights"  },
+  { name: "profile", icon: "user", key: "tab.profile" },
 ];
 
 export default function TabLayout() {
@@ -133,11 +132,7 @@ export default function TabLayout() {
         name="incident"
         options={{
           title: t("tab.incident"),
-          tabBarIcon: ({ color, focused }) => (
-            <View style={{ alignItems: "center", justifyContent: "center" }}>
-              <Icon name="flag" size={focused ? 22 : 20} color={color} />
-            </View>
-          ),
+          tabBarButton: () => null,
         }}
       />
       <Tabs.Screen

@@ -64,7 +64,7 @@ export type IconName =
   | "wifiOff";
 
 export interface QuickAction {
-  key: "safe" | "rights" | "addcontact" | "helpline" | "sakhi" | "fakecall" | "community" | "journey";
+  key: "addcontact" | "safe" | "incident" | "fakecall" | "journey" | "nearby" | "saferoute" | "weather";
   en: string;
   hi: string;
   icon: IconName;
@@ -103,14 +103,14 @@ export interface Helpline {
 }
 
 export const QUICK_ACTIONS: QuickAction[] = [
-  { key: "addcontact", en: "Emergency Contacts", hi: "आपातकालीन संपर्क",  icon: "users",      color: (c) => c.success,      route: "/contacts" },
-  { key: "safe",       en: "Safety Map",          hi: "सुरक्षा नक्शा",      icon: "mapPin",     color: (c) => c.primary,      route: "/(tabs)/map" },
-  { key: "fakecall",   en: "Fake Call",            hi: "नकली कॉल",           icon: "phoneCall",  color: (c) => c.warning,      route: "/fakecall" },
-  { key: "journey",    en: "Journey Timer",        hi: "यात्रा टाइमर",       icon: "navigation", color: (c) => c.police,       route: "/(tabs)/index" },
-  { key: "community",  en: "Community Reports",    hi: "सामुदायिक रिपोर्ट",  icon: "flag",       color: (c) => c.accent,       route: "/community-report" },
-  { key: "rights",     en: "Know Your Rights",     hi: "अपने अधिकार जानें",  icon: "book",       color: (c) => c.police,       route: "/(tabs)/rights" },
-  { key: "sakhi",      en: "Sakhi AI",             hi: "सखी AI",              icon: "message",    color: (c) => c.primaryLight, route: "/(tabs)/sakhi" },
-  { key: "helpline",   en: "Helpline",             hi: "हेल्पलाइन",           icon: "phone",      color: (c) => c.accent,       route: "/helpline" },
+  { key: "addcontact", en: "Emergency Contacts", hi: "आपातकालीन संपर्क", icon: "users",      color: (c) => c.success,  route: "/contacts"        },
+  { key: "safe",       en: "Safety Map",          hi: "सुरक्षा नक्शा",     icon: "mapPin",     color: (c) => c.primary,  route: "/(tabs)/map"      },
+  { key: "incident",   en: "Report Incident",     hi: "घटना रिपोर्ट करें", icon: "flag",       color: (c) => c.danger,   route: "/(tabs)/incident" },
+  { key: "fakecall",   en: "Fake Call",            hi: "नकली कॉल",          icon: "phoneCall",  color: (c) => c.warning,  route: "/fakecall"        },
+  { key: "journey",    en: "Journey Timer",        hi: "यात्रा टाइमर",      icon: "navigation", color: (c) => c.police,   route: "/(tabs)"          },
+  { key: "nearby",     en: "Nearby Help",          hi: "पास में मदद",        icon: "shield",     color: (c) => c.primary,  route: "/(tabs)/map"      },
+  { key: "saferoute",  en: "Safe Route",           hi: "सुरक्षित मार्ग",     icon: "map",        color: (c) => c.success,  route: "/(tabs)/map"      },
+  { key: "weather",    en: "Weather Alerts",       hi: "मौसम अलर्ट",         icon: "sun",        color: (c) => c.warning,  route: "/(tabs)"          },
 ];
 
 export const RIGHTS: RightItem[] = [

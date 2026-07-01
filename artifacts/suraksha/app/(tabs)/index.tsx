@@ -12,6 +12,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -210,6 +211,7 @@ export default function HomeScreen() {
     useSafety();
   const { showToast } = useToast();
   const { point, address, status } = useLocation();
+  const { width: screenWidth } = useWindowDimensions();
   const [showLangPicker, setShowLangPicker] = React.useState(false);
   const [weather, setWeather] = useState<WeatherData | null>(null);
 
@@ -355,44 +357,60 @@ export default function HomeScreen() {
       </View>
 
       <View style={{ paddingHorizontal: 16 }}>
-        {/* ── Quick Actions — horizontal scroll ──────────── */}
+        {/* ── Quick Actions — 2-column grid ───────────────── */}
         <Text style={[styles.sectionTitle, { color: c.text }]}>Quick Actions</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 10, paddingRight: 4, paddingBottom: 4 }}
-          style={{ marginBottom: 22, marginHorizontal: -16, paddingHorizontal: 16 }}
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            gap: 10,
+            marginBottom: 22,
+          }}
         >
-          {QUICK_ACTIONS.map((qa) => (
-            <Pressable
-              key={qa.key}
-              onPress={() => {
-                if (qa.key === "journey") {
-                  startJourney();
-                  showToast(t("home.sharingLive"));
-                } else {
-                  router.push(qa.route as never);
-                }
-              }}
-              style={({ pressed }) => [
-                styles.qaCard,
-                { backgroundColor: c.card, borderColor: c.border, opacity: pressed ? 0.85 : 1 },
-              ]}
-            >
-              <View
-                style={[
-                  styles.qaIconWrap,
-                  { backgroundColor: withAlpha(qa.color(c), 0.12) },
+          {QUICK_ACTIONS.map((qa) => {
+            const cardWidth = Math.floor((screenWidth - 32 - 10) / 2);
+            return (
+              <Pressable
+                key={qa.key}
+                onPress={() => {
+                  if (qa.key === "journey") {
+                    startJourney();
+                    showToast(t("home.sharingLive"));
+                  } else if (qa.key === "weather") {
+                    showToast(
+                      weather
+                        ? `${weather.label} · ${weather.temp}°C`
+                        : lang === "hi" ? "मौसम डेटा उपलब्ध नहीं" : "No weather data yet",
+                    );
+                  } else {
+                    router.push(qa.route as never);
+                  }
+                }}
+                style={({ pressed }) => [
+                  styles.qaCard,
+                  {
+                    width: cardWidth,
+                    backgroundColor: c.card,
+                    borderColor: c.border,
+                    opacity: pressed ? 0.85 : 1,
+                  },
                 ]}
               >
-                <Icon name={qa.icon} size={20} color={qa.color(c)} />
-              </View>
-              <Text style={[styles.qaLabel, { color: c.text }]} numberOfLines={2}>
-                {pick(qa)}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+                <View
+                  style={[
+                    styles.qaIconWrap,
+                    { backgroundColor: withAlpha(qa.color(c), 0.12) },
+                  ]}
+                >
+                  <Icon name={qa.icon} size={20} color={qa.color(c)} />
+                </View>
+                <Text style={[styles.qaLabel, { color: c.text }]} numberOfLines={2}>
+                  {pick(qa)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
 
         {/* ── Today's Safety ─────────────────────────────── */}
         {suggestions.length > 0 && (
@@ -836,7 +854,6 @@ const styles = StyleSheet.create({
 
   // Quick action
   qaCard: {
-    width: 108,
     borderRadius: 16,
     borderWidth: 1,
     padding: 14,

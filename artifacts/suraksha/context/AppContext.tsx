@@ -17,6 +17,8 @@ import {
   upsertContactToDb,
 } from "@/lib/contactsSync";
 import { supabase } from "@/lib/supabaseClient";
+import { firebaseAuth } from "@/lib/firebase";
+import { onFirebaseAuthStateChanged } from "@/lib/firebaseAuth";
 import { normalizePhone } from "@/lib/validate";
 
 /** Sensitive data (PII) lives in the OS keystore; the rest in plain storage. */
@@ -175,29 +177,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
 
     // Sync immediately if already signed in
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) void doSync(session.user.id);
-    }).catch(() => {});
+    if (firebaseAuth.currentUser) {
+      void doSync(firebaseAuth.currentUser.uid);
+    }
 
-    // Re-sync on auth state changes (sign-in / sign-out)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_IN" && session?.user) {
-        void doSync(session.user.id);
-      }
+    // Re-sync on Firebase auth state changes
+    const unsub = onFirebaseAuthStateChanged((user) => {
+      if (user) void doSync(user.uid);
     });
 
-    return () => subscription.unsubscribe();
+    return unsub;
   }, [ready]);
 
   // ── Helpers ───────────────────────────────────────────────────────
 
   const getUserId = useCallback(async (): Promise<string | null> => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      return session?.user?.id ?? null;
-    } catch {
-      return null;
-    }
+    return firebaseAuth.currentUser?.uid ?? null;
   }, []);
 
   // ── Mutations ─────────────────────────────────────────────────────
