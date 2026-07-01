@@ -1,0 +1,338 @@
+PHASE 1 – PRODUCTION READINESS (DO NOT CHANGE EXISTING FEATURES)
+
+IMPORTANT
+
+Do NOT redesign the UI.
+
+Do NOT remove or replace any existing working feature.
+
+Do NOT regenerate screens that already exist.
+
+Keep the existing Home, Maps, SOS, Sakhi AI, Incident Reporting, Journey Mode, Weather, Rights, and Profile screens.
+
+Only improve production readiness.
+
+================================================
+
+1. FIREBASE AUTHENTICATION
+
+Complete Firebase Authentication.
+
+Implement and verify:
+
+• Email & Password Sign Up
+• Email Login
+• Phone OTP Login
+• Forgot Password
+• Email Verification
+• Auto Login
+• Session Restore
+• Logout
+
+Create or update user profile inside Supabase using Firebase UID.
+
+Never use Supabase Authentication.
+
+================================================
+
+2. APP STARTUP
+
+Create proper startup flow.
+
+Splash Screen
+
+↓
+
+Check Firebase Session
+
+↓
+
+If logged in
+
+Go Home
+
+Else
+
+Go Login
+
+================================================
+
+3. SESSION MANAGEMENT
+
+Automatically restore sessions.
+
+Handle expired sessions.
+
+Refresh authentication state.
+
+Redirect unauthenticated users.
+
+================================================
+
+4. PUSH NOTIFICATIONS
+
+Integrate Firebase Cloud Messaging.
+
+Register device token.
+
+Store token inside Supabase.
+
+Handle:
+
+• Foreground notifications
+• Background notifications
+• App closed notifications
+
+Prepare notification categories for:
+
+SOS
+
+Journey Started
+
+Journey Completed
+
+Incident Updates
+
+Weather Alerts
+
+Guardian Alerts
+
+================================================
+
+5. APP PERMISSIONS
+
+Implement production permission handling.
+
+Location
+
+Background Location
+
+Notifications
+
+Camera
+
+Microphone
+
+Photo Library
+
+Contacts
+
+Handle:
+
+Granted
+
+Denied
+
+Permanently Denied
+
+Open Settings when required.
+
+================================================
+
+6. ERROR HANDLING
+
+Create centralized error handling.
+
+Handle
+
+No Internet
+
+GPS Disabled
+
+Permission Denied
+
+Firebase Error
+
+Supabase Error
+
+API Timeout
+
+Retry Failed Requests
+
+Display friendly messages.
+
+Never crash.
+
+================================================
+
+7. LOADING STATES
+
+Implement loading UI everywhere.
+
+Skeleton Loaders
+
+Progress Indicators
+
+Button Loading
+
+Retry Buttons
+
+================================================
+
+8. OFFLINE SUPPORT
+
+Detect internet connection.
+
+Queue failed requests.
+
+Automatically retry when online.
+
+Cache:
+
+Profile
+
+Emergency Contacts
+
+Weather
+
+Recent Incidents
+
+================================================
+
+9. SECURITY
+
+Store sensitive data securely.
+
+Use Secure Storage.
+
+Never expose API Keys.
+
+Read everything from environment variables.
+
+Enable Firebase App Check integration hooks.
+
+Verify Supabase RLS compatibility.
+
+================================================
+
+10. LOGGING
+
+Create centralized logger.
+
+Development
+
+Verbose Logs
+
+Production
+
+Errors only.
+
+================================================
+
+11. ANALYTICS
+
+Integrate:
+
+Firebase Analytics
+
+Firebase Crashlytics
+
+Firebase Performance Monitoring
+
+Track:
+
+Login
+
+SOS Activated
+
+Journey Started
+
+Journey Completed
+
+Incident Submitted
+
+AI Opened
+
+Profile Updated
+
+================================================
+
+12. CODE QUALITY
+
+Refactor only if needed.
+
+No duplicate code.
+
+Strict TypeScript.
+
+Reusable hooks.
+
+Reusable services.
+
+Repository pattern.
+
+Keep folder structure clean.
+
+================================================
+
+13. BUILD CONFIGURATION
+
+Prepare project for:
+
+Android Release Build
+
+iOS Release Build
+
+Expo EAS Build
+
+Verify production environment variables.
+
+================================================
+
+14. TESTING
+
+Create production test checklist.
+
+Authentication
+
+SOS
+
+Journey
+
+Notifications
+
+Maps
+
+Permissions
+
+Offline Mode
+
+Weather
+
+Incident Reporting
+
+AI Assistant
+
+================================================
+
+15. DO NOT CHANGE
+
+Do NOT modify:
+
+Home UI
+
+Maps UI
+
+SOS UI
+
+Journey UI
+
+Incident Reporting UI
+
+Sakhi AI UI
+
+Weather UI
+
+Rights Screen
+
+Profile UI
+
+Bottom Navigation
+
+================================================
+
+GOAL
+
+The objective of Phase 1 is NOT to add new features.
+
+The objective is to make the current application stable, secure, tested, scalable, and ready for production deployment on Google Play Store and Apple App Store.

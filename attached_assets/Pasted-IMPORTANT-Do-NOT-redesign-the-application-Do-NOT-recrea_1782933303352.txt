@@ -1,0 +1,337 @@
+IMPORTANT
+
+Do NOT redesign the application.
+
+Do NOT recreate existing screens.
+
+Do NOT remove any existing working functionality.
+
+Keep the existing theme, colors, typography, animations and navigation.
+
+Only enhance the application.
+
+======================================================
+1. HOME SCREEN
+======================================================
+
+Improve the Home screen UX.
+
+Remove horizontal scrolling from Quick Actions.
+
+Show all Quick Actions on the Home screen in a responsive 2-column grid.
+
+No horizontal scrolling should be required.
+
+Quick Actions should include:
+
+• Emergency Contacts
+• Safety Map
+• Report Incident
+• Fake Call
+• Journey Timer
+• Nearby Help
+• Safe Route
+• Weather Alerts
+
+Cards should have equal size.
+
+Maintain Material 3 design.
+
+Responsive for Android and iPhone.
+
+======================================================
+2. INCIDENT REPORTING
+======================================================
+
+Remove "Report" from the Bottom Navigation.
+
+Keep the Incident Reporting feature.
+
+Access it from:
+
+• Home Screen Quick Action
+• AI Assistant recommendations (when relevant)
+
+Do NOT delete the Incident Reporting module.
+
+Do NOT recreate it.
+
+Reuse the existing screen.
+
+======================================================
+3. BOTTOM NAVIGATION
+======================================================
+
+Update Bottom Navigation.
+
+Remove:
+
+Report
+
+Final Bottom Navigation
+
+• Home
+• Maps
+• Sakhi
+• Rights
+• Profile
+
+Keep existing icons.
+
+Keep existing navigation.
+
+======================================================
+4. SAKHI AI
+======================================================
+
+Do NOT remove existing AI.
+
+Improve it.
+
+If AI cannot connect,
+
+NEVER show backend errors.
+
+Examples that should NEVER appear:
+
+500
+
+Unexpected Failure
+
+Supabase Error
+
+Firebase Error
+
+API Error
+
+JSON Response
+
+Stack Trace
+
+Internal Error
+
+Timeout Exception
+
+Instead
+
+Show friendly messages such as
+
+"I'm having trouble connecting right now."
+
+"You can still use the safety features below."
+
+Provide Quick Actions
+
+• Activate SOS
+
+• Start Journey
+
+• Report Incident
+
+• Open Safety Map
+
+• Emergency Contacts
+
+Add automatic retry.
+
+Retry after a few seconds.
+
+Show loading animation while retrying.
+
+======================================================
+5. GLOBAL ERROR HANDLING
+======================================================
+
+Create centralized error handling.
+
+Never expose backend errors anywhere.
+
+Convert all backend/API/database/network errors into user-friendly messages.
+
+Examples
+
+Network unavailable
+
+↓
+
+"No internet connection. We'll try again automatically."
+
+Server unavailable
+
+↓
+
+"Our services are temporarily unavailable. Please try again shortly."
+
+Permission denied
+
+↓
+
+"Please enable Location permission to continue."
+
+Timeout
+
+↓
+
+"Connection is taking longer than expected."
+
+GPS disabled
+
+↓
+
+"Please enable GPS."
+
+Never display
+
+JSON
+
+API response
+
+Error code
+
+Exception
+
+Database message
+
+Console stack
+
+Technical details
+
+======================================================
+6. LOADING STATES
+======================================================
+
+Implement loading UI everywhere.
+
+Buttons
+
+Skeleton Loaders
+
+Progress Indicators
+
+Retry Buttons
+
+Smooth animations.
+
+======================================================
+7. SOS
+======================================================
+
+Keep existing SOS.
+
+Improve it.
+
+Display
+
+GPS Status
+
+Trusted Contacts
+
+Emergency System Ready
+
+Location Accuracy
+
+When SOS activates
+
+Immediately begin background location.
+
+Share live location with trusted contacts who have already opted in.
+
+Continue until SOS ends.
+
+======================================================
+8. SAFETY SCORE
+======================================================
+
+Improve Safety Score card.
+
+Display
+
+Risk Level
+
+Nearest Police
+
+Nearest Hospital
+
+Weather
+
+Current Location
+
+Last Updated
+
+======================================================
+9. PERFORMANCE
+======================================================
+
+No crashes.
+
+Graceful error handling.
+
+Offline detection.
+
+Automatic retry.
+
+Request queue.
+
+Caching.
+
+======================================================
+10. CODE QUALITY
+======================================================
+
+Strict TypeScript.
+
+No duplicate code.
+
+Reusable components.
+
+Repository pattern.
+
+Service layer.
+
+Centralized constants.
+
+Centralized API layer.
+
+======================================================
+11. DO NOT MODIFY
+======================================================
+
+Do NOT modify
+
+Home layout
+
+Maps
+
+Weather
+
+Journey Mode
+
+SOS design
+
+Incident Reporting logic
+
+Sakhi business logic
+
+Rights
+
+Profile
+
+Supabase schema
+
+Firebase Authentication
+
+Google Maps integration
+
+Only improve UX, stability and production readiness.
+
+======================================================
+GOAL
+======================================================
+
+The application should feel polished, production-ready and user-friendly.
+
+Users should never see technical errors.
+
+All critical actions should be accessible within one tap from the Home screen.
+
+The app should be stable enough for Google Play Store and Apple App Store submission.
