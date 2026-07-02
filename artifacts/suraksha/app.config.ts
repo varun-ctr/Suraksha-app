@@ -27,6 +27,10 @@ const config: ExpoConfig = {
     config: {
       googleMapsApiKey: mapsKey,
     },
+    // NS*UsageDescription strings are supplied via the expo-location /
+    // expo-image-picker / expo-contacts plugin config below, which writes
+    // them into Info.plist at prebuild time — kept in one place so the
+    // wording can't drift between two config sites.
   },
   android: {
     package: "com.sakhisuraksha.app",
@@ -71,6 +75,30 @@ const config: ExpoConfig = {
         icon: "./assets/images/icon.png",
         color: "#7C3AED",
         sounds: [],
+      },
+    ],
+    [
+      "expo-location",
+      {
+        locationWhenInUsePermission:
+          "Suraksha uses your location to share it with your trusted contacts during an SOS alert, show nearby police stations, hospitals, and shelters on the map, and include it in your incident reports.",
+      },
+    ],
+    [
+      "expo-image-picker",
+      {
+        photosPermission:
+          "Suraksha lets you choose a photo from your library for your trusted-contact avatar, your profile picture, or an incident report.",
+        cameraPermission:
+          "Suraksha uses your camera to take a photo for your trusted-contact avatar or to attach to an incident report.",
+        microphonePermission: false,
+      },
+    ],
+    [
+      "expo-contacts",
+      {
+        contactsPermission:
+          "Suraksha uses your contacts so you can quickly pick trusted contacts to receive your SOS alerts.",
       },
     ],
   ],
