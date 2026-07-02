@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -7,18 +7,15 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
 import { BackHeader } from "@/components/Headers";
 import { Icon } from "@/components/Icon";
 import { withAlpha } from "@/constants/colors";
-import { useApp } from "@/context/AppContext";
 import { useI18n } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
-import { useToast } from "@/context/ToastContext";
-import { deleteAccount, getCurrentUser, signOut, signOutGlobal } from "@/lib/auth";
+import { getCurrentUser, signOut } from "@/lib/auth";
 import { getBackendUrl } from "@/lib/env";
 import { firebaseAuth } from "@/lib/firebase";
 import type { User } from "firebase/auth";
@@ -119,20 +116,12 @@ function SessionCard({ session, c }: { session: SessionInfo; c: ReturnType<typeo
 export default function SessionsScreen() {
   const { c } = useTheme();
   const { t } = useI18n();
-  const { showToast } = useToast();
-  const { resetAllData } = useApp();
   const router = useRouter();
 
   const [user, setUser] = useState<User | null>(null);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
-
-  // Delete-account modal state
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteStep, setDeleteStep] = useState<"warn" | "confirm">("warn");
-  const [confirmText, setConfirmText] = useState("");
-  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     void loadData();
@@ -169,46 +158,28 @@ export default function SessionsScreen() {
     }
   };
 
-  const handleSignOutAll = () => {
+  // Firebase has no server-side "revoke every device" call available here —
+  // this ends the session on this device only, same as Profile's Sign Out.
+  // The copy below says exactly that; it used to (incorrectly) claim it
+  // signed the user out everywhere.
+  const handleSignOut = () => {
     Alert.alert(
-      t("account.signOutAllConfirm"),
-      t("account.signOutAllBody"),
+      t("account.signOutConfirm"),
+      t("account.signOutBody"),
       [
         { text: t("common.cancel"), style: "cancel" },
         {
-          text: t("account.signOutAll"),
+          text: t("account.signOut"),
           style: "destructive",
           onPress: async () => {
             setSigningOut(true);
-            await signOutGlobal();
+            await signOut();
             setSigningOut(false);
             router.replace("/login" as never);
           },
         },
       ],
     );
-  };
-
-  const openDeleteModal = () => {
-    setDeleteStep("warn");
-    setConfirmText("");
-    setShowDeleteModal(true);
-  };
-
-  const handleConfirmDelete = async () => {
-    if (confirmText !== "DELETE") return;
-    setDeleting(true);
-    const { error } = await deleteAccount();
-    if (error) {
-      setDeleting(false);
-      showToast(error);
-      return;
-    }
-    await signOut();
-    await resetAllData();
-    setDeleting(false);
-    setShowDeleteModal(false);
-    router.replace("/login" as never);
   };
 
   const identifier = user?.email ?? user?.phoneNumber ?? "—";
@@ -239,9 +210,9 @@ export default function SessionsScreen() {
           sessions.map((s, i) => <SessionCard key={s.id ?? i} session={s} c={c} />)
         )}
 
-        {/* ── Sign out of all devices ──────────────────────────────────── */}
+        {/* ── Sign out ─────────────────────────────────────────────────── */}
         <Pressable
-          onPress={handleSignOutAll}
+          onPress={handleSignOut}
           disabled={signingOut}
           style={[
             styles.actionBtn,
@@ -255,19 +226,20 @@ export default function SessionsScreen() {
           )}
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text }}>
-              {t("account.signOutAll")}
+              {t("account.signOut")}
             </Text>
             <Text style={{ fontSize: 11.5, color: c.textMuted, marginTop: 1 }}>
-              Ends all sessions on every device
+              {t("account.signOutSub")}
             </Text>
           </View>
           <Icon name="chevronRight" size={16} color={c.textFaint} />
         </Pressable>
 
-        {/* ── Danger zone ──────────────────────────────────────────────── */}
+        {/* ── Danger zone — delete-account flow lives in Profile only,     */}
+        {/*    so this and Profile can never drift out of sync again.     */}
         <Text style={[styles.dangerLabel, { color: c.danger, marginTop: 22 }]}>Danger zone</Text>
         <Pressable
-          onPress={openDeleteModal}
+          onPress={() => router.push("/(tabs)/profile" as never)}
           style={[
             styles.actionBtn,
             {
@@ -282,112 +254,12 @@ export default function SessionsScreen() {
               {t("account.deleteAccount")}
             </Text>
             <Text style={{ fontSize: 11.5, color: c.textMuted, marginTop: 1 }}>
-              {t("account.deleteAccountSub")}
+              {t("account.deleteAccountFromProfile")}
             </Text>
           </View>
           <Icon name="chevronRight" size={16} color={c.textFaint} />
         </Pressable>
       </ScrollView>
-
-      {/* ── Delete Account Modal ────────────────────────────────────────── */}
-      {showDeleteModal && (
-        <Pressable
-          style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }]}
-          onPress={() => !deleting && setShowDeleteModal(false)}
-        >
-          <Pressable
-            style={[styles.modalSheet, { backgroundColor: c.card }]}
-            onPress={() => {}}
-          >
-            {deleteStep === "warn" ? (
-              <>
-                <View style={[styles.dangerIcon, { backgroundColor: withAlpha(c.danger, 0.12) }]}>
-                  <Icon name="alert" size={26} color={c.danger} />
-                </View>
-                <Text style={[styles.modalTitle, { color: c.text }]}>
-                  {t("account.deleteAccount")}
-                </Text>
-                <Text style={[styles.modalBody, { color: c.textMuted }]}>
-                  {t("account.deleteWarning")}
-                </Text>
-                <View style={{ flexDirection: "row", gap: 10, marginTop: 18 }}>
-                  <Pressable
-                    onPress={() => setShowDeleteModal(false)}
-                    style={[styles.modalBtn, { backgroundColor: c.cardAlt }]}
-                  >
-                    <Text style={{ color: c.text, fontFamily: "Inter_700Bold", fontSize: 13.5 }}>
-                      {t("common.cancel")}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setDeleteStep("confirm")}
-                    style={[styles.modalBtn, { backgroundColor: c.danger }]}
-                  >
-                    <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>
-                      Continue
-                    </Text>
-                  </Pressable>
-                </View>
-              </>
-            ) : (
-              <>
-                <Text style={[styles.modalTitle, { color: c.text }]}>
-                  {t("account.deleteAccount")}
-                </Text>
-                <Text style={[styles.modalBody, { color: c.textMuted }]}>
-                  {t("account.deleteTypePrompt")}
-                </Text>
-                <TextInput
-                  value={confirmText}
-                  onChangeText={setConfirmText}
-                  placeholder="DELETE"
-                  placeholderTextColor={c.textFaint}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  style={[
-                    styles.confirmInput,
-                    {
-                      backgroundColor: c.cardAlt,
-                      color: c.text,
-                      borderColor: confirmText === "DELETE" ? c.danger : c.border,
-                    },
-                  ]}
-                />
-                <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
-                  <Pressable
-                    onPress={() => { setDeleteStep("warn"); setConfirmText(""); }}
-                    disabled={deleting}
-                    style={[styles.modalBtn, { backgroundColor: c.cardAlt }]}
-                  >
-                    <Text style={{ color: c.text, fontFamily: "Inter_700Bold", fontSize: 13.5 }}>
-                      {t("common.cancel")}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={handleConfirmDelete}
-                    disabled={confirmText !== "DELETE" || deleting}
-                    style={[
-                      styles.modalBtn,
-                      {
-                        backgroundColor: c.danger,
-                        opacity: confirmText === "DELETE" && !deleting ? 1 : 0.45,
-                      },
-                    ]}
-                  >
-                    {deleting ? (
-                      <ActivityIndicator color="#fff" size="small" />
-                    ) : (
-                      <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>
-                        {t("account.deleteConfirmBtn")}
-                      </Text>
-                    )}
-                  </Pressable>
-                </View>
-              </>
-            )}
-          </Pressable>
-        </Pressable>
-      )}
     </View>
   );
 }
@@ -437,35 +309,5 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginBottom: 10,
-  },
-  modalSheet: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: 36,
-    alignItems: "center",
-  },
-  dangerIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 14,
-  },
-  modalTitle: { fontSize: 18, fontFamily: "Inter_700Bold", marginBottom: 8, textAlign: "center" },
-  modalBody: { fontSize: 13, lineHeight: 19, textAlign: "center", marginBottom: 4 },
-  modalBtn: { flex: 1, alignItems: "center", paddingVertical: 13, borderRadius: 12 },
-  confirmInput: {
-    width: "100%",
-    borderWidth: 1.5,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    fontFamily: "Inter_700Bold",
-    textAlign: "center",
-    letterSpacing: 2,
-    marginTop: 10,
   },
 });

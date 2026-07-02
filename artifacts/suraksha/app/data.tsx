@@ -73,7 +73,7 @@ export default function DataScreen() {
                   <Text style={{ color: c.text, fontFamily: "Inter_700Bold", fontSize: 13 }}>{t("common.cancel")}</Text>
                 </Pressable>
                 <Pressable onPress={onDelete} style={[styles.confirmBtn, { backgroundColor: c.danger }]}>
-                  <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13 }}>{t("data.confirmTitle")}</Text>
+                  <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13 }}>{t("data.confirmBtn")}</Text>
                 </Pressable>
               </View>
             </View>
