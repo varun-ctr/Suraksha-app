@@ -1,31 +1,14 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
-import {
-  initializeAuth,
-  getAuth,
-  type Auth,
-  type Persistence,
-} from "firebase/auth";
+import { initializeAuth, getAuth, type Auth } from "firebase/auth";
+// `getReactNativePersistence` ships in the React-Native build of firebase/auth
+// (@firebase/auth's "react-native" entry) but is intentionally absent from the
+// package's web type definitions, so it must be imported with a type override.
+// It persists the auth session in AsyncStorage so users stay signed in across
+// app restarts. The previous hand-rolled persistence object crashed with
+// "INTERNAL ASSERTION FAILED: Expected a class definition".
+// @ts-expect-error — RN-only export missing from firebase/auth web typings
+import { getReactNativePersistence } from "firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
-// ── AsyncStorage persistence (Firebase v12 — no getReactNativePersistence) ──
-const asyncStoragePersistence = {
-  type: "LOCAL",
-  async _isAvailable() { return true; },
-  async _set(key: string, value: unknown) {
-    try { await AsyncStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
-  },
-  async _get<T>(key: string): Promise<T | null> {
-    try {
-      const raw = await AsyncStorage.getItem(key);
-      return raw ? (JSON.parse(raw) as T) : null;
-    } catch { return null; }
-  },
-  async _remove(key: string) {
-    try { await AsyncStorage.removeItem(key); } catch { /* ignore */ }
-  },
-  _addListener() {},
-  _removeListener() {},
-} as unknown as Persistence;
 
 // ── Lazy singletons — populated by initFirebase() ─────────────────────────────
 let _firebaseApp: FirebaseApp | null = null;
@@ -47,9 +30,11 @@ export function initFirebase(config: {
   _firebaseApp = getApps().length === 0 ? initializeApp(config) : getApp();
   try {
     _firebaseAuth = initializeAuth(_firebaseApp, {
-      persistence: asyncStoragePersistence,
+      persistence: getReactNativePersistence(AsyncStorage),
     });
   } catch {
+    // Already initialized (fast refresh) or persistence unavailable — fall back
+    // to the default auth instance rather than crashing.
     _firebaseAuth = getAuth(_firebaseApp);
   }
 }
