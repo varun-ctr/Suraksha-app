@@ -14,6 +14,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { ConfigErrorScreen } from "@/components/ConfigErrorScreen";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider, useApp } from "@/context/AppContext";
 import { BookmarksProvider } from "@/context/BookmarksContext";
@@ -21,9 +22,12 @@ import { LanguageProvider, useI18n } from "@/context/LanguageContext";
 import { SafetyProvider } from "@/context/SafetyContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { ToastProvider, useToast } from "@/context/ToastContext";
-import { registerForPushNotifications } from "@/lib/notifications";
-import { onFirebaseAuthStateChanged } from "@/lib/firebaseAuth";
 import { AuthProvider } from "@/context/AuthContext";
+import { onFirebaseAuthStateChanged } from "@/lib/firebaseAuth";
+import { registerForPushNotifications } from "@/lib/notifications";
+import { validateConfig } from "@/lib/config";
+
+const APP_CONFIG = validateConfig();
 
 SplashScreen.preventAutoHideAsync();
 
@@ -144,6 +148,14 @@ export default function RootLayout() {
     Inter_600SemiBold,
     Inter_700Bold,
   });
+
+  if (!APP_CONFIG.ok) {
+    return (
+      <SafeAreaProvider>
+        <ConfigErrorScreen missing={APP_CONFIG.missing} />
+      </SafeAreaProvider>
+    );
+  }
 
   if (!fontsLoaded && !fontError) return null;
 

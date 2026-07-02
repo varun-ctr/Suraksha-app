@@ -26,155 +26,183 @@ import type {
   LiveSessionPublic,
 } from "../types/database";
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() ?? "";
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ?? "";
+// ── Single shared Supabase client ─────────────────────────────────────────────
+//
+// Uses EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY.
+// If the vars are not set the config validation in app/_layout.tsx will show
+// a startup error screen before any database call is made.  We must still
+// produce a valid client object at module-load time so Metro can evaluate
+// the module without crashing; createClient() throws on an empty string so
+// we fall back to a syntactically-valid placeholder.  The Gate ensures no
+// real call ever reaches Supabase when the config is incomplete.
 
-const isConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+const supabaseUrl =
+  process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() ||
+  "https://placeholder.supabase.co";
 
-export const supabase = isConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        storage: AsyncStorage,
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: false,
-      },
-    })
-  : (null as unknown as ReturnType<typeof createClient<never>>);
+const supabaseAnonKey =
+  process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ||
+  "placeholder-anon-key";
 
-// ------------------------------------------------------------------
-// Typed table helpers
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    storage: AsyncStorage,
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false,
+  },
+});
+
+// ── Typed table helpers ───────────────────────────────────────────────────────
 // Prefer these over writing raw `.from("table_name")` in screens.
-// All helpers guard against missing config — they return a rejected
-// promise instead of crashing when Supabase is not configured.
-// ------------------------------------------------------------------
-
-function notConfigured(): Promise<never> {
-  return Promise.reject(new Error("Supabase not configured — add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY"));
-}
+// Errors from Supabase are caught by callers; never expose raw exceptions to UI.
 
 export const db = {
   profiles: {
     select: () =>
-      isConfigured ? supabase.from("profiles").select<"*", ProfileRow>("*") : notConfigured(),
+      supabase.from("profiles").select<"*", ProfileRow>("*"),
 
     getById: (id: string) =>
-      isConfigured
-        ? supabase.from("profiles").select<"*", ProfileRow>("*").eq("id", id).single()
-        : notConfigured(),
+      supabase.from("profiles").select<"*", ProfileRow>("*").eq("id", id).single(),
 
     upsert: (row: ProfileInsert) =>
-      isConfigured ? supabase.from("profiles").upsert(row) : notConfigured(),
+      supabase.from("profiles").upsert(row),
 
     update: (id: string, patch: ProfileUpdate) =>
-      isConfigured ? supabase.from("profiles").update(patch).eq("id", id) : notConfigured(),
+      supabase.from("profiles").update(patch).eq("id", id),
   },
 
   sosEvents: {
     insert: (userId: string, row: SosEventInsert) =>
-      isConfigured
-        ? supabase.from("sos_events").insert({ ...row, user_id: userId }).select<"*", SosEventRow>("*").single()
-        : notConfigured(),
+      supabase
+        .from("sos_events")
+        .insert({ ...row, user_id: userId })
+        .select<"*", SosEventRow>("*")
+        .single(),
 
     resolve: (id: string, patch: SosEventUpdate) =>
-      isConfigured ? supabase.from("sos_events").update(patch).eq("id", id) : notConfigured(),
+      supabase.from("sos_events").update(patch).eq("id", id),
 
     listForUser: (userId: string) =>
-      isConfigured
-        ? supabase.from("sos_events").select<"*", SosEventRow>("*").eq("user_id", userId).order("triggered_at", { ascending: false })
-        : notConfigured(),
+      supabase
+        .from("sos_events")
+        .select<"*", SosEventRow>("*")
+        .eq("user_id", userId)
+        .order("triggered_at", { ascending: false }),
   },
 
   journeys: {
     insert: (userId: string, row: JourneyInsert) =>
-      isConfigured
-        ? supabase.from("journeys").insert({ ...row, user_id: userId }).select<"*", JourneyRow>("*").single()
-        : notConfigured(),
+      supabase
+        .from("journeys")
+        .insert({ ...row, user_id: userId })
+        .select<"*", JourneyRow>("*")
+        .single(),
 
     end: (id: string, patch: JourneyUpdate) =>
-      isConfigured ? supabase.from("journeys").update(patch).eq("id", id) : notConfigured(),
+      supabase.from("journeys").update(patch).eq("id", id),
 
     listForUser: (userId: string) =>
-      isConfigured
-        ? supabase.from("journeys").select<"*", JourneyRow>("*").eq("user_id", userId).order("started_at", { ascending: false })
-        : notConfigured(),
+      supabase
+        .from("journeys")
+        .select<"*", JourneyRow>("*")
+        .eq("user_id", userId)
+        .order("started_at", { ascending: false }),
   },
 
   communityReports: {
     insert: (userId: string, row: CommunityReportInsert) =>
-      isConfigured
-        ? supabase.from("community_reports").insert({ ...row, user_id: userId }).select<"*", CommunityReportRow>("*").single()
-        : notConfigured(),
+      supabase
+        .from("community_reports")
+        .insert({ ...row, user_id: userId })
+        .select<"*", CommunityReportRow>("*")
+        .single(),
 
     update: (id: string, patch: CommunityReportUpdate) =>
-      isConfigured ? supabase.from("community_reports").update(patch).eq("id", id) : notConfigured(),
+      supabase.from("community_reports").update(patch).eq("id", id),
 
     delete: (id: string) =>
-      isConfigured ? supabase.from("community_reports").delete().eq("id", id) : notConfigured(),
+      supabase.from("community_reports").delete().eq("id", id),
 
     listAll: () =>
-      isConfigured
-        ? supabase.from("community_reports").select<"*", CommunityReportRow>("*").eq("moderation_status", "pending").order("created_at", { ascending: false })
-        : notConfigured(),
+      supabase
+        .from("community_reports")
+        .select<"*", CommunityReportRow>("*")
+        .eq("moderation_status", "pending")
+        .order("created_at", { ascending: false }),
 
     listForUser: (userId: string) =>
-      isConfigured
-        ? supabase.from("community_reports").select<"*", CommunityReportRow>("*").eq("user_id", userId).order("created_at", { ascending: false })
-        : notConfigured(),
+      supabase
+        .from("community_reports")
+        .select<"*", CommunityReportRow>("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false }),
   },
 
   subscriptions: {
     getForUser: (userId: string) =>
-      isConfigured
-        ? supabase.from("subscriptions").select<"*", SubscriptionRow>("*").eq("user_id", userId).single()
-        : notConfigured(),
+      supabase
+        .from("subscriptions")
+        .select<"*", SubscriptionRow>("*")
+        .eq("user_id", userId)
+        .single(),
 
     upsert: (userId: string, patch: SubscriptionInsert) =>
-      isConfigured
-        ? supabase.from("subscriptions").upsert({ user_id: userId, ...patch }, { onConflict: "user_id" })
-        : notConfigured(),
+      supabase
+        .from("subscriptions")
+        .upsert({ user_id: userId, ...patch }, { onConflict: "user_id" }),
 
     update: (userId: string, patch: SubscriptionUpdate) =>
-      isConfigured ? supabase.from("subscriptions").update(patch).eq("user_id", userId) : notConfigured(),
+      supabase.from("subscriptions").update(patch).eq("user_id", userId),
   },
 
   notificationTokens: {
     upsert: (userId: string, row: NotificationTokenInsert) =>
-      isConfigured
-        ? supabase.from("notification_tokens").upsert({ user_id: userId, ...row }, { onConflict: "user_id, token" })
-        : notConfigured(),
+      supabase
+        .from("notification_tokens")
+        .upsert(
+          { user_id: userId, ...row },
+          { onConflict: "user_id, token" },
+        ),
 
     deleteForUser: (userId: string) =>
-      isConfigured ? supabase.from("notification_tokens").delete().eq("user_id", userId) : notConfigured(),
+      supabase.from("notification_tokens").delete().eq("user_id", userId),
 
     listForUser: (userId: string) =>
-      isConfigured
-        ? supabase.from("notification_tokens").select<"*", NotificationTokenRow>("*").eq("user_id", userId)
-        : notConfigured(),
+      supabase
+        .from("notification_tokens")
+        .select<"*", NotificationTokenRow>("*")
+        .eq("user_id", userId),
   },
 
   liveSessions: {
     insert: (userId: string, row: LiveSessionInsert) =>
-      isConfigured
-        ? supabase.from("live_sessions").insert({ ...row, user_id: userId }).select<"*", LiveSessionRow>("*").single()
-        : notConfigured(),
+      supabase
+        .from("live_sessions")
+        .insert({ ...row, user_id: userId })
+        .select<"*", LiveSessionRow>("*")
+        .single(),
 
     update: (shareId: string, patch: LiveSessionUpdate) =>
-      isConfigured ? supabase.from("live_sessions").update(patch).eq("share_id", shareId) : notConfigured(),
+      supabase.from("live_sessions").update(patch).eq("share_id", shareId),
 
     end: (shareId: string) =>
-      isConfigured
-        ? supabase.from("live_sessions").update({ is_active: false }).eq("share_id", shareId)
-        : notConfigured(),
+      supabase
+        .from("live_sessions")
+        .update({ is_active: false })
+        .eq("share_id", shareId),
 
     getByShareId: (shareId: string) =>
-      isConfigured
-        ? supabase.from("live_sessions").select<"*", LiveSessionRow>("*").eq("share_id", shareId).single()
-        : notConfigured(),
+      supabase
+        .from("live_sessions")
+        .select<"*", LiveSessionRow>("*")
+        .eq("share_id", shareId)
+        .single(),
 
     getPublicByShareId: (shareId: string) =>
-      isConfigured
-        ? supabase.rpc("get_live_session", { p_share_id: shareId }).returns<LiveSessionPublic[]>().single()
-        : notConfigured(),
+      supabase
+        .rpc("get_live_session", { p_share_id: shareId })
+        .returns<LiveSessionPublic[]>()
+        .single(),
   },
 };

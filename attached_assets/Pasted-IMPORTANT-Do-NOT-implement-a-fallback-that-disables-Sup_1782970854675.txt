@@ -1,0 +1,215 @@
+IMPORTANT
+
+Do NOT implement a fallback that disables Supabase.
+
+Do NOT allow the app to continue with a non-functional database.
+
+This is a production safety application. All backend services must initialize correctly.
+
+==================================================
+1. FIX SUPABASE INITIALIZATION
+==================================================
+
+Review the entire codebase and locate every Supabase client initialization.
+
+Ensure only ONE shared Supabase client exists.
+
+The client must read:
+
+EXPO_PUBLIC_SUPABASE_URL
+
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+
+Do NOT use:
+
+SUPABASE_URL
+
+SUPABASE_ANON_KEY
+
+hardcoded values
+
+empty strings
+
+undefined values
+
+multiple createClient() instances
+
+==================================================
+2. ENVIRONMENT VALIDATION
+==================================================
+
+Create a centralized config validation module.
+
+On app startup verify:
+
+EXPO_PUBLIC_SUPABASE_URL
+
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+
+EXPO_PUBLIC_FIREBASE_API_KEY
+
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN
+
+EXPO_PUBLIC_FIREBASE_PROJECT_ID
+
+EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET
+
+EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+
+EXPO_PUBLIC_FIREBASE_APP_ID
+
+If any required variable is missing:
+
+Do NOT crash.
+
+Do NOT initialize Firebase or Supabase.
+
+Show a professional startup error screen:
+
+"Configuration Error
+
+Some required application services are not configured.
+
+Please contact the administrator."
+
+In development mode also log exactly which environment variable is missing.
+
+==================================================
+3. REMOVE TEMPORARY WORKAROUNDS
+==================================================
+
+Remove any code that:
+
+returns fake clients
+
+returns null clients
+
+skips createClient()
+
+ignores initialization errors
+
+pretends the database is working
+
+All database operations must use the real shared client.
+
+==================================================
+4. DATABASE ERROR HANDLING
+==================================================
+
+Wrap every database operation with proper error handling.
+
+Never expose:
+
+JSON
+
+Stack traces
+
+Supabase exceptions
+
+Technical errors
+
+Instead show user-friendly messages.
+
+Examples:
+
+Unable to save report.
+
+Please try again.
+
+Unable to load trusted contacts.
+
+Pull down to refresh.
+
+Connection lost.
+
+Retrying...
+
+==================================================
+5. VERIFY DATABASE FEATURES
+==================================================
+
+Confirm these features still work:
+
+Trusted Contacts
+
+Incident Reporting
+
+My Reports
+
+Journey Mode
+
+SOS logging
+
+Profile
+
+Community Reports
+
+User Preferences
+
+All reads and writes must use the shared Supabase client.
+
+==================================================
+6. FIREBASE AUTH
+==================================================
+
+Do not modify existing Firebase Authentication.
+
+Verify:
+
+Email Login
+
+Phone OTP Login
+
+Session persistence
+
+Logout
+
+Token refresh
+
+Continue using Firebase Auth while Supabase is used only for data storage.
+
+==================================================
+7. FAB POSITION
+==================================================
+
+Keep the existing FAB improvements.
+
+Center the Sakhi FAB.
+
+Lift it above the tab bar.
+
+Maintain proper safe-area spacing.
+
+Keep equal spacing between all navigation items.
+
+==================================================
+8. FINAL VALIDATION
+==================================================
+
+Verify there is only one Supabase client.
+
+No duplicate Firebase initialization.
+
+No duplicate environment loading.
+
+No runtime warnings.
+
+No crashes.
+
+No console errors.
+
+No hidden backend failures.
+
+No placeholder implementations.
+
+==================================================
+GOAL
+==================================================
+
+The application must be production-ready.
+
+All backend services should initialize correctly.
+
+The app must never silently disable the database.
+
+Users should always receive clear, friendly error messages if a backend service is unavailable.
