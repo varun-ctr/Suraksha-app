@@ -89,6 +89,17 @@ const hi: Record<string, string> = {
   "sos.gettingLocation": "आपकी लोकेशन ले रहे हैं…",
   "sos.liveTrackingOn": "लाइव ट्रैकिंग चालू है",
 
+  // विश्वसनीय संपर्कों को भेजा जाने वाला आपातकालीन संदेश (SMS / WhatsApp)
+  "sos.msg.title": "🚨 आपातकालीन अलर्ट",
+  "sos.msg.someone": "कोई व्यक्ति",
+  "sos.msg.danger": "{name} खतरे में हो सकती हैं और उन्हें तुरंत मदद की ज़रूरत है!",
+  "sos.msg.datetime": "📅 {date} को {time} बजे",
+  "sos.msg.location": "📍 स्थान: {address}",
+  "sos.msg.coords": "📍 निर्देशांक: {coords}",
+  "sos.msg.tracking": "🗺️ लाइव ट्रैकिंग:",
+  "sos.msg.cta": "कृपया तुरंत उन्हें कॉल करें या उनकी लोकेशन पर पहुँचें।",
+  "sos.msg.signature": "— सुरक्षा सेफ्टी ऐप द्वारा भेजा गया",
+
   "map.title": "सुरक्षा नक्शा",
   "map.sub": "अपने पास सहायता खोजें",
   "map.note": "पास में इन स्थानों को देखने के लिए किसी श्रेणी पर टैप करें।",

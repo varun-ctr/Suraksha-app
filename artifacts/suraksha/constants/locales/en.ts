@@ -89,6 +89,17 @@ const en: Record<string, string> = {
   "sos.gettingLocation": "Getting your location…",
   "sos.liveTrackingOn": "Live tracking is on",
 
+  // Emergency message sent to trusted contacts (SMS / WhatsApp)
+  "sos.msg.title": "🚨 EMERGENCY ALERT",
+  "sos.msg.someone": "Someone",
+  "sos.msg.danger": "{name} may be in danger and needs immediate help!",
+  "sos.msg.datetime": "📅 {date} at {time}",
+  "sos.msg.location": "📍 Location: {address}",
+  "sos.msg.coords": "📍 Coordinates: {coords}",
+  "sos.msg.tracking": "🗺️ Live tracking:",
+  "sos.msg.cta": "Please call them or go to their location right away.",
+  "sos.msg.signature": "— Sent via Suraksha Safety App",
+
   "map.title": "Safety Map",
   "map.sub": "Find help near you",
   "map.note": "Tap a category to view these places near you.",

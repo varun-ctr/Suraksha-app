@@ -23,8 +23,9 @@ import { useTheme } from "@/context/ThemeContext";
 import { fmtClock } from "@/lib/format";
 import { formatCoords } from "@/lib/location";
 import { callNumber, locationLink, openWhatsApp, sendSms, shareLiveLocation } from "@/lib/native";
+import { buildEmergencyMessage } from "@/lib/emergencyMessage";
 import type { AlertStatus } from "@/lib/sosAlert";
-import { buildEmergencyMessage, sendSosAlerts } from "@/lib/sosAlert";
+import { sendSosAlerts } from "@/lib/sosAlert";
 
 interface Props {
   sos: SosState;
@@ -96,7 +97,7 @@ export function SosBottomSheet({ sos, cancelSOS }: Props) {
     if (sos.phase === "active" && !alertSentRef.current && contacts.length > 0) {
       alertSentRef.current = true;
       setAlertSending(true);
-      sendSosAlerts(contacts, sos.coords, sos.shareUrl, profile.name)
+      sendSosAlerts(t, contacts, sos.coords, sos.shareUrl, profile.name)
         .then((statuses) => {
           setAlertStatuses(statuses);
           setAlertSending(false);
@@ -110,10 +111,10 @@ export function SosBottomSheet({ sos, cancelSOS }: Props) {
       setAlertStatuses([]);
       setAlertSending(false);
     }
-  }, [sos.phase, contacts, sos.coords, sos.shareUrl, profile.name]);
+  }, [sos.phase, contacts, sos.coords, sos.shareUrl, profile.name, t]);
 
   const link        = sos.shareUrl ?? (sos.coords ? locationLink(sos.coords.lat, sos.coords.lng) : null);
-  const messageBody = buildEmergencyMessage(profile.name, sos.coords, sos.shareUrl);
+  const messageBody = buildEmergencyMessage(t, profile.name, sos.coords, sos.shareUrl);
 
   const goAddContacts = () => { cancelSOS(); router.push("/contacts"); };
 

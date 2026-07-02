@@ -1,6 +1,7 @@
 import * as Linking from "expo-linking";
 import { Platform, Share } from "react-native";
 
+import { coordLink } from "@/lib/emergencyMessage";
 import { toWhatsAppNumber } from "@/lib/validate";
 
 /** Sanitises a phone number for use in a `tel:` URL. */
@@ -26,9 +27,7 @@ export function mapsUrl(lat: number, lng: number, label?: string): string {
 }
 
 /** A plain shareable link to a coordinate that opens in any maps app. */
-export function locationLink(lat: number, lng: number): string {
-  return `https://maps.google.com/?q=${lat},${lng}`;
-}
+export const locationLink = coordLink;
 
 /** Opens the best maps URL. On web, opens in a new browser tab. */
 async function openMapsUrl(url: string): Promise<void> {

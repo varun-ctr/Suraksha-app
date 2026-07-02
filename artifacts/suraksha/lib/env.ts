@@ -8,7 +8,12 @@ export function optionalPublicEnv(name: string): string | undefined {
   return value || undefined;
 }
 
+/**
+ * The configured backend base URL, or "" when unset. Callers must treat an
+ * empty string as "no backend" and skip the request — returning a placeholder
+ * like "https://example.com" would fire real requests at a bogus host.
+ */
 export function getBackendUrl(): string {
-  const backendUrl = optionalPublicEnv("EXPO_PUBLIC_BACKEND_URL") ?? "https://example.com";
-  return backendUrl.replace(/\/+$/, "");
+  const backendUrl = optionalPublicEnv("EXPO_PUBLIC_BACKEND_URL");
+  return backendUrl ? backendUrl.replace(/\/+$/, "") : "";
 }
