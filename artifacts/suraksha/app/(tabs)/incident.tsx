@@ -1,7 +1,7 @@
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -26,7 +26,7 @@ import { useLocation } from "@/hooks/useLocation";
 import { timeAgo } from "@/lib/format";
 import { reverseGeocode } from "@/lib/location";
 import { firebaseAuth } from "@/lib/firebase";
-import { db } from "@/lib/supabaseClient";
+import { db, supabase } from "@/lib/supabaseClient";
 import type { CommunityReportRow } from "@/types/database";
 import { fetchWeather, type WeatherData } from "@/lib/weather";
 
@@ -104,8 +104,11 @@ export default function IncidentScreen() {
   const { showToast } = useToast();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { tab: initialTab } = useLocalSearchParams<{ tab?: string }>();
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>("new");
+  const [activeTab, setActiveTab] = useState<ActiveTab>(
+    initialTab === "mine" ? "mine" : "new",
+  );
 
   // Form state
   const [incidentType, setIncidentType] = useState<IncidentTypeKey>("harassment");
@@ -197,13 +200,31 @@ export default function IncidentScreen() {
         ? `[Anonymous] ${description.trim()}`
         : description.trim();
 
+      let photoUrl: string | undefined;
+      if (photoUri) {
+        try {
+          const ext = (photoUri.split(".").pop() ?? "jpg").toLowerCase().replace(/[^a-z]/g, "j");
+          const path = `${user.uid}/${Date.now()}.${ext}`;
+          const response = await fetch(photoUri);
+          const blob = await response.blob();
+          const { error: uploadErr } = await supabase.storage
+            .from("community-reports")
+            .upload(path, blob, { upsert: false, contentType: `image/${ext}` });
+          if (!uploadErr) {
+            photoUrl = supabase.storage.from("community-reports").getPublicUrl(path).data.publicUrl;
+          }
+        } catch {
+          // Photo upload is non-critical — submit the report without it.
+        }
+      }
+
       const { error } = await db.communityReports.insert(user.uid, {
         type: incidentType as CommunityReportRow["type"],
         lat: point.lat,
         lng: point.lng,
         address: address ?? null,
         description: descText || null,
-        photo_url: null,
+        photo_url: photoUrl ?? null,
       });
 
       if (error) throw error;

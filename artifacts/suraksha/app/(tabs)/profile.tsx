@@ -481,7 +481,7 @@ export default function ProfileScreen() {
         <Card style={{ marginBottom: 16, paddingVertical: 6 }}>
           <Row icon="helpCircle" color={c.success} label={t("profile.support")}   onPress={() => Linking.openURL("mailto:support@suraksha.in")} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row icon="flag"       color={c.accent}  label={t("profile.myReports")} onPress={() => router.push("/my-reports" as never)} />
+          <Row icon="flag"       color={c.accent}  label={t("profile.myReports")} onPress={() => router.push({ pathname: "/(tabs)/incident", params: { tab: "mine" } } as never)} />
         </Card>
 
         {/* ── About ── */}

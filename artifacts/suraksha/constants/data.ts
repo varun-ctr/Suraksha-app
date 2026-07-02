@@ -252,14 +252,6 @@ export const HELPLINES: Helpline[] = [
   { name: "AASRA — Crisis Line", hi: "आसरा — संकट रेखा", number: "9820466726", desc: "Emotional support & suicide-prevention helpline", descHi: "भावनात्मक सहायता व आत्महत्या रोकथाम हेल्पलाइन", color: (c) => c.success },
 ];
 
-export const REPORT_CATEGORIES: { key: string; en: string; hi: string; icon: IconName }[] = [
-  { key: "harassment", en: "Harassment",   hi: "उत्पीड़न",         icon: "alert" },
-  { key: "unsafe",     en: "Unsafe Area",  hi: "असुरक्षित क्षेत्र", icon: "mapPin" },
-  { key: "stalking",   en: "Stalking",     hi: "पीछा करना",        icon: "user" },
-  { key: "poorLighting", en: "Poor Lighting", hi: "खराब रोशनी",    icon: "sun" },
-  { key: "other",      en: "Other",        hi: "अन्य",              icon: "info" },
-];
-
 export type IncidentTypeKey =
   | "harassment"
   | "accident"

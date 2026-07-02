@@ -36,15 +36,6 @@ export interface Contact {
   avatarUrl?: string;
 }
 
-export interface ReportItem {
-  id: string;
-  category: string;
-  description: string;
-  photoUri?: string;
-  location?: string;
-  createdAt: number;
-}
-
 export interface Profile {
   name: string;
   phone: string;
@@ -60,7 +51,6 @@ interface Settings {
 
 interface PersistShape {
   contacts: Contact[];
-  reports: ReportItem[];
   profile: Profile;
   settings: Settings;
   onboarded: boolean;
@@ -68,7 +58,6 @@ interface PersistShape {
 
 const DEFAULTS: PersistShape = {
   contacts: [],
-  reports: [],
   profile: { name: "", phone: "", email: "", premium: false },
   settings: { notifications: true, bgLocation: false },
   onboarded: false,
@@ -89,8 +78,6 @@ interface AppContextValue extends PersistShape {
   addContacts: (items: { name: string; phone: string }[]) => number;
   editContact: (id: string, patch: Partial<Pick<Contact, "name" | "phone" | "avatarUrl">>) => AddContactResult;
   deleteContact: (id: string) => void;
-  addReport: (r: Omit<ReportItem, "id" | "createdAt">) => void;
-  deleteReport: (id: string) => void;
   setProfile: (p: Partial<Profile>) => void;
   setSettings: (s: Partial<Settings>) => void;
   completeOnboarding: () => void;
@@ -107,7 +94,6 @@ function persist(next: PersistShape) {
   AsyncStorage.setItem(
     PLAIN_KEY,
     JSON.stringify({
-      reports: next.reports,
       settings: next.settings,
       onboarded: next.onboarded,
     }),
@@ -133,13 +119,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ? (JSON.parse(secureRaw) as Partial<Pick<PersistShape, "contacts" | "profile">>)
           : {};
         const plain = plainRaw
-          ? (JSON.parse(plainRaw) as Partial<Pick<PersistShape, "reports" | "settings" | "onboarded">>)
+          ? (JSON.parse(plainRaw) as Partial<Pick<PersistShape, "settings" | "onboarded">>)
           : {};
         setState((prev) => ({
           ...prev,
           contacts: secure.contacts ?? prev.contacts,
           profile: { ...prev.profile, ...secure.profile },
-          reports: plain.reports ?? prev.reports,
           settings: { ...prev.settings, ...plain.settings },
           onboarded: plain.onboarded ?? prev.onboarded,
         }));
@@ -313,25 +298,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).catch(() => {});
   }, [getUserId]);
 
-  const addReport = useCallback((r: Omit<ReportItem, "id" | "createdAt">) => {
-    setState((prev) => {
-      const next = {
-        ...prev,
-        reports: [{ ...r, id: uid(), createdAt: Date.now() }, ...prev.reports],
-      };
-      persist(next);
-      return next;
-    });
-  }, []);
-
-  const deleteReport = useCallback((id: string) => {
-    setState((prev) => {
-      const next = { ...prev, reports: prev.reports.filter((r) => r.id !== id) };
-      persist(next);
-      return next;
-    });
-  }, []);
-
   const setProfile = useCallback((p: Partial<Profile>) => {
     setState((prev) => {
       const next = { ...prev, profile: { ...prev.profile, ...p } };
@@ -380,8 +346,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addContacts,
       editContact,
       deleteContact,
-      addReport,
-      deleteReport,
       setProfile,
       setSettings,
       completeOnboarding,
@@ -394,8 +358,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addContacts,
       editContact,
       deleteContact,
-      addReport,
-      deleteReport,
       setProfile,
       setSettings,
       completeOnboarding,
