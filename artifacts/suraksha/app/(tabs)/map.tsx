@@ -1,3 +1,4 @@
+import Constants from "expo-constants";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -9,6 +10,11 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+// react-native-maps' native views are NOT bundled in Expo Go — rendering the
+// native map there crashes. Detect Expo Go and fall back to the external-maps
+// list (same as web). The embedded map works in a development/production build.
+const IS_EXPO_GO = Constants.executionEnvironment === "storeClient";
 
 import { NativeMap } from "@/components/NativeMap";
 import { Icon } from "@/components/Icon";
@@ -79,10 +85,12 @@ export default function MapScreen() {
   const [noResults, setNoResults] = useState(false);
 
   const coords = point ? { lat: point.lat, lng: point.lng } : null;
+  // Web and Expo Go both use the external-maps fallback instead of the embedded map.
+  const useExternalMaps = Platform.OS === "web" || IS_EXPO_GO;
 
   const handleCategoryTap = async (cat: CategoryDef) => {
     if (!coords) {
-      if (Platform.OS === "web") {
+      if (useExternalMaps) {
         void searchNearby(cat.query, null);
         return;
       }
@@ -110,10 +118,10 @@ export default function MapScreen() {
   };
 
   const activeCatDef = CATEGORIES.find((cat) => cat.key === activeCategory);
-  const noteKey = Platform.OS === "web" ? "map.noteWeb" : "map.noteNative";
+  const noteKey = useExternalMaps ? "map.noteWeb" : "map.noteNative";
 
-  // ── Web: scrollable category list that opens the maps app ──────────────────
-  if (Platform.OS === "web") {
+  // ── Web + Expo Go: scrollable category list that opens the maps app ────────
+  if (useExternalMaps) {
     return (
       <ScrollView
         style={{ flex: 1, backgroundColor: c.bg }}

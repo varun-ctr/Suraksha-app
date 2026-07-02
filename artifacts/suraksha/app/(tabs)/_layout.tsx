@@ -1,6 +1,7 @@
 import { Tabs } from "expo-router";
 import React, { useRef } from "react";
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "@/components/Icon";
 import { SakhiIcon } from "@/components/SakhiIcon";
@@ -67,7 +68,13 @@ const SIDE_TABS: { name: string; icon: IconName; key: string }[] = [
 export default function TabLayout() {
   const { c } = useTheme();
   const { t } = useI18n();
+  const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === "web";
+
+  // Base bar height plus the device's bottom safe-area inset (home indicator on
+  // notched iPhones). A fixed height ignored the inset, leaving an uneven gap
+  // and misaligned tab items.
+  const bottomInset = isWeb ? 0 : insets.bottom;
 
   return (
     <Tabs
@@ -85,11 +92,12 @@ export default function TabLayout() {
           borderTopWidth: StyleSheet.hairlineWidth,
           borderTopColor: c.border,
           elevation: 0,
-          height: isWeb ? 64 : 70,
-          paddingBottom: isWeb ? 4 : 10,
+          height: (isWeb ? 60 : 58) + bottomInset,
+          paddingBottom: isWeb ? 4 : Math.max(bottomInset, 8),
+          paddingTop: 6,
         },
         tabBarItemStyle: {
-          paddingTop: 6,
+          paddingTop: 4,
         },
       }}
     >
