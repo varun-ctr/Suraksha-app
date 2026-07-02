@@ -19,7 +19,7 @@ export async function startLiveSession(
     const user = await getCurrentUser();
     if (!user) return null;
 
-    const { data, error } = await db.liveSessions.insert(user.id, { lat, lng, accuracy });
+    const { data, error } = await db.liveSessions.insert(user.uid, { lat, lng, accuracy });
 
     if (error || !data) return null;
 

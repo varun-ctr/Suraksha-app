@@ -1,22 +1,13 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
+import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import {
   initializeAuth,
   getAuth,
-  inMemoryPersistence,
+  type Auth,
   type Persistence,
 } from "firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const FIREBASE_CONFIG = {
-  apiKey:            process.env.EXPO_PUBLIC_FIREBASE_API_KEY            ?? "",
-  authDomain:        process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN        ?? "",
-  projectId:         process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID         ?? "",
-  storageBucket:     process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET     ?? "",
-  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ?? "",
-  appId:             process.env.EXPO_PUBLIC_FIREBASE_APP_ID             ?? "",
-  measurementId:     process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
-};
-
+// ── AsyncStorage persistence (Firebase v12 — no getReactNativePersistence) ──
 const asyncStoragePersistence = {
   type: "LOCAL",
   async _isAvailable() { return true; },
@@ -36,19 +27,45 @@ const asyncStoragePersistence = {
   _removeListener() {},
 } as unknown as Persistence;
 
-const firebaseApp = getApps().length === 0
-  ? initializeApp(FIREBASE_CONFIG)
-  : getApp();
+// ── Lazy singletons — populated by initFirebase() ─────────────────────────────
+let _firebaseApp: FirebaseApp | null = null;
+let _firebaseAuth: Auth | null = null;
 
-let _fbAuth: ReturnType<typeof getAuth>;
-try {
-  _fbAuth = initializeAuth(firebaseApp, {
-    persistence: asyncStoragePersistence,
-  });
-} catch {
-  _fbAuth = getAuth(firebaseApp);
+/**
+ * Initialize Firebase exactly once.
+ * Called from app/_layout.tsx at module level ONLY when config validation passes.
+ */
+export function initFirebase(config: {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  storageBucket: string;
+  messagingSenderId: string;
+  appId: string;
+  measurementId?: string;
+}): void {
+  _firebaseApp = getApps().length === 0 ? initializeApp(config) : getApp();
+  try {
+    _firebaseAuth = initializeAuth(_firebaseApp, {
+      persistence: asyncStoragePersistence,
+    });
+  } catch {
+    _firebaseAuth = getAuth(_firebaseApp);
+  }
 }
 
-export const firebaseAuth = _fbAuth;
-export { inMemoryPersistence };
-export default firebaseApp;
+/**
+ * Proxy that forwards all property access to the real Auth instance.
+ * Returns null for currentUser before initialization (safe for startup).
+ * Throws for any other access before initFirebase() is called.
+ */
+export const firebaseAuth = new Proxy({} as Auth, {
+  get(_, prop) {
+    if (!_firebaseAuth) {
+      if (prop === "currentUser") return null;
+      throw new Error("[Suraksha] Firebase Auth used before initialization — call initFirebase() first");
+    }
+    const val = Reflect.get(_firebaseAuth, prop as string | symbol, _firebaseAuth);
+    return typeof val === "function" ? (val as (...args: unknown[]) => unknown).bind(_firebaseAuth) : val;
+  },
+});

@@ -1,0 +1,515 @@
+# SURAKSHA v1.0 FINAL PRODUCTION HARDENING
+
+IMPORTANT
+
+This is the final production hardening task before Play Store and App Store release.
+
+DO NOT redesign the UI.
+
+DO NOT recreate any screens.
+
+DO NOT modify the visual design.
+
+Preserve all existing functionality.
+
+Only improve architecture, authentication, backend stability, production readiness, performance, and reliability.
+
+==================================================
+1. AUTHENTICATION AUDIT
+==================================================
+
+Audit the complete authentication system.
+
+Determine whether the application uses Firebase Authentication.
+
+If Firebase Authentication is enabled:
+
+Remove ALL remaining Supabase Authentication code.
+
+Remove:
+
+• signInWithOtp()
+• signInWithMagicLink()
+• auth.signInWithOtp()
+• Supabase email authentication
+• Magic Link authentication
+• Supabase session handling
+• Supabase password reset
+• Supabase logout
+
+Firebase must be the ONLY authentication provider.
+
+Use:
+
+• Firebase Email & Password Authentication
+• Firebase Phone OTP Authentication
+• Firebase Password Reset
+• Firebase Session Persistence
+• Firebase Sign Out
+• Google Sign-In (Android/Web if configured)
+• Apple Sign-In (iOS if configured)
+
+Supabase must ONLY be used for:
+
+• Database
+• Storage
+• Realtime
+• Row Level Security
+
+NOT Authentication.
+
+Search the entire project and remove every remaining Supabase auth reference.
+
+==================================================
+2. SUPABASE ARCHITECTURE
+==================================================
+
+Create ONLY ONE shared Supabase client.
+
+Use ONLY
+
+EXPO_PUBLIC_SUPABASE_URL
+
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+
+Remove
+
+placeholder URLs
+
+placeholder keys
+
+dummy values
+
+fake clients
+
+fallback clients
+
+multiple createClient() calls
+
+legacy initialization
+
+Supabase should initialize only after configuration validation succeeds.
+
+==================================================
+3. CONFIGURATION VALIDATION
+==================================================
+
+Keep lib/config.ts as the single source of truth.
+
+Validate on startup:
+
+EXPO_PUBLIC_SUPABASE_URL
+
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+
+EXPO_PUBLIC_FIREBASE_API_KEY
+
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN
+
+EXPO_PUBLIC_FIREBASE_PROJECT_ID
+
+EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET
+
+EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+
+EXPO_PUBLIC_FIREBASE_APP_ID
+
+If ANY variable is missing:
+
+Do NOT initialize Firebase.
+
+Do NOT initialize Supabase.
+
+Do NOT crash.
+
+Display ConfigErrorScreen.
+
+Development:
+
+Show exactly which variables are missing.
+
+Production:
+
+Display only
+
+Configuration Error
+
+Some required application services are unavailable.
+
+Please contact support.
+
+Never expose technical information.
+
+==================================================
+4. REMOVE LEGACY VARIABLES
+==================================================
+
+Search the entire project.
+
+Replace every occurrence of
+
+SUPABASE_URL
+
+SUPABASE_KEY
+
+SUPABASE_ANON_KEY
+
+EXPO_PUBLIC_SUPABASE_ANON_KEY
+
+legacy variables
+
+with
+
+EXPO_PUBLIC_SUPABASE_URL
+
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+
+Verify no references remain.
+
+==================================================
+5. DATABASE
+==================================================
+
+Verify every module uses ONLY the shared Supabase client.
+
+Trusted Contacts
+
+Profile
+
+Medical Information
+
+Incident Reporting
+
+My Reports
+
+Journey
+
+SOS History
+
+Community Reports
+
+Settings
+
+Location History
+
+Weather Cache
+
+No duplicate clients.
+
+==================================================
+6. ERROR HANDLING
+==================================================
+
+Create centralized error handling.
+
+Never expose
+
+Firebase exceptions
+
+Supabase exceptions
+
+Stack traces
+
+JSON
+
+Internal API errors
+
+Console errors
+
+Technical details
+
+Instead display friendly messages.
+
+Examples:
+
+Unable to connect.
+
+Please try again.
+
+Connection lost.
+
+Retrying...
+
+Service temporarily unavailable.
+
+Location unavailable.
+
+GPS permission required.
+
+==================================================
+7. LOGGING
+==================================================
+
+Development
+
+Verbose logging
+
+Production
+
+Errors only
+
+Remove console spam.
+
+==================================================
+8. PERFORMANCE
+==================================================
+
+Verify
+
+One Firebase initialization
+
+One Supabase initialization
+
+One Config Validator
+
+No duplicate providers
+
+No memory leaks
+
+No unnecessary renders
+
+No repeated API requests
+
+No duplicate listeners
+
+Optimize startup performance.
+
+==================================================
+9. SOS SYSTEM
+==================================================
+
+Do NOT change existing SOS UI.
+
+Improve backend reliability.
+
+When SOS is activated:
+
+Immediately:
+
+Start live location tracking
+
+Create SOS event in Supabase
+
+Send SMS automatically using existing Twilio integration
+
+Share location continuously
+
+Retry failed SMS automatically
+
+Show
+
+Emergency alerts sent successfully
+
+Keep WhatsApp only as OPTIONAL sharing.
+
+Do NOT rely on WhatsApp for emergency delivery.
+
+Do NOT automatically open WhatsApp.
+
+Provide optional buttons
+
+Share via WhatsApp
+
+Call 112
+
+Copy Location
+
+Cancel SOS
+
+==================================================
+10. INCIDENT REPORTING
+==================================================
+
+Keep existing Incident Reporting.
+
+Do not recreate.
+
+Verify
+
+Photo upload
+
+GPS
+
+Reverse Geocoding
+
+Weather
+
+Anonymous reporting
+
+Moderation status
+
+My Reports
+
+Database writes
+
+Retry on network failure.
+
+==================================================
+11. SAKHI AI
+==================================================
+
+Keep existing AI.
+
+Never display backend errors.
+
+If AI fails
+
+Show
+
+I'm having trouble connecting right now.
+
+You can still use:
+
+• SOS
+• Start Journey
+• Report Incident
+• Safety Map
+• Emergency Contacts
+
+Retry automatically.
+
+==================================================
+12. HOME SCREEN
+==================================================
+
+Keep current design.
+
+Quick Actions should include
+
+Emergency Contacts
+
+Safety Map
+
+Report Incident
+
+Journey Timer
+
+Fake Call
+
+Nearby Help
+
+Safe Route
+
+Weather
+
+No horizontal scrolling.
+
+Responsive layout.
+
+==================================================
+13. SECURITY
+==================================================
+
+Validate
+
+Firebase Authentication Rules
+
+Supabase Row Level Security
+
+Storage Policies
+
+No hardcoded secrets
+
+No exposed API keys beyond intended public Expo variables
+
+Protect all backend endpoints
+
+Validate all user inputs
+
+==================================================
+14. FINAL CODE AUDIT
+==================================================
+
+Run a full project audit.
+
+Verify
+
+One Firebase App
+
+One Supabase Client
+
+One Config Validator
+
+No placeholder values
+
+No fake clients
+
+No deprecated environment variables
+
+No Supabase Authentication
+
+No runtime warnings
+
+No TypeScript errors
+
+No lint errors
+
+No duplicate logic
+
+No dead code
+
+No unused packages
+
+No crashes
+
+==================================================
+15. DO NOT MODIFY
+==================================================
+
+Do NOT modify
+
+Home UI
+
+Maps
+
+Weather
+
+SOS Design
+
+Journey UI
+
+Incident Reporting UI
+
+Sakhi UI
+
+Rights
+
+Profile
+
+Bottom Navigation
+
+Theme
+
+Animations
+
+Typography
+
+Quick Action Design
+
+Firebase Authentication UI
+
+Only improve backend architecture, stability, security and production readiness.
+
+==================================================
+FINAL GOAL
+==================================================
+
+Suraksha should be enterprise-grade and production-ready.
+
+Firebase should handle Authentication only.
+
+Supabase should handle Database, Storage and Realtime only.
+
+The application should initialize correctly using only valid environment variables.
+
+No placeholder implementations.
+
+No fake clients.
+
+No hidden runtime failures.
+
+No backend crashes.
+
+No technical errors visible to users.
+
+Suitable for Google Play Store and Apple App Store submission.

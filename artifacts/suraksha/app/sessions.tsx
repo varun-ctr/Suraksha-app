@@ -20,8 +20,8 @@ import { useTheme } from "@/context/ThemeContext";
 import { useToast } from "@/context/ToastContext";
 import { deleteAccount, getCurrentUser, signOut, signOutGlobal } from "@/lib/auth";
 import { getBackendUrl } from "@/lib/env";
-import { supabase } from "@/lib/supabaseClient";
-import type { User } from "@supabase/supabase-js";
+import { firebaseAuth } from "@/lib/firebase";
+import type { User } from "firebase/auth";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -151,13 +151,14 @@ export default function SessionsScreen() {
 
   const fetchSessions = async (): Promise<SessionInfo[]> => {
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
+      const fbUser = firebaseAuth.currentUser;
+      const token = fbUser ? await fbUser.getIdToken().catch(() => null) : null;
       if (!token) return [];
 
       const backendUrl = getBackendUrl();
       const res = await fetch(`${backendUrl}/api/auth/sessions`, {
         headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(8_000),
       });
 
       if (!res.ok) return [];
@@ -210,7 +211,7 @@ export default function SessionsScreen() {
     router.replace("/login" as never);
   };
 
-  const identifier = user?.email ?? user?.phone ?? "—";
+  const identifier = user?.email ?? user?.phoneNumber ?? "—";
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>

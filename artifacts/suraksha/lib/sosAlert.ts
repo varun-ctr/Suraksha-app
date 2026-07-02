@@ -13,8 +13,8 @@
 
 import type { Contact } from "@/context/AppContext";
 import type { Coords } from "@/context/SafetyContext";
-import { callNumber, locationLink, openWhatsApp, sendSms } from "@/lib/native";
-import { supabase } from "@/lib/supabaseClient";
+import { callNumber, locationLink, sendSms } from "@/lib/native";
+import { firebaseAuth } from "@/lib/firebase";
 
 export type SmsState     = "idle" | "sending" | "sent" | "opening" | "failed";
 export type WhatsAppState = "idle" | "opening" | "done";
@@ -129,8 +129,8 @@ export async function sendSosAlerts(
   // ── 1. Try backend (Twilio auto-SMS) ─────────────────────────────
   let backendSent = false;
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
+    const fbUser = firebaseAuth.currentUser;
+    const token = fbUser ? await fbUser.getIdToken().catch(() => null) : null;
 
     if (token && backendUrl) {
       const res = await fetch(`${backendUrl}/sos/alert`, {
@@ -176,17 +176,7 @@ export async function sendSosAlerts(
     }
   }
 
-  // ── 3. WhatsApp for first contact ────────────────────────────────
-  if (contacts.length > 0) {
-    try {
-      await openWhatsApp(contacts[0].phone, message);
-      statuses[0].whatsapp = "opening";
-    } catch {
-      // WhatsApp not installed — skip
-    }
-  }
-
-  // ── 4. Call first contact ────────────────────────────────────────
+  // ── 3. Call first contact ────────────────────────────────────────
   if (contacts.length > 0) {
     try {
       await callNumber(contacts[0].phone);

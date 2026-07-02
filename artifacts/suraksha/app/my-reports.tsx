@@ -17,7 +17,8 @@ import { withAlpha } from "@/constants/colors";
 import type { IconName } from "@/constants/data";
 import { useI18n } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
-import { db, supabase } from "@/lib/supabaseClient";
+import { firebaseAuth } from "@/lib/firebase";
+import { db } from "@/lib/supabaseClient";
 import type { CommunityReportRow, CommunityReportType, ModerationStatus } from "../types/database";
 
 interface TypeMeta {
@@ -76,10 +77,9 @@ export default function MyReportsScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setAuthed(!!user);
-      setUserId(user?.id ?? null);
-    });
+    const user = firebaseAuth.currentUser;
+    setAuthed(!!user);
+    setUserId(user?.uid ?? null);
   }, []);
 
   useEffect(() => {

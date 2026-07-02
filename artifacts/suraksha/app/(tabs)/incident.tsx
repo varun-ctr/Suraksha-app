@@ -25,7 +25,8 @@ import { useToast } from "@/context/ToastContext";
 import { useLocation } from "@/hooks/useLocation";
 import { timeAgo } from "@/lib/format";
 import { reverseGeocode } from "@/lib/location";
-import { db, supabase } from "@/lib/supabaseClient";
+import { firebaseAuth } from "@/lib/firebase";
+import { db } from "@/lib/supabaseClient";
 import type { CommunityReportRow } from "@/types/database";
 import { fetchWeather, type WeatherData } from "@/lib/weather";
 
@@ -142,11 +143,11 @@ export default function IncidentScreen() {
   }, [point]);
 
   const loadMyReports = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = firebaseAuth.currentUser;
     if (!user) return;
     setLoadingReports(true);
     try {
-      const { data } = await db.communityReports.listForUser(user.id);
+      const { data } = await db.communityReports.listForUser(user.uid);
       if (data) setMyReports(data);
     } finally {
       setLoadingReports(false);
@@ -179,7 +180,7 @@ export default function IncidentScreen() {
   };
 
   const submit = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = firebaseAuth.currentUser;
     if (!user) {
       showToast(t("incident.loginRequired"));
       router.push("/login" as never);
@@ -196,7 +197,7 @@ export default function IncidentScreen() {
         ? `[Anonymous] ${description.trim()}`
         : description.trim();
 
-      const { error } = await db.communityReports.insert(user.id, {
+      const { error } = await db.communityReports.insert(user.uid, {
         type: incidentType as CommunityReportRow["type"],
         lat: point.lat,
         lng: point.lng,

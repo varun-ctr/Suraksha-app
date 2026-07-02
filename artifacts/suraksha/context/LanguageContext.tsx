@@ -12,7 +12,9 @@ import { Alert, I18nManager } from "react-native";
 
 import type { LangCode } from "@/constants/languages";
 import { LANG_BY_CODE } from "@/constants/languages";
-import { db, supabase } from "@/lib/supabaseClient";
+import { firebaseAuth } from "@/lib/firebase";
+import { onFirebaseAuthStateChanged } from "@/lib/firebaseAuth";
+import { db } from "@/lib/supabaseClient";
 
 const LANG_KEY = "suraksha.lang.v1";
 const DEFAULT_LANG: LangCode = "en";
@@ -104,19 +106,14 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     void init();
 
     // Reconcile language for users who are already signed in on first mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user?.id) void syncWithProfile(session.user.id);
+    const currentUser = firebaseAuth.currentUser;
+    if (currentUser?.uid) void syncWithProfile(currentUser.uid);
+
+    const unsub = onFirebaseAuthStateChanged((user) => {
+      if (user?.uid) void syncWithProfile(user.uid);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session?.user?.id) {
-          void syncWithProfile(session.user.id);
-        }
-      },
-    );
-
-    return () => subscription.unsubscribe();
+    return unsub;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

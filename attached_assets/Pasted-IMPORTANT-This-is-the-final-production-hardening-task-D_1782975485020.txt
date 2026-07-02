@@ -1,0 +1,321 @@
+IMPORTANT
+
+This is the final production-hardening task.
+
+Do NOT redesign the UI.
+
+Do NOT recreate any existing screens.
+
+Do NOT modify Home, SOS, Journey, Sakhi AI, Incident Reporting, Maps, Weather, Rights, Profile or Firebase Authentication.
+
+Only improve backend initialization, configuration, stability and production readiness.
+
+====================================================
+1. REMOVE PLACEHOLDER SUPABASE CLIENT
+====================================================
+
+Currently the project creates a Supabase client using placeholder values when environment variables are missing.
+
+Remove this implementation completely.
+
+Do NOT initialize Supabase using
+
+https://placeholder.supabase.co
+
+placeholder-anon-key
+
+dummy values
+
+fake credentials
+
+null clients
+
+fallback clients
+
+====================================================
+2. CREATE ONLY ONE REAL SUPABASE CLIENT
+====================================================
+
+There must be exactly ONE Supabase client in the entire project.
+
+The client must use ONLY
+
+EXPO_PUBLIC_SUPABASE_URL
+
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+
+Create the client only after configuration validation succeeds.
+
+Never initialize Supabase before configuration is validated.
+
+====================================================
+3. CONFIG VALIDATION
+====================================================
+
+Keep lib/config.ts as the single source of truth.
+
+Validate these variables
+
+EXPO_PUBLIC_SUPABASE_URL
+
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+
+EXPO_PUBLIC_FIREBASE_API_KEY
+
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN
+
+EXPO_PUBLIC_FIREBASE_PROJECT_ID
+
+EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET
+
+EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+
+EXPO_PUBLIC_FIREBASE_APP_ID
+
+If any are missing
+
+Do NOT initialize Firebase.
+
+Do NOT initialize Supabase.
+
+Render ConfigErrorScreen immediately.
+
+In development
+
+Show exactly which variables are missing.
+
+In production
+
+Show only
+
+"Configuration Error
+
+Some required application services are not configured.
+
+Please contact the administrator."
+
+Never expose technical information.
+
+====================================================
+4. SEARCH ENTIRE PROJECT
+====================================================
+
+Search every file.
+
+Replace any usage of
+
+SUPABASE_URL
+
+SUPABASE_KEY
+
+SUPABASE_ANON_KEY
+
+EXPO_PUBLIC_SUPABASE_ANON_KEY
+
+legacy Supabase variables
+
+with
+
+EXPO_PUBLIC_SUPABASE_URL
+
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+
+Ensure there are no remaining references.
+
+====================================================
+5. FIREBASE
+====================================================
+
+Do not modify Firebase Authentication.
+
+Verify
+
+Email Login
+
+Phone OTP
+
+Session Restore
+
+Logout
+
+Password Reset
+
+Google Login
+
+Apple Login (iOS)
+
+Keep all existing implementation.
+
+====================================================
+6. DATABASE
+====================================================
+
+Verify every feature uses the shared Supabase client.
+
+Trusted Contacts
+
+Profile
+
+Incident Reporting
+
+My Reports
+
+Journey
+
+SOS History
+
+Medical Information
+
+Community Reports
+
+Settings
+
+Location History
+
+No duplicate clients.
+
+No direct createClient() calls.
+
+====================================================
+7. ERROR HANDLING
+====================================================
+
+Never expose
+
+Supabase Errors
+
+Firebase Errors
+
+Stack Traces
+
+JSON Responses
+
+Exception Messages
+
+API Responses
+
+Instead show friendly messages
+
+Unable to connect.
+
+Please try again.
+
+Connection lost.
+
+Retrying automatically.
+
+Service temporarily unavailable.
+
+Please try again later.
+
+====================================================
+8. LOGGING
+====================================================
+
+Development
+
+Verbose Logs
+
+Production
+
+Errors only.
+
+No console spam.
+
+====================================================
+9. PERFORMANCE
+====================================================
+
+Ensure
+
+No duplicate providers
+
+No duplicate Firebase initialization
+
+No duplicate Supabase initialization
+
+No memory leaks
+
+No unnecessary renders
+
+No repeated API calls
+
+====================================================
+10. FINAL VALIDATION
+====================================================
+
+Run a full code review.
+
+Verify
+
+Exactly one Firebase initialization.
+
+Exactly one Supabase client.
+
+Exactly one configuration validator.
+
+No placeholder values.
+
+No hardcoded credentials.
+
+No deprecated environment variables.
+
+No runtime warnings.
+
+No crashes.
+
+No TypeScript errors.
+
+No lint errors.
+
+No duplicate code.
+
+====================================================
+11. DO NOT MODIFY
+====================================================
+
+Do NOT modify
+
+Home Screen
+
+Maps
+
+SOS
+
+Journey
+
+Incident Reporting
+
+Sakhi AI
+
+Weather
+
+Rights
+
+Profile
+
+Bottom Navigation
+
+Theme
+
+Animations
+
+Typography
+
+Firebase Authentication
+
+Existing UI
+
+Only improve backend architecture and production readiness.
+
+====================================================
+GOAL
+====================================================
+
+The application should be enterprise-grade, production-ready and suitable for publishing to Google Play Store and Apple App Store.
+
+The app should initialize correctly using only valid environment variables.
+
+There must be no placeholder implementations, no fake database clients and no hidden runtime failures.
+
+Preserve all existing functionality.

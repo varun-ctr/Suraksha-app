@@ -11,5 +11,6 @@
 - [Suraksha CommunityReportType expansion](suraksha-report-types.md) — extending the union in types/database.ts requires updating TYPE_META in my-reports.tsx AND adding new locale keys in en.ts+hi.ts simultaneously; TS will error if TYPE_META Record is incomplete.
 - [Suraksha i18n no-fallback](suraksha-i18n-discipline.md) — hi.ts/bn.ts do NOT auto-fallback to en.ts for missing keys; t() returns the raw key string. Always add new keys to ALL locale files.
 - [Firebase Auth setup](firebase-auth.md) — Web SDK v12, custom AsyncStorage persistence (no getReactNativePersistence in v12); AuthContext wraps all ops; gate uses onFirebaseAuthStateChanged
-- [Supabase+Firebase split](supabase-firebase-split.md) — Firebase=auth only, Supabase=all data; Supabase RLS not yet updated for Firebase JWTs; contacts sync degrades gracefully
+- [Supabase+Firebase split](supabase-firebase-split.md) — Firebase=auth only, Supabase=all data+storage; Supabase RLS not yet updated for Firebase JWTs; use user.uid (Firebase) not user.id (Supabase) everywhere
 - [Quick Actions grid](quick-actions-grid.md) — 8 items, 2-col flex-wrap grid via useWindowDimensions; journey/weather keys handled inline; incident removed from tab bar but kept as hidden route
+- [Suraksha lazy init pattern](suraksha-lazy-init.md) — Firebase+Supabase initialized lazily via Proxy; initFirebase()+initSupabase() called from _layout.tsx module-level ONLY after validateConfig() passes; no placeholder URLs ever reach createClient/initializeApp

@@ -3,7 +3,7 @@ import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { deleteAccount, isAnonymous, signOut } from "@/lib/auth";
+import { deleteAccount, signOut } from "@/lib/auth";
 import {
   ActivityIndicator,
   Image,
@@ -39,9 +39,11 @@ import type { IconName } from "@/constants/data";
 import { LANG_BY_CODE } from "@/constants/languages";
 import type { LangCode } from "@/constants/languages";
 import { useApp } from "@/context/AppContext";
+import { useAuth } from "@/context/AuthContext";
 import { useI18n } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useToast } from "@/context/ToastContext";
+import { firebaseAuth } from "@/lib/firebase";
 import { db, supabase } from "@/lib/supabaseClient";
 
 function Row({
@@ -92,6 +94,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+  const { user: authUser, isAnon } = useAuth();
   const displayName = profile.name.trim() || t("profile.guest");
 
   const [editing, setEditing] = useState(false);
@@ -107,21 +110,9 @@ export default function ProfileScreen() {
   const [linkedEmail, setLinkedEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    void (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUserAnonymous(isAnonymous(user));
-      setLinkedEmail(user?.email ?? null);
-    })();
-    // Re-check when the user upgrades their account (email linked)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        const u = session?.user ?? null;
-        setUserAnonymous(isAnonymous(u));
-        setLinkedEmail(u?.email ?? null);
-      },
-    );
-    return () => subscription.unsubscribe();
-  }, []);
+    setUserAnonymous(isAnon);
+    setLinkedEmail(authUser?.email ?? null);
+  }, [authUser, isAnon]);
 
   const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
   const [deleteText, setDeleteText] = useState("");
@@ -150,12 +141,12 @@ export default function ProfileScreen() {
       setUploadingPhoto(true);
 
       // Try Supabase Storage upload if signed in
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = firebaseAuth.currentUser;
       if (user) {
         const response = await fetch(asset.uri);
         const blob = await response.blob();
         const ext = (asset.uri.split(".").pop() ?? "jpg").toLowerCase();
-        const path = `${user.id}/avatar.${ext}`;
+        const path = `${user.uid}/avatar.${ext}`;
         const { error: uploadError } = await supabase.storage
           .from("avatars")
           .upload(path, blob, { upsert: true, contentType: asset.mimeType ?? "image/jpeg" });
@@ -163,7 +154,7 @@ export default function ProfileScreen() {
         if (!uploadError) {
           const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
           setProfile({ avatarUrl: publicUrl });
-          try { await db.profiles.update(user.id, { avatar_url: publicUrl }); } catch { /* non-critical */ }
+          try { await db.profiles.update(user.uid, { avatar_url: publicUrl }); } catch { /* non-critical */ }
           showToast(t("common.done"));
           return;
         }
@@ -209,8 +200,8 @@ export default function ProfileScreen() {
       disableNotificationHandler();
       await AsyncStorage.removeItem(NOTIF_TOKEN_KEY).catch(() => {});
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) await db.notificationTokens.deleteForUser(user.id);
+        const user = firebaseAuth.currentUser;
+        if (user) await db.notificationTokens.deleteForUser(user.uid);
       } catch {
         // Non-critical
       }

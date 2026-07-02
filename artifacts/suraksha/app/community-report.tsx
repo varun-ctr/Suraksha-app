@@ -21,6 +21,7 @@ import { useI18n } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useToast } from "@/context/ToastContext";
 import { getCurrentLocation, reverseGeocode } from "@/lib/location";
+import { firebaseAuth } from "@/lib/firebase";
 import { db, supabase } from "@/lib/supabaseClient";
 import type { CommunityReportType } from "../types/database";
 
@@ -60,10 +61,9 @@ export default function CommunityReportScreen() {
   const [submitError, setSubmitError] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setAuthed(!!user);
-      setUserId(user?.id ?? null);
-    });
+    const user = firebaseAuth.currentUser;
+    setAuthed(!!user);
+    setUserId(user?.uid ?? null);
   }, []);
 
   useEffect(() => {

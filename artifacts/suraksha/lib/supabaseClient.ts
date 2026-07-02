@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import "react-native-url-polyfill/auto";
 
 import type {
@@ -26,36 +26,44 @@ import type {
   LiveSessionPublic,
 } from "../types/database";
 
-// ── Single shared Supabase client ─────────────────────────────────────────────
+// ── Single lazy Supabase client ───────────────────────────────────────────────
 //
-// Uses EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY.
-// If the vars are not set the config validation in app/_layout.tsx will show
-// a startup error screen before any database call is made.  We must still
-// produce a valid client object at module-load time so Metro can evaluate
-// the module without crashing; createClient() throws on an empty string so
-// we fall back to a syntactically-valid placeholder.  The Gate ensures no
-// real call ever reaches Supabase when the config is incomplete.
+// initSupabase() is called from app/_layout.tsx ONLY after config validation
+// succeeds — so real env vars are always passed, never placeholders.
+// The Proxy forwards every property access to the real client once initialized.
 
-const supabaseUrl =
-  process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() ||
-  "https://placeholder.supabase.co";
+let _client: SupabaseClient | null = null;
 
-const supabaseAnonKey =
-  process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ||
-  "placeholder-anon-key";
+/**
+ * Initialize the shared Supabase client exactly once.
+ * Called by app/_layout.tsx at module level after validateConfig() passes.
+ */
+export function initSupabase(url: string, key: string): void {
+  _client = createClient(url, key, {
+    auth: {
+      storage: AsyncStorage,
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+    },
+  });
+}
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
+function getClient(): SupabaseClient {
+  if (!_client) throw new Error("[Suraksha] Supabase used before initialization — call initSupabase() first");
+  return _client;
+}
+
+export const supabase = new Proxy({} as SupabaseClient, {
+  get(_, prop) {
+    const client = getClient();
+    const val = Reflect.get(client, prop as string | symbol, client);
+    return typeof val === "function" ? (val as (...args: unknown[]) => unknown).bind(client) : val;
   },
 });
 
 // ── Typed table helpers ───────────────────────────────────────────────────────
 // Prefer these over writing raw `.from("table_name")` in screens.
-// Errors from Supabase are caught by callers; never expose raw exceptions to UI.
 
 export const db = {
   profiles: {

@@ -26,6 +26,7 @@ import { useI18n } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useToast } from "@/context/ToastContext";
 import { callNumber } from "@/lib/native";
+import { firebaseAuth } from "@/lib/firebase";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function ContactsScreen() {
@@ -139,10 +140,10 @@ export default function ContactsScreen() {
 
         // Upload to Supabase Storage if signed in; fall back to local URI
         try {
-          const { data: { user } } = await supabase.auth.getUser();
+          const user = firebaseAuth.currentUser;
           if (user) {
             const ext = (asset.uri.split(".").pop() ?? "jpg").toLowerCase().replace(/[^a-z]/g, "j");
-            const path = `${user.id}/${contactId}.${ext}`;
+            const path = `${user.uid}/${contactId}.${ext}`;
             const response = await fetch(asset.uri);
             const blob = await response.blob();
             const { error: uploadError } = await supabase.storage

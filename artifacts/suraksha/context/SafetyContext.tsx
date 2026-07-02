@@ -18,7 +18,7 @@ import {
   scheduleLocalNotification,
 } from "@/lib/notifications";
 import { insertSosEvent, resolveSosEvent } from "@/lib/sosEvents";
-import { supabase } from "@/lib/supabaseClient";
+import { firebaseAuth } from "@/lib/firebase";
 
 export interface Coords {
   lat: number;
@@ -169,10 +169,10 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
       void (async () => {
         if (sosRunIdRef.current !== runId || !coords) return;
 
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = firebaseAuth.currentUser;
         if (sosRunIdRef.current !== runId || !user) return;
 
-        const id = await insertSosEvent(user.id, coords.lat, coords.lng, address);
+        const id = await insertSosEvent(user.uid, coords.lat, coords.lng, address);
         if (!id) return;
 
         setSos((s) => {

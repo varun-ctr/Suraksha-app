@@ -1,6 +1,7 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 
+import { firebaseAuth } from "@/lib/firebase";
 import { db, supabase } from "@/lib/supabaseClient";
 
 /**
@@ -95,9 +96,7 @@ export async function registerForPushNotifications(): Promise<RegisterResult> {
 
   // Sync to Supabase if signed in — non-critical, failures are swallowed.
   try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const user = firebaseAuth.currentUser;
     if (user) {
       const platform: "ios" | "android" | "web" =
         Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "web";
@@ -107,10 +106,10 @@ export async function registerForPushNotifications(): Promise<RegisterResult> {
       await supabase
         .from("notification_tokens")
         .delete()
-        .eq("user_id", user.id)
+        .eq("user_id", user.uid)
         .eq("platform", platform);
 
-      await db.notificationTokens.upsert(user.id, { token, platform });
+      await db.notificationTokens.upsert(user.uid, { token, platform });
     }
   } catch {
     // Non-critical — the app works without remote push.
