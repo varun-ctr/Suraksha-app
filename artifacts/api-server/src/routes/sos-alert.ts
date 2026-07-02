@@ -1,20 +1,8 @@
 import { Router, type Request, type Response } from "express";
 import * as https from "https";
-import { createClient } from "@supabase/supabase-js";
+import { getBearerToken, verifyFirebaseToken } from "../lib/firebaseAdmin";
 
 const router = Router();
-
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const serviceSupabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false },
-});
-
-function getBearerToken(req: Request): string | null {
-  const h = req.headers["authorization"] ?? "";
-  return h.startsWith("Bearer ") ? h.slice(7) : null;
-}
 
 // ── Twilio SMS helper ─────────────────────────────────────────────────────────
 
@@ -95,14 +83,11 @@ interface AlertRequestBody {
 }
 
 router.post("/sos/alert", async (req: Request, res: Response) => {
-  // Verify Supabase JWT
-  const token = getBearerToken(req);
-  if (!token) return res.status(401).json({ error: "Unauthorized" });
+  // Verify the caller's Firebase ID token.
+  const user = await verifyFirebaseToken(getBearerToken(req));
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
 
   try {
-    const { data: { user }, error: authError } = await serviceSupabase.auth.getUser(token);
-    if (authError || !user) return res.status(401).json({ error: "Invalid token" });
-
     const body = req.body as AlertRequestBody;
     const { contacts, message } = body;
 

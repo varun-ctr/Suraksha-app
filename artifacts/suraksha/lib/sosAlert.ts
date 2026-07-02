@@ -93,13 +93,18 @@ export async function sendSosAlerts(
   }
 
   // ── 2. Native SMS fallback (opens SMS app, pre-filled) ───────────
+  // Send per contact rather than one comma-joined recipient list: multi-
+  // recipient sms: URIs are unreliable (iOS in particular silently drops all
+  // but the first), so each contact gets their own message individually.
   if (!backendSent) {
-    try {
-      const phones = contacts.map((c) => c.phone).join(",");
-      await sendSms(phones, message);
-      statuses.forEach((s) => { s.sms = "opening"; });
-    } catch {
-      statuses.forEach((s) => { s.sms = "failed"; });
+    for (const c of contacts) {
+      const s = statuses.find((x) => x.id === c.id);
+      try {
+        await sendSms(c.phone, message);
+        if (s) s.sms = "opening";
+      } catch {
+        if (s) s.sms = "failed";
+      }
     }
   }
 
