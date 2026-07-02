@@ -2,7 +2,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient } from "@supabase/supabase-js";
 import "react-native-url-polyfill/auto";
 
-import { requiredPublicEnv } from "./env";
 import type {
   ProfileRow,
   ProfileInsert,
@@ -27,178 +26,155 @@ import type {
   LiveSessionPublic,
 } from "../types/database";
 
-const supabaseUrl = requiredPublicEnv("EXPO_PUBLIC_SUPABASE_URL");
-const supabaseAnonKey = requiredPublicEnv("EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() ?? "";
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ?? "";
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
+const isConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+
+export const supabase = isConfigured
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        storage: AsyncStorage,
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: false,
+      },
+    })
+  : (null as unknown as ReturnType<typeof createClient<never>>);
 
 // ------------------------------------------------------------------
 // Typed table helpers
 // Prefer these over writing raw `.from("table_name")` in screens.
+// All helpers guard against missing config — they return a rejected
+// promise instead of crashing when Supabase is not configured.
 // ------------------------------------------------------------------
+
+function notConfigured(): Promise<never> {
+  return Promise.reject(new Error("Supabase not configured — add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY"));
+}
 
 export const db = {
   profiles: {
     select: () =>
-      supabase.from("profiles").select<"*", ProfileRow>("*"),
+      isConfigured ? supabase.from("profiles").select<"*", ProfileRow>("*") : notConfigured(),
 
     getById: (id: string) =>
-      supabase.from("profiles").select<"*", ProfileRow>("*").eq("id", id).single(),
+      isConfigured
+        ? supabase.from("profiles").select<"*", ProfileRow>("*").eq("id", id).single()
+        : notConfigured(),
 
     upsert: (row: ProfileInsert) =>
-      supabase.from("profiles").upsert(row),
+      isConfigured ? supabase.from("profiles").upsert(row) : notConfigured(),
 
     update: (id: string, patch: ProfileUpdate) =>
-      supabase.from("profiles").update(patch).eq("id", id),
+      isConfigured ? supabase.from("profiles").update(patch).eq("id", id) : notConfigured(),
   },
 
   sosEvents: {
-    // userId is always required — user_id NOT NULL in schema + RLS enforces ownership
     insert: (userId: string, row: SosEventInsert) =>
-      supabase
-        .from("sos_events")
-        .insert({ ...row, user_id: userId })
-        .select<"*", SosEventRow>("*")
-        .single(),
+      isConfigured
+        ? supabase.from("sos_events").insert({ ...row, user_id: userId }).select<"*", SosEventRow>("*").single()
+        : notConfigured(),
 
     resolve: (id: string, patch: SosEventUpdate) =>
-      supabase.from("sos_events").update(patch).eq("id", id),
+      isConfigured ? supabase.from("sos_events").update(patch).eq("id", id) : notConfigured(),
 
     listForUser: (userId: string) =>
-      supabase
-        .from("sos_events")
-        .select<"*", SosEventRow>("*")
-        .eq("user_id", userId)
-        .order("triggered_at", { ascending: false }),
+      isConfigured
+        ? supabase.from("sos_events").select<"*", SosEventRow>("*").eq("user_id", userId).order("triggered_at", { ascending: false })
+        : notConfigured(),
   },
 
   journeys: {
-    // userId is always required — user_id NOT NULL in schema + RLS enforces ownership
     insert: (userId: string, row: JourneyInsert) =>
-      supabase
-        .from("journeys")
-        .insert({ ...row, user_id: userId })
-        .select<"*", JourneyRow>("*")
-        .single(),
+      isConfigured
+        ? supabase.from("journeys").insert({ ...row, user_id: userId }).select<"*", JourneyRow>("*").single()
+        : notConfigured(),
 
     end: (id: string, patch: JourneyUpdate) =>
-      supabase.from("journeys").update(patch).eq("id", id),
+      isConfigured ? supabase.from("journeys").update(patch).eq("id", id) : notConfigured(),
 
     listForUser: (userId: string) =>
-      supabase
-        .from("journeys")
-        .select<"*", JourneyRow>("*")
-        .eq("user_id", userId)
-        .order("started_at", { ascending: false }),
+      isConfigured
+        ? supabase.from("journeys").select<"*", JourneyRow>("*").eq("user_id", userId).order("started_at", { ascending: false })
+        : notConfigured(),
   },
 
   communityReports: {
-    // userId is always required — user_id NOT NULL in schema + RLS enforces ownership
     insert: (userId: string, row: CommunityReportInsert) =>
-      supabase
-        .from("community_reports")
-        .insert({ ...row, user_id: userId })
-        .select<"*", CommunityReportRow>("*")
-        .single(),
+      isConfigured
+        ? supabase.from("community_reports").insert({ ...row, user_id: userId }).select<"*", CommunityReportRow>("*").single()
+        : notConfigured(),
 
     update: (id: string, patch: CommunityReportUpdate) =>
-      supabase.from("community_reports").update(patch).eq("id", id),
+      isConfigured ? supabase.from("community_reports").update(patch).eq("id", id) : notConfigured(),
 
     delete: (id: string) =>
-      supabase.from("community_reports").delete().eq("id", id),
+      isConfigured ? supabase.from("community_reports").delete().eq("id", id) : notConfigured(),
 
     listAll: () =>
-      supabase
-        .from("community_reports")
-        .select<"*", CommunityReportRow>("*")
-        .eq("moderation_status", "pending")
-        .order("created_at", { ascending: false }),
+      isConfigured
+        ? supabase.from("community_reports").select<"*", CommunityReportRow>("*").eq("moderation_status", "pending").order("created_at", { ascending: false })
+        : notConfigured(),
 
     listForUser: (userId: string) =>
-      supabase
-        .from("community_reports")
-        .select<"*", CommunityReportRow>("*")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false }),
+      isConfigured
+        ? supabase.from("community_reports").select<"*", CommunityReportRow>("*").eq("user_id", userId).order("created_at", { ascending: false })
+        : notConfigured(),
   },
 
   subscriptions: {
     getForUser: (userId: string) =>
-      supabase
-        .from("subscriptions")
-        .select<"*", SubscriptionRow>("*")
-        .eq("user_id", userId)
-        .single(),
+      isConfigured
+        ? supabase.from("subscriptions").select<"*", SubscriptionRow>("*").eq("user_id", userId).single()
+        : notConfigured(),
 
     upsert: (userId: string, patch: SubscriptionInsert) =>
-      supabase
-        .from("subscriptions")
-        .upsert({ user_id: userId, ...patch }, { onConflict: "user_id" }),
+      isConfigured
+        ? supabase.from("subscriptions").upsert({ user_id: userId, ...patch }, { onConflict: "user_id" })
+        : notConfigured(),
 
     update: (userId: string, patch: SubscriptionUpdate) =>
-      supabase.from("subscriptions").update(patch).eq("user_id", userId),
+      isConfigured ? supabase.from("subscriptions").update(patch).eq("user_id", userId) : notConfigured(),
   },
 
   notificationTokens: {
     upsert: (userId: string, row: NotificationTokenInsert) =>
-      supabase
-        .from("notification_tokens")
-        .upsert(
-          { user_id: userId, ...row },
-          { onConflict: "user_id, token" },
-        ),
+      isConfigured
+        ? supabase.from("notification_tokens").upsert({ user_id: userId, ...row }, { onConflict: "user_id, token" })
+        : notConfigured(),
 
     deleteForUser: (userId: string) =>
-      supabase.from("notification_tokens").delete().eq("user_id", userId),
+      isConfigured ? supabase.from("notification_tokens").delete().eq("user_id", userId) : notConfigured(),
 
     listForUser: (userId: string) =>
-      supabase
-        .from("notification_tokens")
-        .select<"*", NotificationTokenRow>("*")
-        .eq("user_id", userId),
+      isConfigured
+        ? supabase.from("notification_tokens").select<"*", NotificationTokenRow>("*").eq("user_id", userId)
+        : notConfigured(),
   },
 
   liveSessions: {
-    // userId is always required — user_id NOT NULL in schema + RLS enforces ownership
-    // Share-link reads (public tracker page) must go through the api-server
-    // using the service-role key, NOT the anon client, to avoid leaking all sessions.
     insert: (userId: string, row: LiveSessionInsert) =>
-      supabase
-        .from("live_sessions")
-        .insert({ ...row, user_id: userId })
-        .select<"*", LiveSessionRow>("*")
-        .single(),
+      isConfigured
+        ? supabase.from("live_sessions").insert({ ...row, user_id: userId }).select<"*", LiveSessionRow>("*").single()
+        : notConfigured(),
 
     update: (shareId: string, patch: LiveSessionUpdate) =>
-      supabase.from("live_sessions").update(patch).eq("share_id", shareId),
+      isConfigured ? supabase.from("live_sessions").update(patch).eq("share_id", shareId) : notConfigured(),
 
     end: (shareId: string) =>
-      supabase
-        .from("live_sessions")
-        .update({ is_active: false })
-        .eq("share_id", shareId),
+      isConfigured
+        ? supabase.from("live_sessions").update({ is_active: false }).eq("share_id", shareId)
+        : notConfigured(),
 
-    // Owner-only: reads the full row including user_id
     getByShareId: (shareId: string) =>
-      supabase
-        .from("live_sessions")
-        .select<"*", LiveSessionRow>("*")
-        .eq("share_id", shareId)
-        .single(),
+      isConfigured
+        ? supabase.from("live_sessions").select<"*", LiveSessionRow>("*").eq("share_id", shareId).single()
+        : notConfigured(),
 
-    // Public-safe: calls the SECURITY DEFINER RPC — only returns the one
-    // session matching p_share_id, never exposes user_id or other sessions.
     getPublicByShareId: (shareId: string) =>
-      supabase
-        .rpc("get_live_session", { p_share_id: shareId })
-        .returns<LiveSessionPublic[]>()
-        .single(),
+      isConfigured
+        ? supabase.rpc("get_live_session", { p_share_id: shareId }).returns<LiveSessionPublic[]>().single()
+        : notConfigured(),
   },
 };
