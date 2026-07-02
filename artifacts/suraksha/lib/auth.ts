@@ -25,11 +25,6 @@ export async function signOut(): Promise<void> {
   await signOutFB();
 }
 
-/** With Firebase there is no "global" session scope; this signs out this device. */
-export async function signOutGlobal(): Promise<void> {
-  await signOutFB();
-}
-
 // ── Current user ──────────────────────────────────────────────────────────────
 
 export async function getCurrentUser(): Promise<User | null> {
@@ -91,4 +86,22 @@ export async function deleteAccount(): Promise<{ error: string | null }> {
     }
     return { error: "Unable to delete account. Please try again." };
   }
+}
+
+/**
+ * The single "delete my account" orchestration — deletes the account
+ * (backend cleanup + Firebase user removal), wipes local app state via the
+ * caller-supplied `resetAllData`, then clears any residual local auth
+ * session. Both Profile and Sessions must call this same function rather
+ * than each re-implementing the delete → reset → sign-out sequence, so the
+ * two screens can't drift out of sync with each other again.
+ */
+export async function deleteAccountAndResetLocalData(
+  resetAllData: () => Promise<void>,
+): Promise<{ error: string | null }> {
+  const { error } = await deleteAccount();
+  if (error) return { error };
+  await resetAllData();
+  await signOut();
+  return { error: null };
 }

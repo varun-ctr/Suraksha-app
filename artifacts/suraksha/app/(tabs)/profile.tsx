@@ -3,7 +3,7 @@ import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { deleteAccount, signOut } from "@/lib/auth";
+import { deleteAccountAndResetLocalData, signOut } from "@/lib/auth";
 import {
   ActivityIndicator,
   Image,
@@ -212,13 +212,11 @@ export default function ProfileScreen() {
   const handleDeleteAccount = async () => {
     setDeleting(true);
     try {
-      const { error } = await deleteAccount();
+      const { error } = await deleteAccountAndResetLocalData(resetAllData);
       if (error) {
         showToast(error);
         return;
       }
-      await resetAllData();
-      await signOut();
       setDeleteStep(0);
       router.replace("/onboarding" as never);
     } catch {
