@@ -1,5 +1,9 @@
 -- Run this once in your Supabase SQL Editor:
 -- Dashboard → SQL Editor → New query → paste → Run
+--
+-- NOTE: creates the original Supabase-Auth schema. The app uses Firebase Auth,
+-- so afterwards run MIGRATE_FIREBASE_AUTH.sql to convert user_id to the Firebase
+-- uid (TEXT) and switch RLS to the Firebase `sub` claim.
 
 CREATE TABLE IF NOT EXISTS emergency_contacts (
   id         TEXT        NOT NULL,

@@ -15,13 +15,13 @@ const serviceSupabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 // Supabase tables that store user-owned rows keyed by `user_id` (the Firebase uid).
 const USER_DATA_TABLES = [
+  "emergency_contacts",
   "sos_events",
   "journeys",
   "community_reports",
   "subscriptions",
   "notification_tokens",
   "live_sessions",
-  "contacts",
 ] as const;
 
 // ---------------------------------------------------------------------------
