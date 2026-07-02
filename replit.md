@@ -10,12 +10,55 @@ A React Native / Expo mobile app (iOS + Android) that helps women stay safe: SOS
 
 ## Required environment variables
 
-| Variable | Where | Purpose |
-|---|---|---|
-| `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` | Replit Secret | Google Maps SDK key for Android + iOS native map tiles and Places API. Restrict this key to your app's package/bundle identifier in Google Cloud Console. Scopes needed: Maps SDK for Android, Maps SDK for iOS, Places API (New). |
-| `GOOGLE_PLACES_API_KEY` | Replit Secret (server-side) | Server-side Google Places API (New) key used by the `/nearby-places` endpoint in `artifacts/api-server`. |
-| `SUPABASE_URL` | Replit Secret | Supabase project URL |
-| `SUPABASE_PUBLISHABLE_KEY` | Replit Secret | Supabase anon/publishable key |
+Auth is **Firebase** (identity) + **Supabase** (data). The backend verifies the
+Firebase ID token the app sends; Supabase RLS authorizes on the Firebase uid via
+Third-Party Auth. See "Firebase ↔ Supabase auth setup" below.
+
+### Client — `EXPO_PUBLIC_*` (Replit Secret, embedded at **build time** by Metro/EAS)
+
+| Variable | Purpose |
+|---|---|
+| `EXPO_PUBLIC_FIREBASE_API_KEY` / `_AUTH_DOMAIN` / `_PROJECT_ID` / `_STORAGE_BUCKET` / `_MESSAGING_SENDER_ID` / `_APP_ID` | Firebase Web app config (Firebase Console → Project settings → your Web app). All required. |
+| `EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID` | Optional — Firebase Analytics. |
+| `EXPO_PUBLIC_SUPABASE_URL` | Supabase project URL (Supabase → Project settings → API). |
+| `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase anon/publishable key. |
+| `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` | Google Maps SDK (Android + iOS tiles + Places). Restrict to your bundle id. Scopes: Maps SDK for Android, Maps SDK for iOS, Places API (New). |
+| `EXPO_PUBLIC_BACKEND_URL` | Deployed api-server base URL. Enables automatic SOS (Twilio), Sakhi chat, sessions. If unset, SOS falls back to the manual native-SMS path. |
+| `EXPO_PUBLIC_LIVE_TRACKER_URL` | Optional — base URL of the live-tracking web page. If unset, the SOS message links to Google Maps instead. |
+| `GOOGLE_SERVICES_JSON` | Path to Android `google-services.json` (FCM push). Firebase Console → Android app. |
+
+### Server — `artifacts/api-server` (Replit Secret, runtime)
+
+| Variable | Purpose |
+|---|---|
+| `FIREBASE_SERVICE_ACCOUNT` **or** `FIREBASE_PROJECT_ID` | Lets the backend verify Firebase ID tokens (`lib/firebaseAdmin.ts`). Service-account JSON (Firebase Console → Service accounts → Generate new private key) is recommended in prod; project id alone suffices for token verification. `GOOGLE_APPLICATION_CREDENTIALS` (path to a key file) is also honored. |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_PHONE_NUMBER` | Twilio SMS gateway for automatic SOS (`/sos/alert`). All three required for auto-send; the phone number must be SMS-enabled. |
+| `SUPABASE_URL` | Supabase project URL. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service-role key (secret) — server-side data cleanup only. |
+| `GOOGLE_PLACES_API_KEY` | Server-side Google Places API (New) for `/nearby-places`. |
+| `OPENAI_API_KEY` | Sakhi AI chat. |
+| `REVENUECAT_WEBHOOK_SECRET` | RevenueCat subscription webhooks. |
+| `CORS_ALLOWED_ORIGINS` / `LOG_LEVEL` / `NODE_ENV` | Config (comma-separated origins; log level; environment). |
+
+### Auto-provided by Replit — do not set
+
+`PORT`, `REPL_ID`, `EXPO_PUBLIC_REPL_ID`, `REPLIT_DEV_DOMAIN`, `REPLIT_INTERNAL_APP_DOMAIN`, `EXPO_PUBLIC_DOMAIN`, `BASE_PATH`.
+
+## Firebase ↔ Supabase auth setup
+
+The app signs in with Firebase and passes the Firebase ID token to both the
+backend and Supabase. Two one-time setup steps are required for cloud features:
+
+1. **Supabase Dashboard → Authentication → Third-Party Auth → add Firebase**
+   (enter your Firebase project id). This makes Supabase trust the Firebase token
+   and assign it the `authenticated` role.
+2. **Run `artifacts/suraksha/MIGRATE_FIREBASE_AUTH.sql`** in the Supabase SQL
+   Editor. It converts `id`/`user_id` columns from UUID to TEXT (Firebase uids)
+   and rewrites RLS from `auth.uid()` to `auth.jwt() ->> 'sub'`. Run order and
+   details are in the file header.
+
+Without both, Supabase rejects the Firebase token and RLS denies every
+client read/write.
 
 ## Stack
 
