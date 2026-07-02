@@ -2,6 +2,11 @@
 -- Suraksha – Full Database Setup
 -- Run this in the Supabase SQL Editor (Dashboard → SQL Editor).
 -- Safe to re-run: uses IF NOT EXISTS / DO blocks throughout.
+--
+-- NOTE: This file creates the ORIGINAL Supabase-Auth schema (UUID ids,
+-- auth.users FKs, auth.uid() RLS). The app now uses Firebase Auth, so after
+-- running this (and supabase/emergency_contacts.sql) you MUST also run
+-- MIGRATE_FIREBASE_AUTH.sql to switch ids to the Firebase uid and fix RLS.
 -- =============================================================
 
 -- ----------------------------------------------------------

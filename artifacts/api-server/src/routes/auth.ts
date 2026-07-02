@@ -1,144 +1,92 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { createClient } from "@supabase/supabase-js";
 import { requiredEnv } from "./../lib/env";
+import { getBearerToken, verifyFirebaseToken } from "../lib/firebaseAdmin";
 
 const router: IRouter = Router();
 
 const SUPABASE_URL = requiredEnv("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
 
+// Service-role client bypasses RLS — used only for server-side data cleanup.
 const serviceSupabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-/** Extract bearer token from Authorization header. */
-function getBearerToken(req: Request): string | null {
-  const h = req.headers["authorization"] ?? "";
-  return h.startsWith("Bearer ") ? h.slice(7) : null;
-}
-
-/** Decode JWT payload without verification (we verify via Supabase admin). */
-function decodeJwtPayload(token: string): Record<string, unknown> {
-  try {
-    return JSON.parse(Buffer.from(token.split(".")[1], "base64").toString("utf8")) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-}
+// Supabase tables that store user-owned rows keyed by `user_id` (the Firebase uid).
+const USER_DATA_TABLES = [
+  "emergency_contacts",
+  "sos_events",
+  "journeys",
+  "community_reports",
+  "subscriptions",
+  "notification_tokens",
+  "live_sessions",
+] as const;
 
 // ---------------------------------------------------------------------------
 // GET /api/auth/sessions
 //
-// Returns all active Supabase Auth sessions for the authenticated user.
-// Uses the GoTrue admin REST API (not exposed via supabase-js).
+// Firebase Auth does not expose a list of active sessions/devices the way
+// Supabase GoTrue did, so we return the current device as a single session
+// synthesised from the verified ID token. Keeps the "manage devices" screen
+// working without pretending to list sessions we can't see.
 // ---------------------------------------------------------------------------
 router.get("/auth/sessions", async (req: Request, res: Response) => {
-  const token = getBearerToken(req);
-  if (!token) {
-    res.status(401).json({ error: "auth_required", message: "No auth token provided." });
-    return;
-  }
-
-  const { data: userData, error: authError } = await serviceSupabase.auth.getUser(token);
-  if (authError || !userData.user) {
+  const user = await verifyFirebaseToken(getBearerToken(req));
+  if (!user) {
     res.status(401).json({ error: "invalid_token", message: "Token is invalid or expired." });
     return;
   }
 
-  const userId = userData.user.id;
+  const signedInAt = user.authTime ? new Date(user.authTime * 1000).toISOString() : null;
 
-  // Parse current session ID from JWT (claim: session_id)
-  const payload = decodeJwtPayload(token);
-  const currentSessionId = (payload.session_id as string | undefined) ?? null;
-
-  // Fetch all sessions via GoTrue admin REST API
-  let rawSessions: unknown[] = [];
-  try {
-    const gotrue = await fetch(
-      `${SUPABASE_URL}/auth/v1/admin/users/${userId}/sessions`,
+  res.json({
+    sessions: [
       {
-        headers: {
-          apikey: SUPABASE_SERVICE_ROLE_KEY,
-          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        },
-      },
-    );
-    if (gotrue.ok) {
-      const body = await gotrue.json() as { sessions?: unknown[] };
-      rawSessions = body.sessions ?? [];
-    }
-  } catch {
-    // GoTrue endpoint unavailable — return a synthetic single-session list
-    // built from the current user metadata so the UI still works.
-  }
-
-  interface RawSession {
-    id?: string;
-    created_at?: string;
-    updated_at?: string;
-    user_agent?: string;
-    ip?: string;
-  }
-
-  // If GoTrue returned nothing (older Supabase version), synthesise current session
-  if (rawSessions.length === 0) {
-    rawSessions = [
-      {
-        id: currentSessionId ?? "current",
-        created_at: userData.user.created_at,
-        updated_at: userData.user.last_sign_in_at ?? userData.user.created_at,
-        user_agent: req.headers["user-agent"] ?? null,
+        id: "current",
+        createdAt: signedInAt,
+        updatedAt: signedInAt,
+        userAgent: req.headers["user-agent"] ?? null,
         ip: null,
+        isCurrentSession: true,
       },
-    ];
-  }
-
-  const sessions = (rawSessions as RawSession[])
-    .map((s) => ({
-      id: s.id ?? null,
-      createdAt: s.created_at ?? null,
-      updatedAt: s.updated_at ?? s.created_at ?? null,
-      userAgent: s.user_agent ?? null,
-      ip: s.ip ?? null,
-      isCurrentSession: s.id === currentSessionId,
-    }))
-    .sort((a, b) => {
-      const ta = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-      const tb = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-      return tb - ta; // most recent first
-    });
-
-  res.json({ sessions });
+    ],
+  });
 });
 
 // ---------------------------------------------------------------------------
 // DELETE /api/auth/account
 //
-// Permanently deletes the authenticated user's account from Supabase Auth
-// (cascades to all related rows via ON DELETE CASCADE foreign keys).
-//
-// Requires: Authorization: Bearer <access_token>
+// The Firebase user record is deleted client-side (authoritative). This
+// endpoint is best-effort server-side cleanup: it removes the user's rows
+// from Supabase, keyed by the Firebase uid. Requires a valid Firebase token.
 // ---------------------------------------------------------------------------
 router.delete("/auth/account", async (req: Request, res: Response) => {
-  const token = getBearerToken(req);
-  if (!token) {
-    res.status(401).json({ error: "auth_required", message: "No auth token provided." });
-    return;
-  }
-
-  const { data: userData, error: authError } = await serviceSupabase.auth.getUser(token);
-  if (authError || !userData.user) {
+  const user = await verifyFirebaseToken(getBearerToken(req));
+  if (!user) {
     res.status(401).json({ error: "invalid_token", message: "Token is invalid or expired." });
     return;
   }
 
-  const { error: deleteError } = await serviceSupabase.auth.admin.deleteUser(userData.user.id);
-  if (deleteError) {
-    res.status(500).json({ error: "delete_failed", message: deleteError.message });
-    return;
-  }
+  const errors: string[] = [];
 
-  res.status(200).json({ success: true, message: "Account permanently deleted." });
+  // Delete owned rows from every user-data table (best-effort, keep going on error).
+  await Promise.all(
+    USER_DATA_TABLES.map(async (table) => {
+      const { error } = await serviceSupabase.from(table).delete().eq("user_id", user.uid);
+      if (error) errors.push(`${table}: ${error.message}`);
+    }),
+  );
+
+  // The profile row is keyed by `id` (the Firebase uid), not `user_id`.
+  const { error: profileError } = await serviceSupabase
+    .from("profiles")
+    .delete()
+    .eq("id", user.uid);
+  if (profileError) errors.push(`profiles: ${profileError.message}`);
+
+  res.status(200).json({ success: true, cleanupErrors: errors });
 });
 
 export default router;

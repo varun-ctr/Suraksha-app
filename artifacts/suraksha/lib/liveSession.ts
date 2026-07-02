@@ -3,7 +3,8 @@ import { getCurrentUser } from "./auth";
 
 export interface LiveSessionResult {
   shareId: string;
-  shareUrl: string;
+  /** Null when EXPO_PUBLIC_LIVE_TRACKER_URL is not configured. */
+  shareUrl: string | null;
 }
 
 import { optionalPublicEnv } from "./env";
@@ -24,7 +25,11 @@ export async function startLiveSession(
     if (error || !data) return null;
 
     const shareId = data.share_id;
-    return { shareId, shareUrl: `${LIVE_TRACKER_URL}/${shareId}` };
+    // Only produce a shareable URL when a tracker base URL is configured.
+    // Otherwise return null so the emergency message falls back to a valid
+    // maps link instead of embedding a broken relative URL like "/<id>".
+    const shareUrl = LIVE_TRACKER_URL ? `${LIVE_TRACKER_URL}/${shareId}` : null;
+    return { shareId, shareUrl };
   } catch {
     return null;
   }

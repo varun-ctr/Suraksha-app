@@ -1,6 +1,7 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import "react-native-url-polyfill/auto";
+
+import { firebaseAuth } from "./firebase";
 
 import type {
   ProfileRow,
@@ -40,11 +41,14 @@ let _client: SupabaseClient | null = null;
  */
 export function initSupabase(url: string, key: string): void {
   _client = createClient(url, key, {
-    auth: {
-      storage: AsyncStorage,
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: false,
+    // Auth is handled by Firebase, not Supabase. We hand Supabase the current
+    // Firebase ID token so Postgres RLS can authorize the request via the
+    // token's `sub` claim (the Firebase uid). This requires Firebase to be
+    // registered as a Third-Party Auth provider in the Supabase dashboard.
+    accessToken: async () => {
+      const user = firebaseAuth.currentUser;
+      if (!user) return null;
+      return user.getIdToken().catch(() => null);
     },
   });
 }

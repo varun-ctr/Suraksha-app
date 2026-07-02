@@ -3,108 +3,36 @@
  *
  * On activation:
  *  1. Tries the backend /sos/alert route (Twilio — fully automatic, no user action).
- *  2. If backend not configured / unavailable → opens native SMS app pre-filled with
- *     all contacts and the emergency message (user taps Send once).
- *  3. Opens WhatsApp for the first contact with the same message.
- *  4. Initiates a phone call to the first contact.
+ *  2. If backend not configured / unavailable → opens the native SMS app pre-filled
+ *     with all contacts and the emergency message (user taps Send once).
+ *  3. Initiates a phone call to the first contact.
  *
  * Each contact gets an AlertStatus so the UI can show per-contact delivery state.
+ * The message itself is built by the pure, localized helper in
+ * `lib/emergencyMessage.ts`.
  */
 
 import type { Contact } from "@/context/AppContext";
 import type { Coords } from "@/context/SafetyContext";
-import { callNumber, locationLink, sendSms } from "@/lib/native";
+import { callNumber, sendSms } from "@/lib/native";
 import { firebaseAuth } from "@/lib/firebase";
+import { buildEmergencyMessage, type Translate } from "@/lib/emergencyMessage";
 
-export type SmsState     = "idle" | "sending" | "sent" | "opening" | "failed";
-export type WhatsAppState = "idle" | "opening" | "done";
-export type CallState    = "idle" | "calling" | "done";
+export type SmsState  = "idle" | "sending" | "sent" | "opening" | "failed";
+export type CallState = "idle" | "calling" | "done";
 
 export interface AlertStatus {
   id: string;
   name: string;
   phone: string;
-  sms:      SmsState;
-  whatsapp: WhatsAppState;
-  call:     CallState;
-}
-
-// ── Message builder ───────────────────────────────────────────────────────────
-
-export async function buildEmergencyMessageAsync(
-  userName: string,
-  coords: Coords | null,
-  shareUrl: string | null,
-  address: string | null,
-): Promise<string> {
-  const link = shareUrl ?? (coords ? locationLink(coords.lat, coords.lng) : null);
-  const now = new Date();
-  const date = now.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-  const time = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-
-  const lines = [
-    "🚨 EMERGENCY ALERT",
-    "",
-    `${userName || "Someone"} may be in danger and needs immediate help!`,
-    `📅 ${date} at ${time}`,
-  ];
-
-  if (address) {
-    lines.push(`📍 Location: ${address}`);
-  } else if (coords) {
-    lines.push(`📍 Coordinates: ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`);
-  }
-
-  if (link) {
-    lines.push("", "🗺️ Live tracking:", link);
-  }
-
-  lines.push(
-    "",
-    "Please call them or go to their location right away.",
-    "— Sent via Suraksha Safety App",
-  );
-  return lines.join("\n");
-}
-
-/** Synchronous fallback (no battery, no async) — used when async is unavailable */
-export function buildEmergencyMessage(
-  userName: string,
-  coords: Coords | null,
-  shareUrl: string | null,
-  address?: string | null,
-): string {
-  const link = shareUrl ?? (coords ? locationLink(coords.lat, coords.lng) : null);
-  const time = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-
-  const lines = [
-    "🚨 EMERGENCY ALERT",
-    "",
-    `${userName || "Someone"} may be in danger and needs immediate help!`,
-    `⏰ Time: ${time}`,
-  ];
-
-  if (address) {
-    lines.push(`📍 Location: ${address}`);
-  } else if (coords) {
-    lines.push(`📍 Coordinates: ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`);
-  }
-
-  if (link) {
-    lines.push("", "🗺️ Live tracking:", link);
-  }
-
-  lines.push(
-    "",
-    "Please call them or go to their location right away.",
-    "— Sent via Suraksha Safety App",
-  );
-  return lines.join("\n");
+  sms:  SmsState;
+  call: CallState;
 }
 
 // ── Main dispatcher ───────────────────────────────────────────────────────────
 
 export async function sendSosAlerts(
+  t: Translate,
   contacts: Contact[],
   coords: Coords | null,
   shareUrl: string | null,
@@ -113,17 +41,16 @@ export async function sendSosAlerts(
 ): Promise<AlertStatus[]> {
   if (contacts.length === 0) return [];
 
-  const message = await buildEmergencyMessageAsync(userName, coords, shareUrl, address ?? null);
+  const message = buildEmergencyMessage(t, userName, coords, shareUrl, address ?? null);
   const backendUrl = (process.env.EXPO_PUBLIC_BACKEND_URL ?? "").replace(/\/$/, "");
 
   // Initial statuses — all pending
   const statuses: AlertStatus[] = contacts.map((c) => ({
-    id:       c.id,
-    name:     c.name,
-    phone:    c.phone,
-    sms:      "sending",
-    whatsapp: "idle",
-    call:     "idle",
+    id:    c.id,
+    name:  c.name,
+    phone: c.phone,
+    sms:   "sending",
+    call:  "idle",
   }));
 
   // ── 1. Try backend (Twilio auto-SMS) ─────────────────────────────
@@ -166,13 +93,18 @@ export async function sendSosAlerts(
   }
 
   // ── 2. Native SMS fallback (opens SMS app, pre-filled) ───────────
+  // Send per contact rather than one comma-joined recipient list: multi-
+  // recipient sms: URIs are unreliable (iOS in particular silently drops all
+  // but the first), so each contact gets their own message individually.
   if (!backendSent) {
-    try {
-      const phones = contacts.map((c) => c.phone).join(",");
-      await sendSms(phones, message);
-      statuses.forEach((s) => { s.sms = "opening"; });
-    } catch {
-      statuses.forEach((s) => { s.sms = "failed"; });
+    for (const c of contacts) {
+      const s = statuses.find((x) => x.id === c.id);
+      try {
+        await sendSms(c.phone, message);
+        if (s) s.sms = "opening";
+      } catch {
+        if (s) s.sms = "failed";
+      }
     }
   }
 
