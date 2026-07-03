@@ -14,3 +14,5 @@
 - [Supabase+Firebase split](supabase-firebase-split.md) — Firebase=auth only, Supabase=all data+storage; Supabase RLS not yet updated for Firebase JWTs; use user.uid (Firebase) not user.id (Supabase) everywhere
 - [Quick Actions grid](quick-actions-grid.md) — 8 items, 2-col flex-wrap grid via useWindowDimensions; journey/weather keys handled inline; incident removed from tab bar but kept as hidden route
 - [Suraksha lazy init pattern](suraksha-lazy-init.md) — Firebase+Supabase initialized lazily via Proxy; initFirebase()+initSupabase() called from _layout.tsx module-level ONLY after validateConfig() passes; no placeholder URLs ever reach createClient/initializeApp
+- [Metro pnpm monorepo watchFolders](metro-pnpm-monorepo.md) — after any fresh pnpm install, Metro must have watchFolders+nodeModulesPaths pointing to workspace root or --clear rebuilds fail to resolve packages
+- [OpenAI integration key fallback](openai-integration-fallback.md) — integrations-openai-ai-server expects AI_INTEGRATIONS_OPENAI_API_KEY; fall back to OPENAI_API_KEY so server starts when Replit integration is not provisioned
