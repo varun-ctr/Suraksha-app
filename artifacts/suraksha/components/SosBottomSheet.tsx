@@ -35,10 +35,11 @@ interface Props {
 // ── Status badge helpers ──────────────────────────────────────────────────────
 
 function SmsBadge({ state }: { state: AlertStatus["sms"] }) {
-  if (state === "sending")  return <Badge label="Sending…"  color="#F59E0B" />;
-  if (state === "sent")     return <Badge label="✓ SMS Sent"   color="#22C55E" />;
-  if (state === "opening")  return <Badge label="⟳ SMS Opened" color="#3B82F6" />;
-  if (state === "failed")   return <Badge label="SMS Failed" color="#EF4444" />;
+  const { c } = useTheme();
+  if (state === "sending")  return <Badge label="Sending…"  color={c.warning} />;
+  if (state === "sent")     return <Badge label="✓ SMS Sent"   color={c.success} />;
+  if (state === "opening")  return <Badge label="⟳ SMS Opened" color={c.police} />;
+  if (state === "failed")   return <Badge label="SMS Failed" color={c.danger} />;
   return null;
 }
 
@@ -126,7 +127,7 @@ export function SosBottomSheet({ sos, cancelSOS }: Props) {
       <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.55)" }]} />
 
       <Animated.View
-        style={[styles.sheet, { paddingBottom: insets.bottom + 12 }, { transform: [{ translateY: slideAnim }] }]}
+        style={[styles.sheet, { backgroundColor: c.card, paddingBottom: insets.bottom + 12 }, { transform: [{ translateY: slideAnim }] }]}
       >
         <View style={styles.handle} />
 
@@ -172,7 +173,7 @@ export function SosBottomSheet({ sos, cancelSOS }: Props) {
             {/* Header */}
             <View style={styles.activeHeader}>
               <View style={styles.pulseWrap}>
-                <Animated.View style={[styles.pulseRing, { transform: [{ scale: pulseScale }], opacity: pulseOpacity }]} />
+                <Animated.View style={[styles.pulseRing, { backgroundColor: c.danger, transform: [{ scale: pulseScale }], opacity: pulseOpacity }]} />
                 <View style={[styles.avatarCircle, { backgroundColor: withAlpha(c.accent, 0.12) }]}>
                   {profile.avatarUrl ? (
                     <Image source={{ uri: profile.avatarUrl }} style={styles.avatarImg} />
@@ -259,7 +260,7 @@ export function SosBottomSheet({ sos, cancelSOS }: Props) {
                         </View>
                         {/* Alert delivery status */}
                         {alertSending && !status && (
-                          <Badge label="Sending…" color="#F59E0B" />
+                          <Badge label="Sending…" color={c.warning} />
                         )}
                         {status && <SmsBadge state={status.sms} />}
                       </View>
@@ -332,7 +333,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     maxHeight: "90%",
-    backgroundColor: "#fff",
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     overflow: "hidden",
@@ -364,7 +364,7 @@ const styles = StyleSheet.create({
 
   activeHeader: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
   pulseWrap: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  pulseRing: { position: "absolute", width: 44, height: 44, borderRadius: 22, backgroundColor: "#FF3B30" },
+  pulseRing: { position: "absolute", width: 44, height: 44, borderRadius: 22 },
   avatarCircle: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   avatarImg: { width: 40, height: 40, borderRadius: 20 },
   avatarInitial: { fontSize: 18, fontFamily: "Inter_700Bold" },

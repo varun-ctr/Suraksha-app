@@ -12,6 +12,18 @@ interface Props {
   missing: string[];
 }
 
+/** Where to get each required var's value, shown next to it in dev. */
+const VAR_SOURCE: Record<string, string> = {
+  EXPO_PUBLIC_SUPABASE_URL: "Supabase Dashboard → Project Settings → API → Project URL",
+  EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "Supabase Dashboard → Project Settings → API → anon/publishable key",
+  EXPO_PUBLIC_FIREBASE_API_KEY: "Firebase Console → Project Settings → General → Your apps → Web app config",
+  EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: "Firebase Console → Project Settings → General → Your apps → Web app config",
+  EXPO_PUBLIC_FIREBASE_PROJECT_ID: "Firebase Console → Project Settings → General → Project ID",
+  EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: "Firebase Console → Project Settings → General → Your apps → Web app config",
+  EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "Firebase Console → Project Settings → Cloud Messaging → Sender ID",
+  EXPO_PUBLIC_FIREBASE_APP_ID: "Firebase Console → Project Settings → General → Your apps → Web app config",
+};
+
 export function ConfigErrorScreen({ missing }: Props) {
   return (
     <SafeAreaView style={styles.root}>
@@ -34,12 +46,19 @@ export function ConfigErrorScreen({ missing }: Props) {
         {__DEV__ && missing.length > 0 && (
           <View style={styles.devBox}>
             <Text style={styles.devTitle}>
-              Missing environment variables:
+              Missing environment variables ({missing.length})
+            </Text>
+            <Text style={styles.devIntro}>
+              Add each one in Replit → Tools → Secrets, then restart the Expo
+              workflow so the new values are picked up.
             </Text>
             {missing.map((key) => (
-              <Text key={key} style={styles.devItem}>
-                • {key}
-              </Text>
+              <View key={key} style={styles.devItemRow}>
+                <Text style={styles.devItemKey}>• {key}</Text>
+                {VAR_SOURCE[key] && (
+                  <Text style={styles.devItemSource}>{VAR_SOURCE[key]}</Text>
+                )}
+              </View>
             ))}
           </View>
         )}
@@ -103,15 +122,30 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     color: "#f59e0b",
-    marginBottom: 10,
+    marginBottom: 8,
     textTransform: "uppercase",
     letterSpacing: 0.8,
   },
-  devItem: {
+  devIntro: {
     fontSize: 12,
+    color: "#94a3b8",
+    lineHeight: 17,
+    marginBottom: 14,
+  },
+  devItemRow: {
+    marginBottom: 10,
+  },
+  devItemKey: {
+    fontSize: 12.5,
     color: "#e2e8f0",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    marginBottom: 5,
     lineHeight: 18,
+  },
+  devItemSource: {
+    fontSize: 11,
+    color: "#64748b",
+    marginTop: 1,
+    marginLeft: 12,
+    lineHeight: 15,
   },
 });

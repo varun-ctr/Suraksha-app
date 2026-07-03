@@ -18,15 +18,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/context/AuthContext";
-
-const BLUE      = "#2563EB";
-const BLUE_DARK = "#1D4ED8";
-const BLUE_SOFT = "#EFF6FF";
-const SUCCESS   = "#22C55E";
+import { useTheme } from "@/context/ThemeContext";
+import { withAlpha } from "@/constants/colors";
 
 type Mode = "signin" | "signup" | "forgot" | "verify" | "success";
 
 function SuccessView({ email, onDone }: { email: string; onDone: () => void }) {
+  const { c } = useTheme();
   const scale   = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -39,20 +37,20 @@ function SuccessView({ email, onDone }: { email: string; onDone: () => void }) {
   return (
     <Animated.View style={[{ alignItems: "center", paddingVertical: 8 }, { opacity }]}>
       <Animated.View style={[{ marginBottom: 20 }, { transform: [{ scale }] }]}>
-        <LinearGradient colors={[SUCCESS, "#16A34A"]} style={suc.icon}>
+        <LinearGradient colors={[c.success, c.successDark]} style={[suc.icon, { shadowColor: c.success }]}>
           <Text style={{ fontSize: 34 }}>🛡️</Text>
         </LinearGradient>
       </Animated.View>
-      <Text style={suc.title}>Account Saved!</Text>
-      <Text style={suc.sub}>
+      <Text style={[suc.title, { color: c.text }]}>Account Saved!</Text>
+      <Text style={[suc.sub, { color: c.textMuted }]}>
         Your safety data is backed up to{"\n"}
-        <Text style={[suc.sub, { color: BLUE, fontFamily: "Inter_700Bold" }]}>{email}</Text>
+        <Text style={[suc.sub, { color: c.primary, fontFamily: "Inter_700Bold" }]}>{email}</Text>
         {"\n\n"}Sign in from any device using this email.
       </Text>
       <Pressable onPress={onDone} style={({ pressed }) => ({ opacity: pressed ? 0.88 : 1 })}>
-        <LinearGradient colors={[SUCCESS, "#16A34A"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={suc.btn}>
-          <Icon name="check" size={18} color="#fff" />
-          <Text style={suc.btnText}>Done</Text>
+        <LinearGradient colors={[c.success, c.successDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[suc.btn, { shadowColor: c.success }]}>
+          <Icon name="check" size={18} color={c.onColor} />
+          <Text style={[suc.btnText, { color: c.onColor }]}>Done</Text>
         </LinearGradient>
       </Pressable>
     </Animated.View>
@@ -60,11 +58,11 @@ function SuccessView({ email, onDone }: { email: string; onDone: () => void }) {
 }
 
 const suc = StyleSheet.create({
-  icon:    { width: 88, height: 88, borderRadius: 28, alignItems: "center", justifyContent: "center", shadowColor: SUCCESS, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 16, elevation: 8 },
-  title:   { fontSize: 24, fontFamily: "Inter_700Bold", color: "#111827", marginBottom: 10, textAlign: "center" },
-  sub:     { fontSize: 13.5, color: "#6B7280", textAlign: "center", lineHeight: 20, marginBottom: 24 },
-  btn:     { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 20, paddingVertical: 15, paddingHorizontal: 36, shadowColor: SUCCESS, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
-  btnText: { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
+  icon:    { width: 88, height: 88, borderRadius: 28, alignItems: "center", justifyContent: "center", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 16, elevation: 8 },
+  title:   { fontSize: 24, fontFamily: "Inter_700Bold", marginBottom: 10, textAlign: "center" },
+  sub:     { fontSize: 13.5, textAlign: "center", lineHeight: 20, marginBottom: 24 },
+  btn:     { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 20, paddingVertical: 15, paddingHorizontal: 36, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
+  btnText: { fontSize: 16, fontFamily: "Inter_700Bold" },
 });
 
 function VerifyEmailView({
@@ -78,6 +76,7 @@ function VerifyEmailView({
   onDone: () => void;
   onReload: () => Promise<void>;
 }) {
+  const { c } = useTheme();
   const [resending, setResending] = useState(false);
   const [reloading, setReloading] = useState(false);
   const [msg, setMsg]             = useState<string | null>(null);
@@ -98,18 +97,18 @@ function VerifyEmailView({
 
   return (
     <View style={{ alignItems: "center", paddingVertical: 8 }}>
-      <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: "#FEF9C3", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+      <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: withAlpha(c.warning, 0.18), alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
         <Text style={{ fontSize: 30 }}>📬</Text>
       </View>
-      <Text style={styles.cardTitle}>Verify your email</Text>
-      <Text style={[styles.cardSub, { textAlign: "center", marginBottom: 20 }]}>
+      <Text style={[styles.cardTitle, { color: c.text }]}>Verify your email</Text>
+      <Text style={[styles.cardSub, { color: c.textMuted, textAlign: "center", marginBottom: 20 }]}>
         We sent a verification link to{"\n"}
-        <Text style={{ color: BLUE, fontFamily: "Inter_700Bold" }}>{email}</Text>
+        <Text style={{ color: c.primary, fontFamily: "Inter_700Bold" }}>{email}</Text>
         {"\n\n"}Click the link in your email, then tap the button below.
       </Text>
       {msg && (
-        <View style={{ backgroundColor: "#F0FDF4", borderWidth: 1, borderColor: "#86EFAC", borderRadius: 10, padding: 10, marginBottom: 14, width: "100%" }}>
-          <Text style={{ color: "#16A34A", fontSize: 12.5, textAlign: "center" }}>{msg}</Text>
+        <View style={{ backgroundColor: withAlpha(c.success, 0.12), borderWidth: 1, borderColor: withAlpha(c.success, 0.35), borderRadius: 10, padding: 10, marginBottom: 14, width: "100%" }}>
+          <Text style={{ color: c.successDark, fontSize: 12.5, textAlign: "center" }}>{msg}</Text>
         </View>
       )}
       <Pressable
@@ -117,17 +116,17 @@ function VerifyEmailView({
         disabled={reloading}
         style={({ pressed }) => ({ opacity: pressed || reloading ? 0.85 : 1, width: "100%", marginBottom: 12 })}
       >
-        <LinearGradient colors={[BLUE, BLUE_DARK]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.primaryBtn}>
-          {reloading ? <ActivityIndicator color="#fff" /> : (
+        <LinearGradient colors={[c.primary, c.primaryDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.primaryBtn, { shadowColor: c.primary }]}>
+          {reloading ? <ActivityIndicator color={c.onColor} /> : (
             <>
-              <Icon name="check" size={17} color="#fff" />
-              <Text style={styles.primaryBtnText}>I've verified — Continue</Text>
+              <Icon name="check" size={17} color={c.onColor} />
+              <Text style={[styles.primaryBtnText, { color: c.onColor }]}>I've verified — Continue</Text>
             </>
           )}
         </LinearGradient>
       </Pressable>
       <Pressable onPress={handleResend} disabled={resending} style={styles.ghostBtn}>
-        <Text style={styles.ghostBtnText}>{resending ? "Sending…" : "Resend verification email"}</Text>
+        <Text style={[styles.ghostBtnText, { color: c.textMuted }]}>{resending ? "Sending…" : "Resend verification email"}</Text>
       </Pressable>
     </View>
   );
@@ -136,6 +135,7 @@ function VerifyEmailView({
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { c } = useTheme();
   const { signIn, signUp, resetPassword, resendVerification, reloadUser, user } = useAuth();
 
   const [mode,    setMode]    = useState<Mode>("signin");
@@ -216,7 +216,7 @@ export default function LoginScreen() {
 
   return (
     <LinearGradient
-      colors={["#1E3A8A", "#1D4ED8", "#2563EB"]}
+      colors={[c.primaryDark, c.primaryDark, c.primary]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={{ flex: 1 }}
@@ -252,9 +252,9 @@ export default function LoginScreen() {
                 <Pressable
                   key={m}
                   onPress={() => { setError(null); setSuccess(null); setMode(m); }}
-                  style={[styles.tab, mode === m && styles.tabActive]}
+                  style={[styles.tab, mode === m && { backgroundColor: c.card }]}
                 >
-                  <Text style={[styles.tabText, mode === m && styles.tabTextActive]}>
+                  <Text style={[styles.tabText, mode === m && { color: c.primary }]}>
                     {m === "signin" ? "Sign In" : "Create Account"}
                   </Text>
                 </Pressable>
@@ -263,7 +263,7 @@ export default function LoginScreen() {
           )}
 
           <Animated.View
-            style={[styles.card, { opacity: cardOpacity, transform: [{ translateY: cardSlide }] }]}
+            style={[styles.card, { backgroundColor: c.card, opacity: cardOpacity, transform: [{ translateY: cardSlide }] }]}
           >
             {mode === "success" && (
               <SuccessView email={email.trim().toLowerCase()} onDone={handleSkip} />
@@ -284,23 +284,23 @@ export default function LoginScreen() {
             {(mode === "signin" || mode === "signup" || mode === "forgot") && (
               <>
                 <View style={styles.cardHeader}>
-                  <View style={[styles.cardIconWrap, { backgroundColor: BLUE_SOFT }]}>
-                    <Icon name={mode === "forgot" ? "lock" : "send"} size={20} color={BLUE} />
+                  <View style={[styles.cardIconWrap, { backgroundColor: withAlpha(c.primary, 0.1) }]}>
+                    <Icon name={mode === "forgot" ? "lock" : "send"} size={20} color={c.primary} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.cardTitle}>
+                    <Text style={[styles.cardTitle, { color: c.text }]}>
                       {mode === "signin" ? "Welcome back" : mode === "signup" ? "Create account" : "Reset password"}
                     </Text>
-                    <Text style={styles.cardSub}>
+                    <Text style={[styles.cardSub, { color: c.textMuted }]}>
                       {mode === "signin" ? "Sign in to sync your safety data." : mode === "signup" ? "Set up a password to protect your account." : "Enter your email to receive a reset link."}
                     </Text>
                   </View>
                 </View>
 
-                <Text style={styles.fieldLabel}>Email address</Text>
-                <View style={[styles.inputWrap, focusEmail && styles.inputWrapFocused]}>
-                  <View style={styles.inputIcon}>
-                    <Icon name="send" size={15} color={focusEmail ? BLUE : "#9CA3AF"} />
+                <Text style={[styles.fieldLabel, { color: c.textMuted }]}>Email address</Text>
+                <View style={[styles.inputWrap, { borderColor: c.border, backgroundColor: c.inputBg }, focusEmail && { borderColor: c.primary, backgroundColor: withAlpha(c.primary, 0.06) }]}>
+                  <View style={[styles.inputIcon, { borderRightColor: c.border }]}>
+                    <Icon name="send" size={15} color={focusEmail ? c.primary : c.textFaint} />
                   </View>
                   <TextInput
                     value={email}
@@ -308,27 +308,27 @@ export default function LoginScreen() {
                     onFocus={() => setFocusEmail(true)}
                     onBlur={() => setFocusEmail(false)}
                     placeholder="you@example.com"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={c.textFaint}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoCorrect={false}
-                    style={styles.fieldInput}
+                    style={[styles.fieldInput, { color: c.text }]}
                     returnKeyType={mode === "forgot" ? "done" : "next"}
                     onSubmitEditing={mode === "forgot" ? handleForgot : undefined}
                   />
                   {email.includes("@") && email.includes(".") && (
                     <View style={{ paddingRight: 12 }}>
-                      <Icon name="check" size={14} color={SUCCESS} />
+                      <Icon name="check" size={14} color={c.success} />
                     </View>
                   )}
                 </View>
 
                 {mode !== "forgot" && (
                   <>
-                    <Text style={styles.fieldLabel}>Password</Text>
-                    <View style={[styles.inputWrap, focusPass && styles.inputWrapFocused]}>
-                      <View style={styles.inputIcon}>
-                        <Icon name="lock" size={15} color={focusPass ? BLUE : "#9CA3AF"} />
+                    <Text style={[styles.fieldLabel, { color: c.textMuted }]}>Password</Text>
+                    <View style={[styles.inputWrap, { borderColor: c.border, backgroundColor: c.inputBg }, focusPass && { borderColor: c.primary, backgroundColor: withAlpha(c.primary, 0.06) }]}>
+                      <View style={[styles.inputIcon, { borderRightColor: c.border }]}>
+                        <Icon name="lock" size={15} color={focusPass ? c.primary : c.textFaint} />
                       </View>
                       <TextInput
                         value={pass}
@@ -336,14 +336,14 @@ export default function LoginScreen() {
                         onFocus={() => setFocusPass(true)}
                         onBlur={() => setFocusPass(false)}
                         placeholder="6+ characters"
-                        placeholderTextColor="#9CA3AF"
+                        placeholderTextColor={c.textFaint}
                         secureTextEntry={!showPass}
-                        style={styles.fieldInput}
+                        style={[styles.fieldInput, { color: c.text }]}
                         returnKeyType={mode === "signin" ? "done" : "next"}
                         onSubmitEditing={mode === "signin" ? handleSignIn : undefined}
                       />
                       <Pressable onPress={() => setShowPass((p) => !p)} style={{ paddingRight: 12 }}>
-                        <Icon name={showPass ? "wifiOff" : "wifi"} size={16} color="#9CA3AF" />
+                        <Icon name={showPass ? "eyeOff" : "eye"} size={16} color={c.textFaint} />
                       </Pressable>
                     </View>
                   </>
@@ -351,10 +351,10 @@ export default function LoginScreen() {
 
                 {mode === "signup" && (
                   <>
-                    <Text style={styles.fieldLabel}>Confirm Password</Text>
-                    <View style={[styles.inputWrap, focusPass2 && styles.inputWrapFocused]}>
-                      <View style={styles.inputIcon}>
-                        <Icon name="lock" size={15} color={focusPass2 ? BLUE : "#9CA3AF"} />
+                    <Text style={[styles.fieldLabel, { color: c.textMuted }]}>Confirm Password</Text>
+                    <View style={[styles.inputWrap, { borderColor: c.border, backgroundColor: c.inputBg }, focusPass2 && { borderColor: c.primary, backgroundColor: withAlpha(c.primary, 0.06) }]}>
+                      <View style={[styles.inputIcon, { borderRightColor: c.border }]}>
+                        <Icon name="lock" size={15} color={focusPass2 ? c.primary : c.textFaint} />
                       </View>
                       <TextInput
                         value={pass2}
@@ -362,30 +362,30 @@ export default function LoginScreen() {
                         onFocus={() => setFocusPass2(true)}
                         onBlur={() => setFocusPass2(false)}
                         placeholder="Re-enter password"
-                        placeholderTextColor="#9CA3AF"
+                        placeholderTextColor={c.textFaint}
                         secureTextEntry={!showPass2}
-                        style={styles.fieldInput}
+                        style={[styles.fieldInput, { color: c.text }]}
                         returnKeyType="done"
                         onSubmitEditing={handleSignUp}
                       />
                       <Pressable onPress={() => setShowPass2((p) => !p)} style={{ paddingRight: 12 }}>
-                        <Icon name={showPass2 ? "wifiOff" : "wifi"} size={16} color="#9CA3AF" />
+                        <Icon name={showPass2 ? "eyeOff" : "eye"} size={16} color={c.textFaint} />
                       </Pressable>
                     </View>
                   </>
                 )}
 
                 {error && (
-                  <View style={styles.errorRow}>
-                    <Icon name="info" size={13} color="#EF4444" />
-                    <Text style={styles.errorText}>{error}</Text>
+                  <View style={[styles.errorRow, { backgroundColor: withAlpha(c.danger, 0.1), borderColor: withAlpha(c.danger, 0.3) }]}>
+                    <Icon name="info" size={13} color={c.danger} />
+                    <Text style={[styles.errorText, { color: c.danger }]}>{error}</Text>
                   </View>
                 )}
 
                 {success && (
-                  <View style={styles.successRow}>
-                    <Icon name="check" size={13} color="#16A34A" />
-                    <Text style={styles.successText}>{success}</Text>
+                  <View style={[styles.successRow, { backgroundColor: withAlpha(c.success, 0.12), borderColor: withAlpha(c.success, 0.35) }]}>
+                    <Icon name="check" size={13} color={c.successDark} />
+                    <Text style={[styles.successText, { color: c.successDark }]}>{success}</Text>
                   </View>
                 )}
 
@@ -394,13 +394,13 @@ export default function LoginScreen() {
                   disabled={loading}
                   style={({ pressed }) => ({ opacity: pressed || loading ? 0.85 : 1 })}
                 >
-                  <LinearGradient colors={[BLUE, BLUE_DARK]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.primaryBtn}>
+                  <LinearGradient colors={[c.primary, c.primaryDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.primaryBtn, { shadowColor: c.primary }]}>
                     {loading
-                      ? <ActivityIndicator color="#fff" />
+                      ? <ActivityIndicator color={c.onColor} />
                       : (
                         <>
-                          <Icon name="shield" size={17} color="#fff" />
-                          <Text style={styles.primaryBtnText}>
+                          <Icon name="shield" size={17} color={c.onColor} />
+                          <Text style={[styles.primaryBtnText, { color: c.onColor }]}>
                             {mode === "signin" ? "Sign In" : mode === "signup" ? "Create Account" : "Send Reset Link"}
                           </Text>
                         </>
@@ -410,25 +410,25 @@ export default function LoginScreen() {
 
                 {mode === "signin" && (
                   <Pressable onPress={() => animateMode("forgot")} style={styles.ghostBtn}>
-                    <Text style={styles.ghostBtnText}>Forgot password?</Text>
+                    <Text style={[styles.ghostBtnText, { color: c.textMuted }]}>Forgot password?</Text>
                   </Pressable>
                 )}
                 {mode === "forgot" && (
                   <Pressable onPress={() => animateMode("signin")} style={styles.ghostBtn}>
-                    <Text style={styles.ghostBtnText}>Back to sign in</Text>
+                    <Text style={[styles.ghostBtnText, { color: c.textMuted }]}>Back to sign in</Text>
                   </Pressable>
                 )}
                 {mode !== "forgot" && (
                   <Pressable onPress={handleSkip} style={[styles.ghostBtn, { marginTop: 4 }]}>
-                    <Text style={[styles.ghostBtnText, { fontSize: 12.5 }]}>Maybe later — continue without saving</Text>
+                    <Text style={[styles.ghostBtnText, { color: c.textMuted, fontSize: 12.5 }]}>Maybe later — continue without saving</Text>
                   </Pressable>
                 )}
 
-                <View style={styles.trustCard}>
+                <View style={[styles.trustCard, { backgroundColor: c.cardAlt, borderColor: c.border }]}>
                   <Text style={{ fontSize: 18 }}>🛡</Text>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.trustTitle}>Your privacy comes first</Text>
-                    <Text style={styles.trustSub}>Your data is encrypted and never shared without your permission.</Text>
+                    <Text style={[styles.trustTitle, { color: c.text }]}>Your privacy comes first</Text>
+                    <Text style={[styles.trustSub, { color: c.textMuted }]}>Your data is encrypted and never shared without your permission.</Text>
                   </View>
                 </View>
               </>
@@ -459,33 +459,30 @@ const styles = StyleSheet.create({
 
   tabRow: { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 14, padding: 4, marginBottom: 12, gap: 4 },
   tab: { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 11 },
-  tabActive: { backgroundColor: "#fff" },
   tabText: { fontSize: 13.5, fontFamily: "Inter_600SemiBold", color: "rgba(255,255,255,0.8)" },
-  tabTextActive: { color: BLUE },
 
-  card: { backgroundColor: "#fff", borderRadius: 24, padding: 24, shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 24, elevation: 10 },
+  card: { borderRadius: 24, padding: 24, shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 24, elevation: 10 },
 
   cardHeader:   { flexDirection: "row", gap: 14, alignItems: "flex-start", marginBottom: 18 },
   cardIconWrap: { width: 46, height: 46, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  cardTitle:    { fontSize: 20, fontFamily: "Inter_700Bold", color: "#111827", marginBottom: 3 },
-  cardSub:      { fontSize: 13, color: "#6B7280", lineHeight: 19 },
+  cardTitle:    { fontSize: 20, fontFamily: "Inter_700Bold", marginBottom: 3 },
+  cardSub:      { fontSize: 13, lineHeight: 19 },
 
-  fieldLabel:       { fontSize: 11.5, fontFamily: "Inter_600SemiBold", color: "#374151", marginBottom: 7, textTransform: "uppercase", letterSpacing: 0.5 },
-  inputWrap:        { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 14, backgroundColor: "#F9FAFB", marginBottom: 14, overflow: "hidden" },
-  inputWrapFocused: { borderColor: BLUE, backgroundColor: BLUE_SOFT },
-  inputIcon:        { width: 42, alignItems: "center", justifyContent: "center", alignSelf: "stretch", borderRightWidth: 1, borderRightColor: "#E5E7EB" },
-  fieldInput:       { flex: 1, paddingHorizontal: 12, paddingVertical: 13, fontSize: 15, fontFamily: "Inter_400Regular", color: "#111827" },
+  fieldLabel:       { fontSize: 11.5, fontFamily: "Inter_600SemiBold", marginBottom: 7, textTransform: "uppercase", letterSpacing: 0.5 },
+  inputWrap:        { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderRadius: 14, marginBottom: 14, overflow: "hidden" },
+  inputIcon:        { width: 42, alignItems: "center", justifyContent: "center", alignSelf: "stretch", borderRightWidth: 1 },
+  fieldInput:       { flex: 1, paddingHorizontal: 12, paddingVertical: 13, fontSize: 15, fontFamily: "Inter_400Regular" },
 
-  errorRow:   { flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA", borderRadius: 10, padding: 10, marginBottom: 12 },
-  errorText:  { color: "#EF4444", fontSize: 12.5, fontFamily: "Inter_500Medium", flex: 1 },
-  successRow: { flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "#F0FDF4", borderWidth: 1, borderColor: "#86EFAC", borderRadius: 10, padding: 10, marginBottom: 12 },
-  successText:{ color: "#16A34A", fontSize: 12.5, fontFamily: "Inter_500Medium", flex: 1 },
+  errorRow:   { flexDirection: "row", alignItems: "center", gap: 7, borderWidth: 1, borderRadius: 10, padding: 10, marginBottom: 12 },
+  errorText:  { fontSize: 12.5, fontFamily: "Inter_500Medium", flex: 1 },
+  successRow: { flexDirection: "row", alignItems: "center", gap: 7, borderWidth: 1, borderRadius: 10, padding: 10, marginBottom: 12 },
+  successText:{ fontSize: 12.5, fontFamily: "Inter_500Medium", flex: 1 },
 
-  primaryBtn:     { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 20, paddingVertical: 15, marginBottom: 12, shadowColor: BLUE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
-  primaryBtnText: { color: "#fff", fontSize: 15.5, fontFamily: "Inter_700Bold" },
+  primaryBtn:     { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 20, paddingVertical: 15, marginBottom: 12, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
+  primaryBtnText: { fontSize: 15.5, fontFamily: "Inter_700Bold" },
   ghostBtn:       { alignItems: "center", paddingVertical: 8 },
-  ghostBtnText:   { fontSize: 13.5, color: "#6B7280", fontFamily: "Inter_500Medium" },
-  trustCard:      { flexDirection: "row", alignItems: "flex-start", gap: 10, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 14, padding: 12, marginTop: 14 },
-  trustTitle:     { fontSize: 12.5, fontFamily: "Inter_700Bold", color: "#374151", marginBottom: 2 },
-  trustSub:       { fontSize: 11.5, color: "#6B7280", lineHeight: 16 },
+  ghostBtnText:   { fontSize: 13.5, fontFamily: "Inter_500Medium" },
+  trustCard:      { flexDirection: "row", alignItems: "flex-start", gap: 10, borderWidth: 1, borderRadius: 14, padding: 12, marginTop: 14 },
+  trustTitle:     { fontSize: 12.5, fontFamily: "Inter_700Bold", marginBottom: 2 },
+  trustSub:       { fontSize: 11.5, lineHeight: 16 },
 });

@@ -23,9 +23,11 @@ export interface AccentSet {
 export interface Palette extends AccentSet {
   isDark: boolean;
   success: string;
+  successDark: string;
   successSoft: string;
   warning: string;
   danger: string;
+  dangerDark: string;
   dangerSoft: string;
   // Map categories (kept constant across themes for legibility)
   police: string;
@@ -95,9 +97,11 @@ export const THEME_LABELS: Record<ThemeKey, { en: string; hi: string }> = {
 
 const LIGHT_NEUTRALS = {
   success: "#22C55E",
+  successDark: "#16A34A",
   successSoft: "#DCFCE7",
   warning: "#F59E0B",
   danger: "#EF4444",
+  dangerDark: "#B91C1C",
   dangerSoft: "#FEE2E2",
   police: "#2563EB",
   hospital: "#EC4899",
@@ -117,9 +121,11 @@ const LIGHT_NEUTRALS = {
 
 const DARK_NEUTRALS = {
   success: "#4ADE80",
+  successDark: "#22C55E",
   successSoft: "#14532D",
   warning: "#FCD34D",
   danger: "#F87171",
+  dangerDark: "#DC2626",
   dangerSoft: "#7F1D1D",
   police: "#60A5FA",
   hospital: "#F9A8D4",

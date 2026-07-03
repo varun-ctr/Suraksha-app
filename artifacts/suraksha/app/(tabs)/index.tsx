@@ -60,8 +60,8 @@ function computeSafetyScore(
   return Math.min(100, Math.max(10, s));
 }
 
-function scoreColor(score: number): string {
-  return score >= 70 ? "#22C55E" : score >= 40 ? "#F59E0B" : "#EF4444";
+function scoreColor(score: number, c: ReturnType<typeof useTheme>["c"]): string {
+  return score >= 70 ? c.success : score >= 40 ? c.warning : c.danger;
 }
 
 function scoreLabel(score: number): string {
@@ -96,7 +96,7 @@ function SafetyScoreCard({
   locLabel: string;
 }) {
   const { c } = useTheme();
-  const color = scoreColor(score);
+  const color = scoreColor(score, c);
   const label = scoreLabel(score);
   const emoji = score >= 70 ? "🛡️" : score >= 40 ? "⚠️" : "🆘";
 
@@ -178,16 +178,16 @@ function HoldSOSButton({ onTrigger }: { onTrigger: () => void }) {
         <Animated.View
           style={[
             styles.sosRing,
-            { transform: [{ scale: pulseScale }], opacity: pulseOpacity },
+            { backgroundColor: c.danger, transform: [{ scale: pulseScale }], opacity: pulseOpacity },
           ]}
         />
         <Pressable onPress={handlePress}>
           <Animated.View style={{ transform: [{ scale }] }}>
             <LinearGradient
-              colors={["#EF4444", "#B91C1C"]}
+              colors={[c.danger, c.dangerDark]}
               start={{ x: 0.2, y: 0 }}
               end={{ x: 0.8, y: 1 }}
-              style={styles.sosCircle}
+              style={[styles.sosCircle, { shadowColor: c.danger }]}
             >
               <Text style={styles.sosHoldLine}>SOS</Text>
             </LinearGradient>
@@ -808,7 +808,6 @@ const styles = StyleSheet.create({
     width: 180,
     height: 180,
     borderRadius: 90,
-    backgroundColor: "#EF4444",
   },
   sosCircle: {
     width: 164,
@@ -819,7 +818,6 @@ const styles = StyleSheet.create({
     borderWidth: 5,
     borderColor: "rgba(255,255,255,0.3)",
     elevation: 10,
-    shadowColor: "#EF4444",
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.5,
     shadowRadius: 18,
