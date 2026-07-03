@@ -276,7 +276,7 @@ export function SosBottomSheet({ sos, cancelSOS }: Props) {
                         </Pressable>
                         <Pressable
                           style={[styles.miniBtn, { backgroundColor: c.cardAlt }]}
-                          onPress={() => sendSms(contact.phone, messageBody)}
+                          onPress={() => { void sendSms(contact.phone, messageBody).catch(() => {}); }}
                         >
                           <Icon name="message" size={13} color={c.text} />
                           <Text style={[styles.miniText, { color: c.text }]}>{t("sos.sms")}</Text>

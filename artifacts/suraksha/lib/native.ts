@@ -56,15 +56,29 @@ export async function navigateTo(
   await openMapsUrl(mapsUrl(lat, lng, label));
 }
 
-/** Opens the device SMS composer pre-filled with a recipient and message body. */
-export async function sendSms(phone: string, body: string): Promise<void> {
-  const sep = Platform.OS === "ios" ? "&" : "?";
-  const url = `sms:${sanitizePhone(phone)}${sep}body=${encodeURIComponent(body)}`;
-  try {
-    await Linking.openURL(url);
-  } catch {
-    // ignore
+/**
+ * True on native iOS, and also on web when the browser itself is running on
+ * an iPhone/iPad — `Platform.OS` alone reports "web" in that case, which
+ * would otherwise pick the wrong sms: URI separator below.
+ */
+function isIOS(): boolean {
+  if (Platform.OS === "ios") return true;
+  if (Platform.OS === "web" && typeof navigator !== "undefined") {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent);
   }
+  return false;
+}
+
+/**
+ * Opens the device SMS composer pre-filled with a recipient and message body.
+ * Failures propagate to the caller — sendSosAlerts / SosBottomSheet already
+ * catch and mark the per-contact status as "failed", so this must not
+ * swallow the error itself or that status would never be reachable.
+ */
+export async function sendSms(phone: string, body: string): Promise<void> {
+  const sep = isIOS() ? "&" : "?";
+  const url = `sms:${sanitizePhone(phone)}${sep}body=${encodeURIComponent(body)}`;
+  await Linking.openURL(url);
 }
 
 /** Opens WhatsApp (via wa.me) pre-filled with a message to the contact. */
