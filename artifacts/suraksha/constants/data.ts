@@ -61,7 +61,9 @@ export type IconName =
   | "video"
   | "battery"
   | "wifi"
-  | "wifiOff";
+  | "wifiOff"
+  | "eye"
+  | "eyeOff";
 
 export interface QuickAction {
   key: "addcontact" | "safe" | "incident" | "fakecall" | "journey" | "nearby" | "saferoute" | "weather";

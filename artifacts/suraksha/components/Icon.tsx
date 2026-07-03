@@ -58,6 +58,8 @@ const MAP: Record<IconName, React.ComponentProps<typeof Feather>["name"]> = {
   battery: "battery",
   wifi: "wifi",
   wifiOff: "wifi-off",
+  eye: "eye",
+  eyeOff: "eye-off",
 };
 
 interface Props {

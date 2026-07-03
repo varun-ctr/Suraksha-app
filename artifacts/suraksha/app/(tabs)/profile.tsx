@@ -500,7 +500,7 @@ export default function ProfileScreen() {
         <Card style={{ marginBottom: 4, paddingVertical: 6 }}>
           <Row
             icon="logOut"
-            color="#E53E3E"
+            color={c.danger}
             label={lang === "hi" ? "साइन आउट" : "Sign out"}
             onPress={async () => {
               await signOut();
@@ -512,20 +512,20 @@ export default function ProfileScreen() {
         {/* ── Delete Account danger card ── */}
         <Pressable
           onPress={() => { setDeleteText(""); setDeleteStep(1); }}
-          style={[styles.dangerCard, { backgroundColor: withAlpha("#E53E3E", 0.06), borderColor: withAlpha("#E53E3E", 0.2) }]}
+          style={[styles.dangerCard, { backgroundColor: withAlpha(c.danger, 0.06), borderColor: withAlpha(c.danger, 0.2) }]}
         >
-          <View style={[styles.dangerIcon, { backgroundColor: withAlpha("#E53E3E", 0.1) }]}>
-            <Icon name="trash" size={18} color="#E53E3E" />
+          <View style={[styles.dangerIcon, { backgroundColor: withAlpha(c.danger, 0.1) }]}>
+            <Icon name="trash" size={18} color={c.danger} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 13.5, fontFamily: "Inter_700Bold", color: "#E53E3E" }}>
+            <Text style={{ fontSize: 13.5, fontFamily: "Inter_700Bold", color: c.danger }}>
               {t("profile.deleteAccount")}
             </Text>
-            <Text style={{ fontSize: 11.5, color: withAlpha("#E53E3E", 0.7), marginTop: 1 }}>
+            <Text style={{ fontSize: 11.5, color: withAlpha(c.danger, 0.7), marginTop: 1 }}>
               {t("profile.deleteAccountSub")}
             </Text>
           </View>
-          <Icon name="chevronRight" size={16} color={withAlpha("#E53E3E", 0.4)} />
+          <Icon name="chevronRight" size={16} color={withAlpha(c.danger, 0.4)} />
         </Pressable>
       </View>
 
@@ -587,10 +587,10 @@ export default function ProfileScreen() {
           <Pressable style={[styles.modalCard, { backgroundColor: c.card }]} onPress={() => {}}>
             {deleteStep === 1 ? (
               <>
-                <View style={[styles.dangerIcon, { backgroundColor: withAlpha("#E53E3E", 0.1), alignSelf: "center", marginBottom: 14, width: 52, height: 52, borderRadius: 26 }]}>
-                  <Icon name="trash" size={24} color="#E53E3E" />
+                <View style={[styles.dangerIcon, { backgroundColor: withAlpha(c.danger, 0.1), alignSelf: "center", marginBottom: 14, width: 52, height: 52, borderRadius: 26 }]}>
+                  <Icon name="trash" size={24} color={c.danger} />
                 </View>
-                <Text style={{ fontSize: 17, fontFamily: "Inter_700Bold", color: "#E53E3E", textAlign: "center", marginBottom: 10 }}>
+                <Text style={{ fontSize: 17, fontFamily: "Inter_700Bold", color: c.danger, textAlign: "center", marginBottom: 10 }}>
                   {t("profile.deleteAccount")}
                 </Text>
                 <Text style={{ fontSize: 13, color: c.textMuted, lineHeight: 20, textAlign: "center", marginBottom: 20 }}>
@@ -600,7 +600,7 @@ export default function ProfileScreen() {
                   <Pressable onPress={() => setDeleteStep(0)} style={[styles.modalBtn, { backgroundColor: c.cardAlt }]}>
                     <Text style={{ color: c.text, fontFamily: "Inter_700Bold", fontSize: 13.5 }}>{t("common.cancel")}</Text>
                   </Pressable>
-                  <Pressable onPress={() => setDeleteStep(2)} style={[styles.modalBtn, { backgroundColor: "#E53E3E" }]}>
+                  <Pressable onPress={() => setDeleteStep(2)} style={[styles.modalBtn, { backgroundColor: c.danger }]}>
                     <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>Continue</Text>
                   </Pressable>
                 </View>
@@ -619,7 +619,7 @@ export default function ProfileScreen() {
                   placeholder="DELETE"
                   placeholderTextColor={c.textFaint}
                   autoCapitalize="characters"
-                  style={[styles.input, { backgroundColor: c.cardAlt, color: "#E53E3E", borderColor: withAlpha("#E53E3E", 0.3), fontFamily: "Inter_700Bold", fontSize: 15, letterSpacing: 2 }]}
+                  style={[styles.input, { backgroundColor: c.cardAlt, color: c.danger, borderColor: withAlpha(c.danger, 0.3), fontFamily: "Inter_700Bold", fontSize: 15, letterSpacing: 2 }]}
                 />
                 <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
                   <Pressable onPress={() => setDeleteStep(1)} disabled={deleting} style={[styles.modalBtn, { backgroundColor: c.cardAlt }]}>
@@ -628,7 +628,7 @@ export default function ProfileScreen() {
                   <Pressable
                     onPress={handleDeleteAccount}
                     disabled={deleteText !== "DELETE" || deleting}
-                    style={[styles.modalBtn, { backgroundColor: deleteText === "DELETE" ? "#E53E3E" : withAlpha("#E53E3E", 0.3) }]}
+                    style={[styles.modalBtn, { backgroundColor: deleteText === "DELETE" ? c.danger : withAlpha(c.danger, 0.3) }]}
                   >
                     {deleting ? (
                       <ActivityIndicator color="#fff" size="small" />

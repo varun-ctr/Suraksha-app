@@ -259,8 +259,8 @@ export default function ContactsScreen() {
                 { backgroundColor: name.trim() && phone.trim() ? c.primary : c.border },
               ]}
             >
-              <Icon name="plus" size={16} color="#fff" />
-              <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13.5 }}>
+              <Icon name="plus" size={16} color={c.onColor} />
+              <Text style={{ color: c.onColor, fontFamily: "Inter_700Bold", fontSize: 13.5 }}>
                 {t("contacts.add")}
               </Text>
             </Pressable>
@@ -307,7 +307,7 @@ export default function ContactsScreen() {
                   <Avatar label={contact.name} uri={contact.avatarUrl} size={44} />
                 )}
                 <View style={styles.cameraBadge}>
-                  <Icon name="camera" size={10} color="#fff" />
+                  <Icon name="camera" size={10} color={c.onColor} />
                 </View>
               </Pressable>
 
@@ -371,7 +371,7 @@ export default function ContactsScreen() {
                     <Avatar label={editTarget.name} uri={editTarget.avatarUrl} size={62} />
                   )}
                   <View style={styles.cameraBadge}>
-                    <Icon name="camera" size={12} color="#fff" />
+                    <Icon name="camera" size={12} color={c.onColor} />
                   </View>
                 </Pressable>
                 <Text style={{ fontSize: 11.5, color: c.primary, marginTop: 6 }}>
@@ -412,7 +412,7 @@ export default function ContactsScreen() {
                 onPress={saveEdit}
                 style={[styles.actionBtn, { backgroundColor: c.primary, flex: 2 }]}
               >
-                <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13 }}>
+                <Text style={{ color: c.onColor, fontFamily: "Inter_700Bold", fontSize: 13 }}>
                   {t("common.save")}
                 </Text>
               </Pressable>
