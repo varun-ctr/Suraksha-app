@@ -80,21 +80,31 @@ function Gate() {
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
+    // Safety timeout: if Firebase auth state never fires within 6s
+    // (e.g. cold-start network delay in Expo Go), proceed anyway so the
+    // splash screen doesn't stay forever.
+    const authTimeout = setTimeout(() => {
+      setAuthChecked(true);
+    }, 6000);
+
     const unsub = onFirebaseAuthStateChanged((user) => {
+      clearTimeout(authTimeout);
       setAuthed(!!user);
       setAuthChecked(true);
       if (user && !user.isAnonymous) {
         void registerForPushNotifications();
       }
     });
-    return unsub;
+
+    return () => {
+      unsub();
+      clearTimeout(authTimeout);
+    };
   }, []);
 
-  // ── Notification listeners — native only (not available on web) ──
   useEffect(() => {
     if (Platform.OS === "web") return;
 
-    // Cold-start: read last tapped notification so killed-state deep-links work
     void (async () => {
       const response = await Notifications.getLastNotificationResponseAsync();
       if (response) {
@@ -103,13 +113,11 @@ function Gate() {
       }
     })();
 
-    // Token refresh → re-upsert to Supabase
     const tokenSub = Notifications.addPushTokenListener(async ({ data: token }) => {
       if (!token) return;
       await registerForPushNotifications();
     });
 
-    // Foreground: show in-app toast
     const foregroundSub = Notifications.addNotificationReceivedListener((notification) => {
       const title = notification.request.content.title ?? "";
       const body = notification.request.content.body ?? "";
@@ -117,7 +125,6 @@ function Gate() {
       if (msg) showToast(msg);
     });
 
-    // Tap: deep-link to data.route
     const tapSub = Notifications.addNotificationResponseReceivedListener((response) => {
       const route = (response.notification.request.content.data as Record<string, unknown>)?.route;
       if (typeof route === "string" && route) router.push(route as never);
@@ -142,8 +149,6 @@ function Gate() {
     const seg0 = segments[0] as string;
     const inOnboarding = seg0 === "onboarding";
 
-    // /login is now the optional "Save Your Data" link-account screen —
-    // never auto-navigate there. Only gate on onboarding completion.
     if (!onboarded && !inOnboarding) {
       router.replace("/onboarding");
     } else if (onboarded && inOnboarding) {
@@ -164,6 +169,18 @@ export default function RootLayout() {
     Inter_700Bold,
   });
 
+  // ── Font-loading safety net ────────────────────────────────────────────────
+  // In Expo Go dev mode fonts are fetched over the local network. If the fetch
+  // stalls (slow connection, proxy lag) `fontsLoaded` stays false and
+  // `fontError` stays null — freezing the splash screen forever.
+  // After 4 s we give up waiting and render with system fonts instead.
+  const [fontsTimedOut, setFontsTimedOut] = useState(false);
+  useEffect(() => {
+    if (fontsLoaded || fontError) return;
+    const t = setTimeout(() => setFontsTimedOut(true), 4000);
+    return () => clearTimeout(t);
+  }, [fontsLoaded, fontError]);
+
   if (!APP_CONFIG.ok) {
     return (
       <SafeAreaProvider>
@@ -172,7 +189,7 @@ export default function RootLayout() {
     );
   }
 
-  if (!fontsLoaded && !fontError) return null;
+  if (!fontsLoaded && !fontError && !fontsTimedOut) return null;
 
   return (
     <SafeAreaProvider>
