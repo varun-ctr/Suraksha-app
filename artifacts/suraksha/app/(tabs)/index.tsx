@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "@/components/Icon";
 import { LanguagePicker } from "@/components/LanguagePicker";
-import { Avatar } from "@/components/ui";
+import { Avatar, Card } from "@/components/ui";
 import { withAlpha } from "@/constants/colors";
 import { QUICK_ACTIONS } from "@/constants/data";
 import { LANG_BY_CODE } from "@/constants/languages";
@@ -64,8 +64,8 @@ function scoreColor(score: number, c: ReturnType<typeof useTheme>["c"]): string 
   return score >= 70 ? c.success : score >= 40 ? c.warning : c.danger;
 }
 
-function scoreLabel(score: number): string {
-  return score >= 70 ? "Low Risk" : score >= 40 ? "Moderate Risk" : "High Risk";
+function scoreLabelKey(score: number): string {
+  return score >= 70 ? "home.statusProtected" : score >= 40 ? "home.statusModerateRisk" : "home.statusHighRisk";
 }
 
 function getSafetySuggestions(weather: WeatherData | null): string[] {
@@ -90,50 +90,92 @@ function SafetyScoreCard({
   score,
   weather,
   locLabel,
+  hasContacts,
+  locationReady,
+  onViewDetails,
 }: {
   score: number;
   weather: WeatherData | null;
   locLabel: string;
+  hasContacts: boolean;
+  locationReady: boolean;
+  onViewDetails: () => void;
 }) {
   const { c } = useTheme();
+  const { t } = useI18n();
   const color = scoreColor(score, c);
-  const label = scoreLabel(score);
+  const label = t(scoreLabelKey(score));
   const emoji = score >= 70 ? "🛡️" : score >= 40 ? "⚠️" : "🆘";
 
   return (
-    <View style={[styles.scoreCard, { backgroundColor: c.card }]}>
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.scoreHeading, { color: c.textMuted }]}>Safety Score</Text>
-        <View style={{ flexDirection: "row", alignItems: "baseline", gap: 3 }}>
-          <Text style={[styles.scoreNumber, { color }]}>{score}</Text>
-          <Text style={[styles.scoreOf, { color: c.textFaint }]}>/100</Text>
+    <Card style={styles.scoreCard}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.scoreHeading, { color: c.textMuted }]}>{t("home.safetyScore")}</Text>
+          <View style={{ flexDirection: "row", alignItems: "baseline", gap: 3 }}>
+            <Text style={[styles.scoreNumber, { color }]}>{score}</Text>
+            <Text style={[styles.scoreOf, { color: c.textFaint }]}>/100</Text>
+          </View>
+          <View style={[styles.scoreBadge, { backgroundColor: withAlpha(color, 0.12) }]}>
+            <View style={[styles.scoreDot, { backgroundColor: color }]} />
+            <Text style={[styles.scoreBadgeText, { color }]}>{label}</Text>
+          </View>
         </View>
-        <View style={[styles.scoreBadge, { backgroundColor: withAlpha(color, 0.12) }]}>
-          <View style={[styles.scoreDot, { backgroundColor: color }]} />
-          <Text style={[styles.scoreBadgeText, { color }]}>{label}</Text>
+
+        <View style={{ alignItems: "flex-end", gap: 8 }}>
+          <View style={[styles.scoreEmoji, { borderColor: withAlpha(color, 0.25) }]}>
+            <Text style={{ fontSize: 26 }}>{emoji}</Text>
+          </View>
+          {weather && (
+            <View style={styles.infoRow}>
+              <Text style={{ fontSize: 13 }}>{weather.icon}</Text>
+              <Text style={[styles.infoText, { color: c.textMuted }]}>
+                {weather.temp}°C · {weather.label}
+              </Text>
+            </View>
+          )}
+          <View style={styles.infoRow}>
+            <Icon name="mapPin" size={11} color={c.textFaint} />
+            <Text style={[styles.infoText, { color: c.textFaint }]} numberOfLines={1}>
+              {locLabel}
+            </Text>
+          </View>
         </View>
       </View>
 
-      <View style={{ alignItems: "flex-end", gap: 8 }}>
-        <View style={[styles.scoreEmoji, { borderColor: withAlpha(color, 0.25) }]}>
-          <Text style={{ fontSize: 26 }}>{emoji}</Text>
-        </View>
-        {weather && (
-          <View style={styles.infoRow}>
-            <Text style={{ fontSize: 13 }}>{weather.icon}</Text>
-            <Text style={[styles.infoText, { color: c.textMuted }]}>
-              {weather.temp}°C · {weather.label}
-            </Text>
-          </View>
-        )}
-        <View style={styles.infoRow}>
-          <Icon name="mapPin" size={11} color={c.textFaint} />
-          <Text style={[styles.infoText, { color: c.textFaint }]} numberOfLines={1}>
-            {locLabel}
+      <View style={[styles.readinessBlock, { borderTopColor: c.border }]}>
+        <View style={styles.readinessRow}>
+          <Icon
+            name={locationReady ? "check" : "alertCircle"}
+            size={14}
+            color={locationReady ? c.success : c.warning}
+          />
+          <Text style={[styles.readinessText, { color: c.textMuted }]}>
+            {locationReady ? t("home.readinessLocationActive") : t("home.locationOff")}
           </Text>
         </View>
+        <View style={styles.readinessRow}>
+          <Icon
+            name={hasContacts ? "check" : "alertCircle"}
+            size={14}
+            color={hasContacts ? c.success : c.warning}
+          />
+          <Text style={[styles.readinessText, { color: c.textMuted }]}>
+            {hasContacts ? t("home.readinessContactsReady") : t("home.readinessContactsMissing")}
+          </Text>
+        </View>
+
+        <Pressable
+          onPress={onViewDetails}
+          style={styles.viewDetailsRow}
+          accessibilityRole="button"
+          accessibilityLabel={t("home.viewDetails")}
+        >
+          <Text style={[styles.viewDetailsText, { color: c.primary }]}>{t("home.viewDetails")}</Text>
+          <Icon name="chevronRight" size={14} color={c.primary} />
+        </Pressable>
       </View>
-    </View>
+    </Card>
   );
 }
 
@@ -194,7 +236,8 @@ function HoldSOSButton({ onTrigger }: { onTrigger: () => void }) {
           </Animated.View>
         </Pressable>
       </View>
-      <Text style={[styles.sosSub, { color: c.textMuted }]}>{t("home.tapForHelp")}</Text>
+      <Text style={[styles.sosSub, { color: c.textMuted }]}>{t("sos.tapOnceToActivate")}</Text>
+      <Text style={[styles.sosHint, { color: c.textFaint }]}>{t("sos.cancelWindowHint")}</Text>
     </View>
   );
 }
@@ -259,7 +302,7 @@ export default function HomeScreen() {
         colors={[c.primary, c.primaryDark]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={{ paddingTop: insets.top + 16, paddingHorizontal: 20, paddingBottom: 60 }}
+        style={{ paddingTop: insets.top + 12, paddingHorizontal: 20, paddingBottom: 46 }}
       >
         <View style={styles.headerRow}>
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -347,8 +390,15 @@ export default function HomeScreen() {
       </Modal>
 
       {/* ── Safety Score card (overlaps header) ────────────── */}
-      <View style={{ paddingHorizontal: 16, marginTop: -38 }}>
-        <SafetyScoreCard score={score} weather={weather} locLabel={locLabel} />
+      <View style={{ paddingHorizontal: 16, marginTop: -29 }}>
+        <SafetyScoreCard
+          score={score}
+          weather={weather}
+          locLabel={locLabel}
+          hasContacts={contacts.length > 0}
+          locationReady={locationReady}
+          onViewDetails={() => {}}
+        />
       </View>
 
       {/* ── SOS Section ────────────────────────────────────── */}
@@ -746,17 +796,31 @@ const styles = StyleSheet.create({
 
   // Score card
   scoreCard: {
-    flexDirection: "row",
-    alignItems: "center",
     borderRadius: 20,
     padding: 18,
-    gap: 12,
     elevation: 8,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.14,
     shadowRadius: 14,
   },
+  readinessBlock: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 8,
+  },
+  readinessRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  readinessText: { fontSize: 12.5, fontFamily: "Inter_500Medium", flexShrink: 1 },
+  viewDetailsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    alignSelf: "flex-start",
+    marginTop: 4,
+    paddingVertical: 6,
+  },
+  viewDetailsText: { fontSize: 12.5, fontFamily: "Inter_700Bold" },
   scoreHeading: {
     fontSize: 11,
     fontFamily: "Inter_600SemiBold",
@@ -840,6 +904,11 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontFamily: "Inter_500Medium",
     marginTop: 6,
+  },
+  sosHint: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    marginTop: 2,
   },
 
   // Sections

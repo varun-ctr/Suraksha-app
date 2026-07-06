@@ -151,7 +151,38 @@ export function SosBottomSheet({ sos, cancelSOS }: Props) {
                 </Animated.Text>
               </View>
 
-              {sos.loading && <Text style={styles.cdGps}>{t("sos.gettingLocation")}</Text>}
+              <View style={styles.cdStatusBlock}>
+                <View style={styles.cdStatusRow}>
+                  <Icon name={sos.loading ? "mapPin" : "check"} size={13} color="rgba(255,255,255,0.85)" />
+                  <Text style={styles.cdStatusText}>
+                    {sos.loading ? t("sos.gettingLocation") : t("sos.locationFound")}
+                  </Text>
+                </View>
+                <View style={styles.cdStatusRow}>
+                  <Icon name={contacts.length > 0 ? "check" : "alertCircle"} size={13} color="rgba(255,255,255,0.85)" />
+                  <Text style={styles.cdStatusText}>
+                    {contacts.length > 0
+                      ? t("sos.contactsReady").replace("{n}", String(contacts.length))
+                      : t("sos.contactsMissing")}
+                  </Text>
+                </View>
+                <View style={styles.cdStatusRow}>
+                  {sos.shareUrl ? (
+                    <View style={[styles.cdLiveDot, { backgroundColor: c.success }]} />
+                  ) : (
+                    <Icon name="activity" size={13} color="rgba(255,255,255,0.85)" />
+                  )}
+                  <Text style={styles.cdStatusText}>
+                    {sos.shareUrl ? t("sos.liveTrackingActive") : t("sos.startingLiveTracking")}
+                  </Text>
+                </View>
+                {sos.address && (
+                  <View style={styles.cdStatusRow}>
+                    <Icon name="mapPin" size={13} color="rgba(255,255,255,0.85)" />
+                    <Text style={styles.cdStatusText} numberOfLines={1}>{sos.address}</Text>
+                  </View>
+                )}
+              </View>
 
               <Pressable
                 onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); cancelSOS(); }}
@@ -358,7 +389,10 @@ const styles = StyleSheet.create({
   cdCircleWrap: { width: 140, height: 140, alignItems: "center", justifyContent: "center", marginBottom: 20 },
   cdRing: { position: "absolute", width: 130, height: 130, borderRadius: 65, borderWidth: 4 },
   cdNumber: { color: "#fff", fontSize: 72, fontFamily: "Inter_700Bold", lineHeight: 80 },
-  cdGps: { color: "rgba(255,255,255,0.65)", fontSize: 12, fontFamily: "Inter_500Medium", marginBottom: 16 },
+  cdStatusBlock: { alignSelf: "stretch", gap: 8, marginBottom: 18 },
+  cdStatusRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 },
+  cdStatusText: { color: "rgba(255,255,255,0.85)", fontSize: 12.5, fontFamily: "Inter_500Medium", maxWidth: 260 },
+  cdLiveDot: { width: 8, height: 8, borderRadius: 4 },
   cancelBtn: { flexDirection: "row", alignItems: "center", gap: 7, paddingVertical: 12, paddingHorizontal: 28, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.2)", marginTop: 4 },
   cancelText: { color: "#fff", fontSize: 14, fontFamily: "Inter_700Bold" },
 
