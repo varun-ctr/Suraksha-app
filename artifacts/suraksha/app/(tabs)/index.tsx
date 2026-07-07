@@ -1,7 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
   Easing,
@@ -34,6 +34,7 @@ import { useLocation } from "@/hooks/useLocation";
 import { fmtClock } from "@/lib/format";
 import { formatCoords } from "@/lib/location";
 import { callNumber, shareLiveLocation } from "@/lib/native";
+import { sendJourneyAlerts } from "@/lib/sosAlert";
 import type { WeatherData } from "@/lib/weather";
 import { fetchWeather } from "@/lib/weather";
 
@@ -279,6 +280,18 @@ export default function HomeScreen() {
           : "home.greetingNight";
 
   const score = computeSafetyScore(safetyStatus, weather, contacts.length > 0, locationReady);
+
+  const handleStartJourney = useCallback(() => {
+    startJourney();
+    showToast(t("home.sharingLive"));
+    void sendJourneyAlerts(
+      contacts,
+      point ?? null,
+      journey.duration,
+      profile.name.trim() || t("home.guest"),
+      address,
+    );
+  }, [startJourney, showToast, t, contacts, point, journey.duration, profile.name, address]);
   const suggestions = getSafetySuggestions(weather);
 
   useEffect(() => {
@@ -424,8 +437,7 @@ export default function HomeScreen() {
                 key={qa.key}
                 onPress={() => {
                   if (qa.key === "journey") {
-                    startJourney();
-                    showToast(t("home.sharingLive"));
+                    handleStartJourney();
                   } else if (qa.key === "weather") {
                     showToast(
                       weather
@@ -538,10 +550,7 @@ export default function HomeScreen() {
                 })}
               </View>
               <Pressable
-                onPress={() => {
-                  startJourney();
-                  showToast(t("home.sharingLive"));
-                }}
+                onPress={handleStartJourney}
                 style={{
                   backgroundColor: c.primary,
                   borderRadius: 14,

@@ -29,7 +29,7 @@ const hi: Record<string, string> = {
   "onb.namePlaceholder": "जैसे प्रिया",
   "onb.nameError": "जारी रखने के लिए कृपया अपना नाम दर्ज करें।",
   "onb.contactHeading": "एक विश्वसनीय संपर्क जोड़ें",
-  "onb.contactSub": "जरूरत पड़ने पर यह व्यक्ति सतर्क किया जाएगा। आप बाद में और जोड़ सकती हैं।",
+  "onb.contactSub": "यह व्यक्ति आपके SOS अलर्ट तुरंत प्राप्त करेगा। केवल 1 विश्वसनीय संपर्क की अनुमति है।",
   "onb.contactNameLabel": "संपर्क का नाम",
   "onb.contactNamePlaceholder": "अम्मा",
   "onb.contactPhoneLabel": "मोबाइल नंबर",

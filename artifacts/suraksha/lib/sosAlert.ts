@@ -145,3 +145,88 @@ export async function sendSosAlerts(
 
   return statuses;
 }
+
+// ── Journey start alert ───────────────────────────────────────────────────────
+// Notifies trusted contacts when the user starts a journey timer. Tries the
+// Twilio backend first (fully automatic); falls back to opening the native SMS
+// composer if the backend is unavailable.
+
+export async function sendJourneyAlerts(
+  contacts: Contact[],
+  coords: Coords | null,
+  durationMin: number,
+  userName: string,
+  address?: string | null,
+): Promise<void> {
+  if (contacts.length === 0) return;
+
+  const name = userName.trim() || "Someone";
+  const now  = new Date();
+  const time = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+
+  const lines: string[] = [
+    "🚶 Journey Started",
+    "",
+    `${name} has started a journey at ${time} and set a ${durationMin}-minute check-in timer.`,
+    "If they don't check in safely, an automatic SOS alert will follow.",
+  ];
+
+  if (address) {
+    lines.push("", `📍 Location: ${address}`);
+  } else if (coords) {
+    lines.push("", `📍 Coordinates: ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`);
+  }
+
+  if (coords) {
+    lines.push("", `🗺️ Live location: https://maps.google.com/?q=${coords.lat},${coords.lng}`);
+  }
+
+  lines.push("", "— Sent via Suraksha Safety App");
+  const message = lines.join("\n");
+
+  const backendUrl = (process.env.EXPO_PUBLIC_BACKEND_URL ?? "").replace(/\/$/, "");
+  let backendSent = false;
+
+  try {
+    const fbUser = firebaseAuth.currentUser;
+    const token  = fbUser ? await fbUser.getIdToken().catch(() => null) : null;
+
+    if (token && backendUrl) {
+      const res = await fetch(`${backendUrl}/sos/alert`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          contacts: contacts.map((c) => ({ id: c.id, name: c.name, phone: c.phone })),
+          message,
+        }),
+        signal: AbortSignal.timeout(8_000),
+      });
+
+      if (res.ok) {
+        const data = (await res.json()) as {
+          configured: boolean;
+          results: { success: boolean }[];
+        };
+        if (data.configured && data.results.some((r) => r.success)) {
+          backendSent = true;
+        }
+      }
+    }
+  } catch {
+    // Backend unavailable — fall through to native SMS
+  }
+
+  // Native SMS fallback: open pre-filled SMS composer for each contact
+  if (!backendSent) {
+    for (const c of contacts) {
+      try {
+        await sendSms(c.phone, message);
+      } catch {
+        // Ignore per-contact failures
+      }
+    }
+  }
+}
