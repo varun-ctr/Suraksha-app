@@ -8,6 +8,16 @@ import { getAllowedOrigins } from "./lib/env";
 const app: Express = express();
 const allowedOrigins = getAllowedOrigins();
 
+if (allowedOrigins.length === 0) {
+  logger.warn(
+    "CORS_ALLOWED_ORIGINS is not set — cross-origin browser requests (an " +
+      "explicit Origin header) will be rejected by default. Requests with " +
+      "no Origin header (native mobile, server-to-server) are unaffected. " +
+      "Set CORS_ALLOWED_ORIGINS to a comma-separated list if a web client " +
+      "needs to call this API directly.",
+  );
+}
+
 app.use(
   pinoHttp({
     logger,
@@ -31,7 +41,12 @@ app.use(
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+      // No Origin header (native app, server-to-server, curl) is not a
+      // browser cross-origin request — always allowed. A browser request
+      // that DOES send an Origin header must match the explicit allowlist;
+      // an empty/unset allowlist now means "no cross-origin browser access"
+      // rather than the previous "allow every origin."
+      if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
         return;
       }
