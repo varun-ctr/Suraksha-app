@@ -163,7 +163,7 @@ router.post("/sakhi/chat", async (req, res) => {
 
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-5.4",
+      model: "gpt-4o-mini",
       max_completion_tokens: 8192,
       messages: [
         { role: "system", content: `${SYSTEM_PROMPT}\n\n${langLine}` },

@@ -17,17 +17,12 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "@/components/Icon";
+import { withAlpha } from "@/constants/colors";
 import { useApp } from "@/context/AppContext";
 import { useI18n } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
 
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const BLUE       = "#2563EB";
-const BLUE_DARK  = "#1D4ED8";
-const BLUE_LIGHT = "#EFF6FF";
-const BLUE_MUTED = "#BFDBFE";
-const SUCCESS    = "#22C55E";
-const GREY_TEXT  = "#9CA3AF";
-const TOTAL      = 3;
+const TOTAL = 3;
 
 // ── City illustration (pure RN primitives) ───────────────────────────────────
 function CityIllustration() {
@@ -43,7 +38,6 @@ function CityIllustration() {
 
   return (
     <View style={ill.wrap} pointerEvents="none">
-      {/* Buildings */}
       <View style={[ill.building, { height: 54, width: 24, left: 18, bottom: 0 }]} />
       <View style={[ill.building, { height: 80, width: 20, left: 50, bottom: 0 }]} />
       <View style={[ill.building, { height: 40, width: 28, left: 78, bottom: 0 }]} />
@@ -52,18 +46,14 @@ function CityIllustration() {
       <View style={[ill.building, { height: 72, width: 18, left: 182, bottom: 0 }]} />
       <View style={[ill.building, { height: 44, width: 26, left: 208, bottom: 0 }]} />
       <View style={[ill.building, { height: 88, width: 22, left: 242, bottom: 0 }]} />
-
-      {/* Location pins */}
       <View style={[ill.pin, { left: 60, bottom: 88 }]}>
         <Text style={{ fontSize: 20 }}>📍</Text>
       </View>
       <View style={[ill.pin, { left: 152, bottom: 104 }]}>
         <Text style={{ fontSize: 16 }}>📍</Text>
       </View>
-
-      {/* Floating shield */}
       <Animated.View style={[ill.shieldWrap, { transform: [{ translateY: float }] }]}>
-        <LinearGradient colors={["#fff", "#EFF6FF"]} style={ill.shield}>
+        <LinearGradient colors={["rgba(255,255,255,0.95)", "rgba(255,255,255,0.7)"]} style={ill.shield}>
           <Text style={{ fontSize: 28 }}>🛡️</Text>
         </LinearGradient>
       </Animated.View>
@@ -111,6 +101,7 @@ const ill = StyleSheet.create({
 
 // ── Step indicator ────────────────────────────────────────────────────────────
 function StepIndicator({ step }: { step: number }) {
+  const { c } = useTheme();
   return (
     <View style={styles.stepRow}>
       {Array.from({ length: TOTAL }).map((_, i) => {
@@ -118,15 +109,22 @@ function StepIndicator({ step }: { step: number }) {
         const active = i === step;
         return (
           <React.Fragment key={i}>
-            <View style={[styles.stepDot, done && styles.stepDotDone, active && styles.stepDotActive, !done && !active && styles.stepDotFuture]}>
+            <View style={[
+              styles.stepDot,
+              { borderColor: withAlpha(c.primary, 0.35) },
+              (done || active) && { backgroundColor: c.primary, borderColor: c.primary },
+              !done && !active && { backgroundColor: c.card },
+            ]}>
               {done ? (
-                <Icon name="check" size={12} color="#fff" />
+                <Icon name="check" size={12} color={c.onColor} />
               ) : (
-                <Text style={[styles.stepNum, active && { color: "#fff" }]}>{i + 1}</Text>
+                <Text style={[styles.stepNum, { color: withAlpha(c.primary, 0.5) }, active && { color: c.onColor }]}>
+                  {i + 1}
+                </Text>
               )}
             </View>
             {i < TOTAL - 1 && (
-              <View style={[styles.stepLine, done && { backgroundColor: BLUE }]} />
+              <View style={[styles.stepLine, { backgroundColor: withAlpha(c.primary, 0.25) }, done && { backgroundColor: c.primary }]} />
             )}
           </React.Fragment>
         );
@@ -153,6 +151,7 @@ function PremiumInput({
   autoCapitalize?: "none" | "words" | "sentences";
   icon: string;
 }) {
+  const { c } = useTheme();
   const [focused, setFocused] = useState(false);
   const border = useRef(new Animated.Value(0)).current;
 
@@ -167,15 +166,15 @@ function PremiumInput({
 
   const borderColor = border.interpolate({
     inputRange: [0, 1],
-    outputRange: [BLUE_MUTED, BLUE],
+    outputRange: [c.border, c.primary],
   });
 
   return (
     <View style={{ marginBottom: 14 }}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <Animated.View style={[styles.inputWrap, { borderColor }]}>
-        <View style={[styles.inputIcon, focused && { backgroundColor: BLUE_LIGHT }]}>
-          <Icon name={icon as never} size={15} color={focused ? BLUE : GREY_TEXT} />
+      <Text style={[styles.fieldLabel, { color: c.textMuted }]}>{label}</Text>
+      <Animated.View style={[styles.inputWrap, { borderColor, backgroundColor: c.inputBg }]}>
+        <View style={[styles.inputIcon, { borderRightColor: c.border }, focused && { backgroundColor: withAlpha(c.primary, 0.08) }]}>
+          <Icon name={icon as never} size={15} color={focused ? c.primary : c.textFaint} />
         </View>
         <TextInput
           value={value}
@@ -183,14 +182,14 @@ function PremiumInput({
           onFocus={handleFocus}
           onBlur={handleBlur}
           placeholder={placeholder}
-          placeholderTextColor={GREY_TEXT}
+          placeholderTextColor={c.textFaint}
           keyboardType={keyboardType ?? "default"}
           autoCapitalize={autoCapitalize ?? "words"}
-          style={styles.fieldInput}
+          style={[styles.fieldInput, { color: c.text }]}
         />
         {value.length > 0 && (
           <View style={styles.inputCheck}>
-            <Icon name="check" size={13} color={SUCCESS} />
+            <Icon name="check" size={13} color={c.success} />
           </View>
         )}
       </Animated.View>
@@ -200,15 +199,16 @@ function PremiumInput({
 
 // ── Name step ─────────────────────────────────────────────────────────────────
 function NameStep({ name, setName, t }: { name: string; setName: (v: string) => void; t: (k: string) => string }) {
+  const { c } = useTheme();
   return (
-    <View style={styles.formCard}>
+    <View style={[styles.formCard, { backgroundColor: c.card, borderColor: c.border }]}>
       <View style={styles.cardIconRow}>
-        <View style={[styles.cardIcon, { backgroundColor: BLUE_LIGHT }]}>
-          <Icon name="user" size={20} color={BLUE} />
+        <View style={[styles.cardIcon, { backgroundColor: withAlpha(c.primary, 0.1) }]}>
+          <Icon name="user" size={20} color={c.primary} />
         </View>
       </View>
-      <Text style={styles.formHeading}>{t("onb.nameHeading")}</Text>
-      <Text style={styles.formSub}>{t("onb.nameSub")}</Text>
+      <Text style={[styles.formHeading, { color: c.text }]}>{t("onb.nameHeading")}</Text>
+      <Text style={[styles.formSub, { color: c.textMuted }]}>{t("onb.nameSub")}</Text>
       <PremiumInput
         label={t("onb.nameLabel")}
         value={name}
@@ -217,8 +217,8 @@ function NameStep({ name, setName, t }: { name: string; setName: (v: string) => 
         icon="user"
       />
       <View style={styles.trustRow}>
-        <Icon name="lock" size={12} color={GREY_TEXT} />
-        <Text style={styles.trustText}>Your data stays private and encrypted</Text>
+        <Icon name="lock" size={12} color={c.textFaint} />
+        <Text style={[styles.trustText, { color: c.textFaint }]}>Your data stays private and encrypted</Text>
       </View>
     </View>
   );
@@ -232,15 +232,16 @@ function ContactsStep({
   contactPhone: string; setContactPhone: (v: string) => void;
   t: (k: string) => string;
 }) {
+  const { c } = useTheme();
   return (
-    <View style={styles.formCard}>
+    <View style={[styles.formCard, { backgroundColor: c.card, borderColor: c.border }]}>
       <View style={styles.cardIconRow}>
-        <View style={[styles.cardIcon, { backgroundColor: "#F0FDF4" }]}>
-          <Icon name="users" size={20} color={SUCCESS} />
+        <View style={[styles.cardIcon, { backgroundColor: withAlpha(c.success, 0.1) }]}>
+          <Icon name="users" size={20} color={c.success} />
         </View>
       </View>
-      <Text style={styles.formHeading}>{t("onb.contactHeading")}</Text>
-      <Text style={styles.formSub}>{t("onb.contactSub")}</Text>
+      <Text style={[styles.formHeading, { color: c.text }]}>{t("onb.contactHeading")}</Text>
+      <Text style={[styles.formSub, { color: c.textMuted }]}>{t("onb.contactSub")}</Text>
       <PremiumInput
         label={t("onb.contactNameLabel")}
         value={contactName}
@@ -258,8 +259,8 @@ function ContactsStep({
         icon="phone"
       />
       <View style={styles.trustRow}>
-        <Icon name="bell" size={12} color={GREY_TEXT} />
-        <Text style={styles.trustText}>They'll receive your SOS alerts instantly</Text>
+        <Icon name="bell" size={12} color={c.textFaint} />
+        <Text style={[styles.trustText, { color: c.textFaint }]}>They'll receive your SOS alerts instantly</Text>
       </View>
     </View>
   );
@@ -267,6 +268,7 @@ function ContactsStep({
 
 // ── Location step ─────────────────────────────────────────────────────────────
 function LocationStep({ granted, onAllow, t }: { granted: boolean; onAllow: () => void; t: (k: string) => string }) {
+  const { c } = useTheme();
   const pulse = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     if (!granted) {
@@ -280,32 +282,32 @@ function LocationStep({ granted, onAllow, t }: { granted: boolean; onAllow: () =
   }, [granted, pulse]);
 
   return (
-    <View style={styles.formCard}>
+    <View style={[styles.formCard, { backgroundColor: c.card, borderColor: c.border }]}>
       <View style={styles.cardIconRow}>
-        <Animated.View style={[styles.cardIcon, { backgroundColor: BLUE_LIGHT, transform: [{ scale: pulse }] }]}>
-          <Icon name="mapPin" size={20} color={BLUE} />
+        <Animated.View style={[styles.cardIcon, { backgroundColor: withAlpha(c.primary, 0.1), transform: [{ scale: pulse }] }]}>
+          <Icon name="mapPin" size={20} color={c.primary} />
         </Animated.View>
       </View>
-      <Text style={styles.formHeading}>{t("onb.locationHeading")}</Text>
-      <Text style={styles.formSub}>{t("onb.locationSub")}</Text>
+      <Text style={[styles.formHeading, { color: c.text }]}>{t("onb.locationHeading")}</Text>
+      <Text style={[styles.formSub, { color: c.textMuted }]}>{t("onb.locationSub")}</Text>
 
       {granted ? (
-        <View style={styles.grantedRow}>
-          <View style={[styles.grantedIcon, { backgroundColor: "#F0FDF4" }]}>
-            <Icon name="check" size={16} color={SUCCESS} />
+        <View style={[styles.grantedRow, { backgroundColor: withAlpha(c.success, 0.1) }]}>
+          <View style={[styles.grantedIcon, { backgroundColor: withAlpha(c.success, 0.15) }]}>
+            <Icon name="check" size={16} color={c.success} />
           </View>
-          <Text style={[styles.grantedText, { color: SUCCESS }]}>{t("onb.locationGranted")}</Text>
+          <Text style={[styles.grantedText, { color: c.success }]}>{t("onb.locationGranted")}</Text>
         </View>
       ) : (
-        <Pressable onPress={onAllow} style={({ pressed }) => [styles.allowBtn, { opacity: pressed ? 0.85 : 1 }]}>
-          <Icon name="mapPin" size={16} color="#fff" />
-          <Text style={styles.allowBtnText}>{t("onb.locationAllow")}</Text>
+        <Pressable onPress={onAllow} style={({ pressed }) => [styles.allowBtn, { backgroundColor: c.primary, opacity: pressed ? 0.85 : 1 }]}>
+          <Icon name="mapPin" size={16} color={c.onColor} />
+          <Text style={[styles.allowBtnText, { color: c.onColor }]}>{t("onb.locationAllow")}</Text>
         </Pressable>
       )}
 
       <View style={[styles.trustRow, { marginTop: 14 }]}>
-        <Icon name="lock" size={12} color={GREY_TEXT} />
-        <Text style={styles.trustText}>Used only for SOS alerts — never tracked in background</Text>
+        <Icon name="lock" size={12} color={c.textFaint} />
+        <Text style={[styles.trustText, { color: c.textFaint }]}>Used only for SOS alerts — never tracked in background</Text>
       </View>
     </View>
   );
@@ -314,6 +316,7 @@ function LocationStep({ granted, onAllow, t }: { granted: boolean; onAllow: () =
 // ── Main screen ───────────────────────────────────────────────────────────────
 export default function Onboarding() {
   const { t }              = useI18n();
+  const { c }              = useTheme();
   const { completeOnboarding, setProfile, addContact } = useApp();
   const router             = useRouter();
   const insets             = useSafeAreaInsets();
@@ -396,7 +399,7 @@ export default function Onboarding() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: "#F8FAFC" }}
+      style={{ flex: 1, backgroundColor: c.bg }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView
@@ -406,12 +409,11 @@ export default function Onboarding() {
       >
         {/* ── Hero header ─────────────────────────────────── */}
         <LinearGradient
-          colors={[BLUE, BLUE_DARK]}
+          colors={[c.primary, c.primaryDark]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.hero}
         >
-          {/* Logo row */}
           <View style={styles.logoRow}>
             <View style={styles.logoIcon}>
               <Text style={{ fontSize: 22 }}>🛡️</Text>
@@ -421,8 +423,6 @@ export default function Onboarding() {
               <Text style={styles.heroTagline}>Your Safety. Our Priority.</Text>
             </View>
           </View>
-
-          {/* City illustration */}
           <CityIllustration />
         </LinearGradient>
 
@@ -445,29 +445,29 @@ export default function Onboarding() {
 
           {/* Error */}
           {!!error && (
-            <View style={styles.errorRow}>
-              <Icon name="info" size={13} color="#EF4444" />
-              <Text style={styles.errorText}>{error}</Text>
+            <View style={[styles.errorRow, { backgroundColor: withAlpha(c.danger, 0.08), borderColor: withAlpha(c.danger, 0.25) }]}>
+              <Icon name="info" size={13} color={c.danger} />
+              <Text style={[styles.errorText, { color: c.danger }]}>{error}</Text>
             </View>
           )}
 
           {/* Primary button */}
           <Pressable onPress={handleNext} style={({ pressed }) => ({ opacity: pressed ? 0.88 : 1 })}>
             <LinearGradient
-              colors={[BLUE, BLUE_DARK]}
+              colors={[c.primary, c.primaryDark]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={styles.primaryBtn}
+              style={[styles.primaryBtn, { shadowColor: c.primary }]}
             >
-              <Icon name="shield" size={18} color="#fff" />
-              <Text style={styles.primaryBtnText}>{primaryLabel}</Text>
+              <Icon name="shield" size={18} color={c.onColor} />
+              <Text style={[styles.primaryBtnText, { color: c.onColor }]}>{primaryLabel}</Text>
             </LinearGradient>
           </Pressable>
 
           {/* Skip */}
           {!!skipLabel && (
             <Pressable onPress={handleSkip} hitSlop={12} style={styles.skipWrap}>
-              <Text style={styles.skipText}>{skipLabel}</Text>
+              <Text style={[styles.skipText, { color: c.textFaint }]}>{skipLabel}</Text>
             </Pressable>
           )}
         </Animated.View>
@@ -476,11 +476,10 @@ export default function Onboarding() {
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+// ── Styles (layout & geometry only — colours injected inline) ─────────────────
 const styles = StyleSheet.create({
   scroll: { flexGrow: 1 },
 
-  // Hero
   hero: {
     paddingTop: 28,
     paddingHorizontal: 24,
@@ -516,7 +515,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // Step indicator
   stepRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -531,20 +529,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
-    borderColor: BLUE_MUTED,
   },
-  stepDotActive:  { backgroundColor: BLUE, borderColor: BLUE },
-  stepDotDone:    { backgroundColor: BLUE, borderColor: BLUE },
-  stepDotFuture:  { backgroundColor: "#fff", borderColor: BLUE_MUTED },
-  stepNum:        { color: BLUE_MUTED, fontSize: 13, fontFamily: "Inter_700Bold" },
-  stepLine:       { flex: 1, height: 2, backgroundColor: BLUE_MUTED, marginHorizontal: 6, maxWidth: 48 },
+  stepNum: { fontSize: 13, fontFamily: "Inter_700Bold" },
+  stepLine: { flex: 1, height: 2, marginHorizontal: 6, maxWidth: 48 },
 
-  // Form card
   formCard: {
-    backgroundColor: "#fff",
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
     padding: 20,
     marginBottom: 16,
     shadowColor: "#000",
@@ -564,22 +555,18 @@ const styles = StyleSheet.create({
   formHeading: {
     fontSize: 17,
     fontFamily: "Inter_700Bold",
-    color: "#111827",
     marginBottom: 5,
   },
   formSub: {
     fontSize: 13,
     fontFamily: "Inter_400Regular",
-    color: "#6B7280",
     lineHeight: 19,
     marginBottom: 18,
   },
 
-  // Input
   fieldLabel: {
     fontSize: 11.5,
     fontFamily: "Inter_600SemiBold",
-    color: "#374151",
     marginBottom: 7,
     textTransform: "uppercase",
     letterSpacing: 0.5,
@@ -589,7 +576,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1.5,
     borderRadius: 14,
-    backgroundColor: "#F9FAFB",
     overflow: "hidden",
   },
   inputIcon: {
@@ -598,7 +584,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignSelf: "stretch",
     borderRightWidth: 1,
-    borderRightColor: "#E5E7EB",
   },
   fieldInput: {
     flex: 1,
@@ -606,13 +591,9 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     fontSize: 15,
     fontFamily: "Inter_400Regular",
-    color: "#111827",
   },
-  inputCheck: {
-    paddingRight: 12,
-  },
+  inputCheck: { paddingRight: 12 },
 
-  // Trust row
   trustRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -621,19 +602,16 @@ const styles = StyleSheet.create({
   },
   trustText: {
     fontSize: 11.5,
-    color: GREY_TEXT,
     fontFamily: "Inter_400Regular",
     flex: 1,
   },
 
-  // Location step
   grantedRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     paddingVertical: 12,
     paddingHorizontal: 14,
-    backgroundColor: "#F0FDF4",
     borderRadius: 12,
     marginTop: 4,
   },
@@ -652,35 +630,29 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: BLUE,
     borderRadius: 14,
     paddingVertical: 13,
     paddingHorizontal: 20,
     alignSelf: "flex-start",
     marginTop: 4,
   },
-  allowBtnText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  allowBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
 
-  // Error
   errorRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
-    backgroundColor: "#FEF2F2",
     borderWidth: 1,
-    borderColor: "#FECACA",
     borderRadius: 10,
     padding: 10,
     marginBottom: 12,
   },
   errorText: {
-    color: "#EF4444",
     fontSize: 13,
     fontFamily: "Inter_500Medium",
     flex: 1,
   },
 
-  // Primary button
   primaryBtn: {
     borderRadius: 20,
     paddingVertical: 16,
@@ -689,15 +661,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
     marginBottom: 12,
-    shadowColor: BLUE,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 12,
     elevation: 5,
   },
-  primaryBtnText: { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
+  primaryBtnText: { fontSize: 16, fontFamily: "Inter_700Bold" },
 
-  // Skip
   skipWrap: { alignItems: "center", paddingVertical: 6 },
-  skipText:  { color: GREY_TEXT, fontSize: 13.5, fontFamily: "Inter_500Medium" },
+  skipText:  { fontSize: 13.5, fontFamily: "Inter_500Medium" },
 });

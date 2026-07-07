@@ -4,6 +4,18 @@ import { getBearerToken, verifyFirebaseToken } from "../lib/firebaseAdmin";
 
 const router = Router();
 
+// ── Phone normalisation ───────────────────────────────────────────────────────
+// Twilio requires E.164 format (+CountryCode…). Indian mobile numbers stored
+// without a country code (10 digits, starting 6-9) get the +91 prefix added.
+function normalizePhone(phone: string): string {
+  const trimmed = phone.trim();
+  if (trimmed.startsWith("+")) return trimmed;          // already E.164
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length === 10 && /^[6-9]/.test(digits)) return `+91${digits}`;
+  if (digits.length === 12 && digits.startsWith("91")) return `+${digits}`;
+  return trimmed;                                        // unknown format — pass as-is
+}
+
 // ── Twilio SMS helper ─────────────────────────────────────────────────────────
 
 interface TwilioResult {
@@ -111,7 +123,7 @@ router.post("/sos/alert", async (req: Request, res: Response) => {
     // Send SMS to every contact in parallel
     const results = await Promise.all(
       contacts.map(async (c) => {
-        const result = await sendTwilioSms(c.phone, message);
+        const result = await sendTwilioSms(normalizePhone(c.phone), message);
         return { id: c.id, name: c.name, phone: c.phone, ...result };
       }),
     );
