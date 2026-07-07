@@ -140,7 +140,11 @@ export default function TabLayout() {
         name="incident"
         options={{
           title: t("tab.incident"),
-          tabBarButton: () => null,
+          tabBarIcon: ({ color, focused }) => (
+            <View style={{ alignItems: "center", justifyContent: "center" }}>
+              <Icon name="flag" size={focused ? 22 : 20} color={color} />
+            </View>
+          ),
         }}
       />
       <Tabs.Screen
