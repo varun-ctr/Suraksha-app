@@ -47,6 +47,7 @@ export interface Profile {
 interface Settings {
   notifications: boolean;
   bgLocation: boolean;
+  shakeToSos: boolean;
 }
 
 interface PersistShape {
@@ -59,7 +60,7 @@ interface PersistShape {
 const DEFAULTS: PersistShape = {
   contacts: [],
   profile: { name: "", phone: "", email: "", premium: false },
-  settings: { notifications: true, bgLocation: false },
+  settings: { notifications: true, bgLocation: false, shakeToSos: false },
   onboarded: false,
 };
 

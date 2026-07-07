@@ -1,6 +1,6 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -12,18 +12,40 @@ import {
   TextInput,
   View,
 } from "react-native";
+import Markdown from "react-native-markdown-display";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "@/components/Icon";
+import { findOfflineAnswer } from "@/constants/emergencyKnowledge";
 import { useI18n } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
 import { firebaseAuth } from "@/lib/firebase";
 import { getBackendUrl } from "@/lib/env";
+import {
+  cacheReply,
+  clearSakhiHistory,
+  getCachedReply,
+  loadSakhiHistory,
+  saveSakhiHistory,
+} from "@/lib/sakhiHistory";
 
 type Msg = { id: string; role: "user" | "assistant"; content: string };
 type SendResult =
   | { ok: true; reply: string }
   | { ok: false; reason: "limit_reached" | "auth_required" | "network" | "server" };
+
+/** Bounded auto-retry backoff (ms) before falling back to a manual retry. */
+const RETRY_DELAYS_MS = [2000, 4000, 8000];
+
+function assistantMarkdownStyle(textColor: string) {
+  return {
+    body: { color: textColor, fontSize: 13.5, lineHeight: 20 },
+    paragraph: { marginTop: 0, marginBottom: 6 },
+    strong: { fontFamily: "Inter_700Bold" },
+    bullet_list: { marginBottom: 0 },
+    list_item: { marginBottom: 2 },
+  };
+}
 
 async function sendSakhiMessage(
   messages: { role: "user" | "assistant"; content: string }[],
@@ -62,6 +84,7 @@ export default function SakhiScreen() {
   const [messages, setMessages] = useState<Msg[]>([
     { id: "seed", role: "assistant", content: t("sakhi.greeting") },
   ]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [input, setInput] = useState("");
   const [pending, setPending]           = useState(false);
   const [limitReached, setLimitReached] = useState(false);
@@ -73,8 +96,53 @@ export default function SakhiScreen() {
 
   const suggestions = [t("sakhi.suggest1"), t("sakhi.suggest2"), t("sakhi.suggest3")];
 
+  // Restore any locally-persisted conversation on mount.
+  useEffect(() => {
+    loadSakhiHistory().then((stored) => {
+      if (stored) setMessages(stored);
+      setHistoryLoaded(true);
+    });
+  }, []);
+
+  // Persist after every exchange (skip until the initial load resolves, so
+  // we don't overwrite stored history with the seed greeting first).
+  useEffect(() => {
+    if (!historyLoaded) return;
+    void saveSakhiHistory(messages);
+  }, [messages, historyLoaded]);
+
+  const clearChat = useCallback(() => {
+    setMessages([{ id: "seed", role: "assistant", content: t("sakhi.greeting") }]);
+    setNetError(false);
+    setRetryDone(false);
+    setLimitReached(false);
+    void clearSakhiHistory();
+  }, [t]);
+
+  const showOfflineFallback = useCallback((lastUserMessage: string) => {
+    const offline = findOfflineAnswer(lastUserMessage, lang);
+    void getCachedReply(lastUserMessage).then((cachedReply) => {
+      if (cachedReply) {
+        setMessages((prev) => [
+          ...prev,
+          { id: `o${Date.now()}`, role: "assistant", content: `${cachedReply}\n\n_(${t("sakhi.cachedAnswer")})_` },
+        ]);
+      } else if (offline) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `o${Date.now()}`,
+            role: "assistant",
+            content: `**${offline.title}**\n\n${offline.body}\n\n_(${t("sakhi.offlineAnswer")})_`,
+          },
+        ]);
+      }
+      requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+    });
+  }, [lang, t]);
+
   const handleResult = useCallback(
-    (result: SendResult, isRetry: boolean) => {
+    (result: SendResult, attempt: number) => {
       setPending(false);
       if (result.ok) {
         setNetError(false);
@@ -83,23 +151,27 @@ export default function SakhiScreen() {
           ...prev,
           { id: `a${Date.now()}`, role: "assistant", content: result.reply },
         ]);
+        const lastUser = [...retryHistoryRef.current].reverse().find((m) => m.role === "user");
+        if (lastUser) void cacheReply(lastUser.content, result.reply);
       } else if (result.reason === "limit_reached") {
         setLimitReached(true);
-      } else if (!isRetry) {
+      } else if (attempt < RETRY_DELAYS_MS.length) {
         setNetError(true);
         setRetryDone(false);
         retryTimerRef.current = setTimeout(async () => {
           setPending(true);
           const r2 = await sendSakhiMessage(retryHistoryRef.current, lang);
-          handleResult(r2, true);
-        }, 4000);
+          handleResult(r2, attempt + 1);
+        }, RETRY_DELAYS_MS[attempt]);
       } else {
         setNetError(true);
         setRetryDone(true);
+        const lastUser = [...retryHistoryRef.current].reverse().find((m) => m.role === "user");
+        if (lastUser) showOfflineFallback(lastUser.content);
       }
       requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
     },
-    [lang],
+    [lang, showOfflineFallback],
   );
 
   const submit = useCallback(
@@ -123,7 +195,7 @@ export default function SakhiScreen() {
 
       setPending(true);
       const result = await sendSakhiMessage(history, lang);
-      handleResult(result, false);
+      handleResult(result, 0);
     },
     [messages, pending, lang, limitReached, handleResult],
   );
@@ -133,7 +205,7 @@ export default function SakhiScreen() {
     setNetError(false);
     setPending(true);
     const result = await sendSakhiMessage(retryHistoryRef.current, lang);
-    handleResult(result, true);
+    handleResult(result, RETRY_DELAYS_MS.length);
   }, [lang, handleResult]);
 
   const errorMsg = lang === "hi"
@@ -155,7 +227,7 @@ export default function SakhiScreen() {
           <View style={styles.botAvatar}>
             <Icon name="sparkles" size={20} color="#fff" />
           </View>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={{ color: "#fff", fontSize: 17, fontFamily: "Inter_700Bold" }}>{t("sakhi.title")}</Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
               <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: netError ? "#FCA5A5" : "#6EE7A8" }} />
@@ -164,6 +236,9 @@ export default function SakhiScreen() {
               </Text>
             </View>
           </View>
+          <Pressable onPress={clearChat} hitSlop={10} style={styles.clearBtn}>
+            <Icon name="trash" size={17} color="rgba(255,255,255,0.85)" />
+          </Pressable>
         </View>
       </LinearGradient>
 
@@ -192,7 +267,11 @@ export default function SakhiScreen() {
                   paddingVertical: 10,
                 }}
               >
-                <Text style={{ color: mine ? "#fff" : c.text, fontSize: 13.5, lineHeight: 20 }}>{m.content}</Text>
+                {mine ? (
+                  <Text style={{ color: "#fff", fontSize: 13.5, lineHeight: 20 }}>{m.content}</Text>
+                ) : (
+                  <Markdown style={assistantMarkdownStyle(c.text)}>{m.content}</Markdown>
+                )}
               </View>
             </View>
           );
@@ -334,6 +413,10 @@ const styles = StyleSheet.create({
   botAvatar: {
     width: 42, height: 42, borderRadius: 21,
     backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center", justifyContent: "center",
+  },
+  clearBtn: {
+    width: 36, height: 36, borderRadius: 18,
     alignItems: "center", justifyContent: "center",
   },
   typing: {
