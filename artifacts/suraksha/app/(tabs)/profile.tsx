@@ -386,6 +386,20 @@ export default function ProfileScreen() {
               />
             }
           />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row
+            icon="zap"
+            color={c.danger}
+            label={t("profile.shakeToSos")}
+            right={
+              <Switch
+                value={settings.shakeToSos}
+                onValueChange={(v) => setSettings({ shakeToSos: v })}
+                trackColor={{ true: c.primary, false: c.border }}
+                thumbColor="#fff"
+              />
+            }
+          />
         </Card>
 
         {/* ── Appearance ── */}

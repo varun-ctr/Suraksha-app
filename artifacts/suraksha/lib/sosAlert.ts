@@ -29,6 +29,49 @@ export interface AlertStatus {
   call: CallState;
 }
 
+type BackendAlertResult =
+  | { ok: true; configured: boolean; results: { id: string; success: boolean; error?: string }[] }
+  | { ok: false; retryable: boolean };
+
+const BACKEND_RETRY_DELAY_MS = 2000;
+
+/** One attempt at the backend Twilio dispatch. Never throws. */
+async function attemptBackendAlert(
+  backendUrl: string,
+  token: string,
+  contacts: Contact[],
+  message: string,
+): Promise<BackendAlertResult> {
+  try {
+    const res = await fetch(`${backendUrl}/sos/alert`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        contacts: contacts.map((c) => ({ id: c.id, name: c.name, phone: c.phone })),
+        message,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (res.ok) {
+      const data = await res.json() as {
+        configured: boolean;
+        results: { id: string; success: boolean; error?: string }[];
+      };
+      return { ok: true, ...data };
+    }
+    // 5xx is likely transient (deploy restart, overload) — worth one retry.
+    // 4xx (auth, bad request) won't be fixed by retrying.
+    return { ok: false, retryable: res.status >= 500 };
+  } catch {
+    // Network error / timeout — transient, worth one retry.
+    return { ok: false, retryable: true };
+  }
+}
+
 // ── Main dispatcher ───────────────────────────────────────────────────────────
 
 export async function sendSosAlerts(
@@ -53,43 +96,25 @@ export async function sendSosAlerts(
     call:  "idle",
   }));
 
-  // ── 1. Try backend (Twilio auto-SMS) ─────────────────────────────
+  // ── 1. Try backend (Twilio auto-SMS), with one bounded retry ─────
   let backendSent = false;
-  try {
-    const fbUser = firebaseAuth.currentUser;
-    const token = fbUser ? await fbUser.getIdToken().catch(() => null) : null;
+  const fbUser = firebaseAuth.currentUser;
+  const token = fbUser ? await fbUser.getIdToken().catch(() => null) : null;
 
-    if (token && backendUrl) {
-      const res = await fetch(`${backendUrl}/sos/alert`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          contacts: contacts.map((c) => ({ id: c.id, name: c.name, phone: c.phone })),
-          message,
-        }),
-        signal: AbortSignal.timeout(10_000),
-      });
-
-      if (res.ok) {
-        const data = await res.json() as {
-          configured: boolean;
-          results: { id: string; success: boolean; error?: string }[];
-        };
-
-        if (data.configured) {
-          for (const r of data.results) {
-            const s = statuses.find((x) => x.id === r.id);
-            if (s) s.sms = r.success ? "sent" : "failed";
-          }
-          backendSent = data.results.some((r) => r.success);
-        }
-      }
+  if (token && backendUrl) {
+    let result = await attemptBackendAlert(backendUrl, token, contacts, message);
+    if (!result.ok && result.retryable) {
+      await new Promise((r) => setTimeout(r, BACKEND_RETRY_DELAY_MS));
+      result = await attemptBackendAlert(backendUrl, token, contacts, message);
     }
-  } catch {
-    // Backend unavailable — continue with native fallback
+
+    if (result.ok && result.configured) {
+      for (const r of result.results) {
+        const s = statuses.find((x) => x.id === r.id);
+        if (s) s.sms = r.success ? "sent" : "failed";
+      }
+      backendSent = result.results.some((r) => r.success);
+    }
   }
 
   // ── 2. Native SMS fallback (opens SMS app, pre-filled) ───────────

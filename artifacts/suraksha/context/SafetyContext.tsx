@@ -11,6 +11,8 @@ import React, {
 } from "react";
 
 import { SosBottomSheet } from "@/components/SosBottomSheet";
+import { useApp } from "@/context/AppContext";
+import { useShakeDetector } from "@/hooks/useShakeDetector";
 import { getCurrentLocation, reverseGeocode } from "@/lib/location";
 import { endLiveSession, startLiveSession, updateLiveSession } from "@/lib/liveSession";
 import {
@@ -88,6 +90,7 @@ const JOURNEY_DEFAULTS: JourneyState = {
 const SafetyContext = createContext<SafetyContextValue | null>(null);
 
 export function SafetyProvider({ children }: { children: React.ReactNode }) {
+  const { settings } = useApp();
   const [sos, setSos]         = useState<SosState>(SOS_DEFAULTS);
   const [journey, setJourney] = useState<JourneyState>(JOURNEY_DEFAULTS);
 
@@ -255,6 +258,14 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
     setSos({ ...SOS_DEFAULTS, phase: "countdown", countdown: COUNTDOWN_START, loading: true });
     void fetchLocationAndStartTracking(runId);
   }, [fetchLocationAndStartTracking]);
+
+  // ── Shake-to-SOS (opt-in, off by default) ──────────────────────────
+  const handleShake = useCallback(() => {
+    if (sos.phase !== "idle") return; // already mid-SOS — a shake shouldn't restart it
+    triggerSOS();
+  }, [sos.phase, triggerSOS]);
+
+  useShakeDetector(handleShake, settings.shakeToSos);
 
   const cancelSOS = useCallback(() => {
     sosRunIdRef.current++;

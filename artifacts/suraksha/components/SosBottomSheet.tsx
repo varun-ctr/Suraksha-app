@@ -254,6 +254,15 @@ export function SosBottomSheet({ sos, cancelSOS }: Props) {
                 {t("sos.alertedContacts")}
               </Text>
 
+              {!alertSending && alertStatuses.some((a) => a.sms === "opening") && (
+                <View style={[styles.notConfiguredBanner, { backgroundColor: withAlpha(c.warning, 0.12) }]}>
+                  <Icon name="alertCircle" size={13} color={c.warning} />
+                  <Text style={[styles.notConfiguredText, { color: c.warning }]}>
+                    {t("sos.notConfigured")}
+                  </Text>
+                </View>
+              )}
+
               {contacts.length === 0 ? (
                 <>
                   <Text style={[styles.panelBody, { color: c.textMuted, marginBottom: 12 }]}>
@@ -427,6 +436,9 @@ const styles = StyleSheet.create({
 
   addBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 11, borderRadius: 12 },
   addBtnText: { color: "#fff", fontSize: 13, fontFamily: "Inter_700Bold" },
+
+  notConfiguredBanner: { flexDirection: "row", alignItems: "center", gap: 7, borderRadius: 10, padding: 10, marginBottom: 10 },
+  notConfiguredText: { fontSize: 11.5, fontFamily: "Inter_500Medium", flex: 1, lineHeight: 16 },
 
   actionBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 13, borderRadius: 14, borderWidth: 1 },
   actionText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
