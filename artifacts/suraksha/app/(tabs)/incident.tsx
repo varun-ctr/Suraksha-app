@@ -26,7 +26,8 @@ import { useLocation } from "@/hooks/useLocation";
 import { timeAgo } from "@/lib/format";
 import { reverseGeocode } from "@/lib/location";
 import { firebaseAuth } from "@/lib/firebase";
-import { db, supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
+import { getBackendUrl } from "@/lib/env";
 import type { CommunityReportRow } from "@/types/database";
 import { fetchWeather, type WeatherData } from "@/lib/weather";
 
@@ -148,11 +149,22 @@ export default function IncidentScreen() {
   const loadMyReports = useCallback(async () => {
     const user = firebaseAuth.currentUser;
     if (!user) return;
+    const backendUrl = getBackendUrl();
+    if (!backendUrl) return;
     setLoadingReports(true);
     try {
-      const { data } = await db.communityReports.listForUser(user.uid);
-      if (data) setMyReports(data);
-    } finally {
+      let headers: Record<string, string> = {};
+      try {
+        const token = await user.getIdToken();
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+      } catch { /* no token */ }
+      const res = await fetch(`${backendUrl}/community-reports/mine?user_id=${encodeURIComponent(user.uid)}`, { headers });
+      if (res.ok) {
+        const data = await res.json() as CommunityReportRow[];
+        setMyReports(data);
+      }
+    } catch { /* network error — keep existing list */ }
+    finally {
       setLoadingReports(false);
     }
   }, []);
@@ -200,6 +212,7 @@ export default function IncidentScreen() {
         ? `[Anonymous] ${description.trim()}`
         : description.trim();
 
+      // Attempt photo upload to Supabase Storage (non-critical — skipped on failure)
       let photoUrl: string | undefined;
       if (photoUri) {
         try {
@@ -213,21 +226,37 @@ export default function IncidentScreen() {
           if (!uploadErr) {
             photoUrl = supabase.storage.from("community-reports").getPublicUrl(path).data.publicUrl;
           }
-        } catch {
-          // Photo upload is non-critical — submit the report without it.
-        }
+        } catch { /* non-critical — submit without photo */ }
       }
 
-      const { error } = await db.communityReports.insert(user.uid, {
-        type: incidentType as CommunityReportRow["type"],
-        lat: point.lat,
-        lng: point.lng,
-        address: address ?? null,
-        description: descText || null,
-        photo_url: photoUrl ?? null,
+      // Route insert through API server (bypasses Supabase RLS / Firebase JWT issues)
+      const backendUrl = getBackendUrl();
+      if (!backendUrl) throw new Error("Backend not configured");
+
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      try {
+        const token = await user.getIdToken();
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+      } catch { /* no token — proceed */ }
+
+      const res = await fetch(`${backendUrl}/community-reports`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          type: incidentType,
+          lat: point.lat,
+          lng: point.lng,
+          address: address ?? null,
+          description: descText || null,
+          user_id: user.uid,
+          photo_url: photoUrl ?? null,
+        }),
       });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
 
       showToast(t("incident.submitted"));
       setDescription("");

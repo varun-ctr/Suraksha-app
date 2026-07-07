@@ -54,7 +54,8 @@ function computeSafetyScore(
   if (weather) {
     s += weather.code < 50 ? 25 : weather.code < 80 ? 12 : 0;
   } else {
-    s += 25;
+    // Weather not yet loaded — no bonus, no penalty
+    s += 0;
   }
   if (status === "emergency") s = Math.min(s, 30);
   else if (status === "caution") s = Math.min(s, 65);
@@ -257,6 +258,7 @@ export default function HomeScreen() {
   const { point, address, status } = useLocation();
   const { width: screenWidth } = useWindowDimensions();
   const [showLangPicker, setShowLangPicker] = React.useState(false);
+  const [showScoreDetails, setShowScoreDetails] = React.useState(false);
   const [weather, setWeather] = useState<WeatherData | null>(null);
 
   const displayName = profile.name.trim() || t("home.guest");
@@ -410,7 +412,7 @@ export default function HomeScreen() {
           locLabel={locLabel}
           hasContacts={contacts.length > 0}
           locationReady={locationReady}
-          onViewDetails={() => {}}
+          onViewDetails={() => setShowScoreDetails(true)}
         />
       </View>
 
@@ -421,7 +423,7 @@ export default function HomeScreen() {
 
       <View style={{ paddingHorizontal: 16 }}>
         {/* ── Quick Actions — 2-column grid ───────────────── */}
-        <Text style={[styles.sectionTitle, { color: c.text }]}>Quick Actions</Text>
+        <Text style={[styles.sectionTitle, { color: c.text }]}>{t("home.quickActions")}</Text>
         <View
           style={{
             flexDirection: "row",
@@ -477,7 +479,7 @@ export default function HomeScreen() {
         {/* ── Today's Safety ─────────────────────────────── */}
         {suggestions.length > 0 && (
           <>
-            <Text style={[styles.sectionTitle, { color: c.text }]}>Today's Safety</Text>
+            <Text style={[styles.sectionTitle, { color: c.text }]}>{t("home.todaysSafety")}</Text>
             <View style={[styles.surfaceCard, { backgroundColor: c.card, borderColor: c.border }]}>
               {weather && (
                 <View style={[styles.weatherRow, { borderBottomColor: c.border }]}>
@@ -605,14 +607,14 @@ export default function HomeScreen() {
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
                     <Icon name="alert" size={16} color={c.danger} />
                     <Text style={{ fontSize: 15, fontFamily: "Inter_700Bold", color: c.danger }}>
-                      Are you safe?
+                      {t("home.areYouSafe")}
                     </Text>
                   </View>
                   <Text style={{ fontSize: 12.5, color: c.textMuted, marginBottom: 12, lineHeight: 18 }}>
-                    Your journey timer has ended.{" "}
-                    {journey.overdueSeconds > 0 && (
-                      `Auto-SOS in ${journey.overdueSeconds}s if no response.`
-                    )}
+                    {t("home.journeyTimerEnded")}{" "}
+                    {journey.overdueSeconds > 0
+                      ? t("home.autoSosCountdown").replace("{n}", String(journey.overdueSeconds))
+                      : ""}
                   </Text>
                   <View style={{ flexDirection: "row", gap: 8 }}>
                     <Pressable
@@ -629,7 +631,7 @@ export default function HomeScreen() {
                       }}
                     >
                       <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13 }}>
-                        I'm Safe
+                        {t("home.imSafe")}
                       </Text>
                     </Pressable>
                     <Pressable
@@ -643,7 +645,7 @@ export default function HomeScreen() {
                       }}
                     >
                       <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13 }}>
-                        Send SOS
+                        {t("home.sendSosNow")}
                       </Text>
                     </Pressable>
                   </View>
@@ -747,6 +749,133 @@ export default function HomeScreen() {
           ))
         )}
       </View>
+
+      {/* ── Safety Score Details Modal ──────────────────────── */}
+      <Modal
+        visible={showScoreDetails}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowScoreDetails(false)}
+      >
+        <Pressable
+          style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.45)" }}
+          onPress={() => setShowScoreDetails(false)}
+        >
+          <Pressable
+            style={{
+              backgroundColor: c.card,
+              borderTopLeftRadius: 26,
+              borderTopRightRadius: 26,
+              padding: 22,
+              paddingBottom: 38,
+            }}
+            onPress={() => {}}
+          >
+            {/* Handle */}
+            <View style={{ width: 38, height: 4, borderRadius: 2, backgroundColor: c.border, alignSelf: "center", marginBottom: 18 }} />
+            <Text style={{ fontSize: 17, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 4 }}>
+              {t("home.safetyScore")} — {score}/100
+            </Text>
+            <Text style={{ fontSize: 12.5, color: c.textMuted, marginBottom: 18 }}>
+              {t(scoreLabelKey(score))}
+            </Text>
+
+            {/* Breakdown rows */}
+            {[
+              {
+                label: t("home.readinessLocationActive"),
+                pts: locationReady ? 15 : 0,
+                max: 15,
+                ok: locationReady,
+                tip: locationReady ? null : t("home.readinessContactsMissing"),
+              },
+              {
+                label: t("home.readinessContactsReady"),
+                pts: contacts.length > 0 ? 20 : 0,
+                max: 20,
+                ok: contacts.length > 0,
+                tip: contacts.length > 0 ? null : t("home.noContacts"),
+              },
+              {
+                label: (() => {
+                  const h = new Date().getHours();
+                  return h >= 6 && h < 21 ? t("home.scoreDaytime") : t("home.scoreNighttime");
+                })(),
+                pts: (() => { const h = new Date().getHours(); return h >= 6 && h < 21 ? 20 : 0; })(),
+                max: 20,
+                ok: (() => { const h = new Date().getHours(); return h >= 6 && h < 21; })(),
+                tip: null,
+              },
+              {
+                label: weather ? `${weather.icon} ${weather.label}` : "🌤 Weather",
+                pts: weather ? (weather.code < 50 ? 25 : weather.code < 80 ? 12 : 0) : 0,
+                max: 25,
+                ok: weather ? weather.code < 80 : null,
+                tip: null,
+              },
+            ].map((row, i) => (
+              <View
+                key={i}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingVertical: 10,
+                  borderBottomWidth: i < 3 ? StyleSheet.hairlineWidth : 0,
+                  borderBottomColor: c.border,
+                  gap: 10,
+                }}
+              >
+                <Icon
+                  name={row.ok === false ? "alertCircle" : "check"}
+                  size={15}
+                  color={row.ok === false ? c.warning : c.success}
+                />
+                <Text style={{ flex: 1, fontSize: 13.5, fontFamily: "Inter_500Medium", color: c.text }}>
+                  {row.label}
+                </Text>
+                <View
+                  style={{
+                    backgroundColor: row.pts > 0 ? withAlpha(c.success, 0.12) : withAlpha(c.warning, 0.1),
+                    borderRadius: 8,
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color: row.pts > 0 ? c.success : c.warning }}>
+                    +{row.pts}/{row.max}
+                  </Text>
+                </View>
+              </View>
+            ))}
+
+            {/* Base score */}
+            <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 10, gap: 10 }}>
+              <Icon name="shield" size={15} color={c.primary} />
+              <Text style={{ flex: 1, fontSize: 13.5, fontFamily: "Inter_500Medium", color: c.text }}>
+                {t("home.scoreBaseLabel")}
+              </Text>
+              <View style={{ backgroundColor: withAlpha(c.primary, 0.1), borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}>
+                <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color: c.primary }}>+20/20</Text>
+              </View>
+            </View>
+
+            <Pressable
+              onPress={() => setShowScoreDetails(false)}
+              style={{
+                marginTop: 18,
+                backgroundColor: c.primary,
+                borderRadius: 14,
+                paddingVertical: 13,
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 14 }}>
+                {t("onb.continue")}
+              </Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScrollView>
   );
 }

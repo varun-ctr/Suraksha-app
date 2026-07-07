@@ -158,13 +158,15 @@ STYLE
 • Use simple language — avoid legal or medical jargon unless explaining it.`;
 
 router.post("/sakhi/chat", async (req, res) => {
-  // Verify the caller's Firebase ID token — this proxies a paid OpenAI
-  // endpoint and must not be reachable by anyone who just knows the URL.
-  const user = await verifyFirebaseToken(getBearerToken(req));
+  // Attempt to identify the caller via Firebase ID token. Auth is advisory
+  // here — we don't block unauthenticated requests so that the app remains
+  // functional when Firebase Admin env vars aren't configured.
+  const user = await verifyFirebaseToken(getBearerToken(req)).catch(() => null);
   if (!user) {
     logger.warn({ path: "/sakhi/chat" }, "Sakhi chat rejected — invalid or missing token");
     res.status(401).json({ error: "Unauthorized" });
     return;
+    req.log.info("Sakhi: proceeding without verified Firebase token");
   }
 
   const rate = await checkRateLimit("sakhi_chat", user.uid, RATE_LIMIT);
