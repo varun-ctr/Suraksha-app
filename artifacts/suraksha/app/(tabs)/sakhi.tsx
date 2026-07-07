@@ -93,13 +93,19 @@ export default function SakhiScreen() {
 
   const retryHistoryRef = useRef<{ role: "user" | "assistant"; content: string }[]>([]);
   const retryTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Bumped by any action that supersedes in-flight async work (a new submit,
+  // or clearing the chat) — every async continuation checks the generation
+  // it started with against this before touching state, so a slow history
+  // load or a stale retry/offline-fallback can't clobber newer messages.
+  const generationRef = useRef(0);
 
   const suggestions = [t("sakhi.suggest1"), t("sakhi.suggest2"), t("sakhi.suggest3")];
 
   // Restore any locally-persisted conversation on mount.
   useEffect(() => {
+    const gen = generationRef.current;
     loadSakhiHistory().then((stored) => {
-      if (stored) setMessages(stored);
+      if (stored && generationRef.current === gen) setMessages(stored);
       setHistoryLoaded(true);
     });
   }, []);
@@ -112,16 +118,20 @@ export default function SakhiScreen() {
   }, [messages, historyLoaded]);
 
   const clearChat = useCallback(() => {
+    generationRef.current++; // invalidate any in-flight request/retry/offline-fallback
+    if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     setMessages([{ id: "seed", role: "assistant", content: t("sakhi.greeting") }]);
+    setPending(false);
     setNetError(false);
     setRetryDone(false);
     setLimitReached(false);
     void clearSakhiHistory();
   }, [t]);
 
-  const showOfflineFallback = useCallback((lastUserMessage: string) => {
+  const showOfflineFallback = useCallback((lastUserMessage: string, gen: number) => {
     const offline = findOfflineAnswer(lastUserMessage, lang);
     void getCachedReply(lastUserMessage).then((cachedReply) => {
+      if (generationRef.current !== gen) return;
       if (cachedReply) {
         setMessages((prev) => [
           ...prev,
@@ -142,7 +152,8 @@ export default function SakhiScreen() {
   }, [lang, t]);
 
   const handleResult = useCallback(
-    (result: SendResult, attempt: number) => {
+    (result: SendResult, attempt: number, gen: number) => {
+      if (generationRef.current !== gen) return; // chat was cleared/replaced since this request started
       setPending(false);
       if (result.ok) {
         setNetError(false);
@@ -159,15 +170,16 @@ export default function SakhiScreen() {
         setNetError(true);
         setRetryDone(false);
         retryTimerRef.current = setTimeout(async () => {
+          if (generationRef.current !== gen) return;
           setPending(true);
           const r2 = await sendSakhiMessage(retryHistoryRef.current, lang);
-          handleResult(r2, attempt + 1);
+          handleResult(r2, attempt + 1, gen);
         }, RETRY_DELAYS_MS[attempt]);
       } else {
         setNetError(true);
         setRetryDone(true);
         const lastUser = [...retryHistoryRef.current].reverse().find((m) => m.role === "user");
-        if (lastUser) showOfflineFallback(lastUser.content);
+        if (lastUser) showOfflineFallback(lastUser.content, gen);
       }
       requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
     },
@@ -182,6 +194,7 @@ export default function SakhiScreen() {
       setNetError(false);
       setRetryDone(false);
       if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
+      const gen = ++generationRef.current;
 
       const userMsg: Msg = { id: `u${Date.now()}`, role: "user", content: trimmed };
       const next = [...messages, userMsg];
@@ -195,7 +208,7 @@ export default function SakhiScreen() {
 
       setPending(true);
       const result = await sendSakhiMessage(history, lang);
-      handleResult(result, 0);
+      handleResult(result, 0, gen);
     },
     [messages, pending, lang, limitReached, handleResult],
   );
@@ -204,8 +217,9 @@ export default function SakhiScreen() {
     if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     setNetError(false);
     setPending(true);
+    const gen = generationRef.current;
     const result = await sendSakhiMessage(retryHistoryRef.current, lang);
-    handleResult(result, RETRY_DELAYS_MS.length);
+    handleResult(result, RETRY_DELAYS_MS.length, gen);
   }, [lang, handleResult]);
 
   const errorMsg = lang === "hi"

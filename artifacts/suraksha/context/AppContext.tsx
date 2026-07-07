@@ -20,6 +20,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { firebaseAuth } from "@/lib/firebase";
 import { onFirebaseAuthStateChanged } from "@/lib/firebaseAuth";
 import { normalizePhone } from "@/lib/validate";
+import { clearSakhiHistory } from "@/lib/sakhiHistory";
 
 /** Sensitive data (PII) lives in the OS keystore; the rest in plain storage. */
 const SECURE_KEY = "suraksha.secure.v1";
@@ -106,6 +107,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const stateRef = useRef(state);
   stateRef.current = state;
+  const prevUidRef = useRef<string | null>(firebaseAuth.currentUser?.uid ?? null);
+
+  /**
+   * Clears this device's local copy of contacts/profile/settings/Sakhi chat —
+   * but NOT the signed-out user's own Supabase data, which stays intact for
+   * them to sync back down next time they sign in. Used both when a session
+   * ends (so the next signed-in user on this device can't inherit or
+   * overwrite the previous user's contacts) and as the local half of full
+   * account deletion below.
+   */
+  const clearLocalStorageOnly = useCallback(async () => {
+    await Promise.all([
+      secureDelete(SECURE_KEY),
+      AsyncStorage.removeItem(PLAIN_KEY).catch(() => {}),
+      ...LEGACY_PLAIN_KEYS.map((k) => AsyncStorage.removeItem(k).catch(() => {})),
+      clearSakhiHistory(),
+    ]);
+    stateRef.current = DEFAULTS;
+    setState(DEFAULTS);
+  }, []);
 
   // ── Load from local storage ───────────────────────────────────────
 
@@ -169,11 +190,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     // Re-sync on Firebase auth state changes
     const unsub = onFirebaseAuthStateChanged((user) => {
-      if (user) void doSync(user.uid);
+      if (user) {
+        void doSync(user.uid);
+      } else if (prevUidRef.current !== null) {
+        // A real sign-out transition (had a user, now don't) — clear this
+        // device's local copy so a different user signing in next can't
+        // inherit or overwrite it. Not fired on first load with no prior
+        // session (prevUidRef starts null in that case).
+        void clearLocalStorageOnly();
+      }
+      prevUidRef.current = user?.uid ?? null;
     });
 
     return unsub;
-  }, [ready]);
+  }, [ready, clearLocalStorageOnly]);
 
   // ── Helpers ───────────────────────────────────────────────────────
 
@@ -324,19 +354,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const resetAllData = useCallback(async () => {
-    // Delete from Supabase first
+    // Account deletion — also wipe the user's own Supabase rows.
     const userId = await getUserId();
     if (userId) {
       await deleteAllContactsFromDb(userId).catch(() => {});
     }
-    await Promise.all([
-      secureDelete(SECURE_KEY),
-      AsyncStorage.removeItem(PLAIN_KEY).catch(() => {}),
-      ...LEGACY_PLAIN_KEYS.map((k) => AsyncStorage.removeItem(k).catch(() => {})),
-    ]);
-    stateRef.current = DEFAULTS;
-    setState(DEFAULTS);
-  }, [getUserId]);
+    await clearLocalStorageOnly();
+  }, [getUserId, clearLocalStorageOnly]);
 
   const value = useMemo<AppContextValue>(
     () => ({

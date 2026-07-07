@@ -41,6 +41,7 @@ async function attemptBackendAlert(
   token: string,
   contacts: Contact[],
   message: string,
+  idempotencyKey: string,
 ): Promise<BackendAlertResult> {
   try {
     const res = await fetch(`${backendUrl}/sos/alert`, {
@@ -52,6 +53,7 @@ async function attemptBackendAlert(
       body: JSON.stringify({
         contacts: contacts.map((c) => ({ id: c.id, name: c.name, phone: c.phone })),
         message,
+        idempotencyKey,
       }),
       signal: AbortSignal.timeout(10_000),
     });
@@ -97,15 +99,19 @@ export async function sendSosAlerts(
   }));
 
   // ── 1. Try backend (Twilio auto-SMS), with one bounded retry ─────
-  let backendSent = false;
+  // The retry reuses the same idempotency key as the first attempt, so if
+  // the first attempt actually succeeded server-side but its response was
+  // lost (timeout, dropped connection), the backend can recognise the
+  // retry and return the cached result instead of re-sending via Twilio.
+  const idempotencyKey = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const fbUser = firebaseAuth.currentUser;
   const token = fbUser ? await fbUser.getIdToken().catch(() => null) : null;
 
   if (token && backendUrl) {
-    let result = await attemptBackendAlert(backendUrl, token, contacts, message);
+    let result = await attemptBackendAlert(backendUrl, token, contacts, message, idempotencyKey);
     if (!result.ok && result.retryable) {
       await new Promise((r) => setTimeout(r, BACKEND_RETRY_DELAY_MS));
-      result = await attemptBackendAlert(backendUrl, token, contacts, message);
+      result = await attemptBackendAlert(backendUrl, token, contacts, message, idempotencyKey);
     }
 
     if (result.ok && result.configured) {
@@ -113,23 +119,23 @@ export async function sendSosAlerts(
         const s = statuses.find((x) => x.id === r.id);
         if (s) s.sms = r.success ? "sent" : "failed";
       }
-      backendSent = result.results.some((r) => r.success);
     }
   }
 
   // ── 2. Native SMS fallback (opens SMS app, pre-filled) ───────────
-  // Send per contact rather than one comma-joined recipient list: multi-
-  // recipient sms: URIs are unreliable (iOS in particular silently drops all
-  // but the first), so each contact gets their own message individually.
-  if (!backendSent) {
-    for (const c of contacts) {
-      const s = statuses.find((x) => x.id === c.id);
-      try {
-        await sendSms(c.phone, message);
-        if (s) s.sms = "opening";
-      } catch {
-        if (s) s.sms = "failed";
-      }
+  // Per contact, not gated on the whole backend call — a contact whose
+  // Twilio send specifically failed (while others succeeded) still needs
+  // this fallback, and one comma-joined recipient list is unreliable
+  // anyway (iOS in particular silently drops all but the first), so each
+  // contact gets their own message individually.
+  for (const c of contacts) {
+    const s = statuses.find((x) => x.id === c.id);
+    if (!s || s.sms === "sent") continue; // backend already delivered this one
+    try {
+      await sendSms(c.phone, message);
+      s.sms = "opening";
+    } catch {
+      s.sms = "failed";
     }
   }
 

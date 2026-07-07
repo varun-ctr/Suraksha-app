@@ -145,7 +145,7 @@ export default function SessionsScreen() {
       if (!token) return [];
 
       const backendUrl = getBackendUrl();
-      const res = await fetch(`${backendUrl}/api/auth/sessions`, {
+      const res = await fetch(`${backendUrl}/auth/sessions`, {
         headers: { Authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(8_000),
       });
