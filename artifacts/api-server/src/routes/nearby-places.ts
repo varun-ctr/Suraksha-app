@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { requiredEnv } from "./../lib/env";
+import { getBearerToken, verifyFirebaseToken } from "../lib/firebaseAdmin";
 
 const router: IRouter = Router();
 
@@ -110,6 +111,14 @@ async function fetchFromGoogle(
 }
 
 router.get("/nearby-places", async (req: Request, res: Response) => {
+  // Verify the caller's Firebase ID token — this proxies a paid Google
+  // Places endpoint and must not be reachable by anyone who just knows the URL.
+  const user = await verifyFirebaseToken(getBearerToken(req));
+  if (!user) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
   const { lat: latStr, lng: lngStr, type } = req.query as Record<string, string>;
 
   const lat = parseFloat(latStr ?? "");

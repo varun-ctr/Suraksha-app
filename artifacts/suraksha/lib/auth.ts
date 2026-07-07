@@ -70,7 +70,7 @@ export async function deleteAccount(): Promise<{ error: string | null }> {
     // Best-effort: notify backend so it can clean up server-side data.
     // Failures are swallowed — Firebase account deletion is authoritative.
     if (token && backendUrl) {
-      await fetch(`${backendUrl}/api/auth/account`, {
+      await fetch(`${backendUrl}/auth/account`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(8_000),

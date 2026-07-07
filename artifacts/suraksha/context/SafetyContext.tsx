@@ -179,7 +179,11 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
         if (!id) return;
 
         setSos((s) => {
-          if (s.phase === "idle") {
+          // Re-check runId here too: this run may have been cancelled and a
+          // new one started while insertSosEvent's network call was in
+          // flight — s.phase would then be "active" again for the *new*
+          // run, so checking phase alone isn't enough to detect staleness.
+          if (sosRunIdRef.current !== runId || s.phase === "idle") {
             void resolveSosEvent(id);
             return s;
           }
@@ -253,19 +257,19 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
   // ── Public SOS API ────────────────────────────────────────────────
 
   const triggerSOS = useCallback(() => {
+    // Guard at the source rather than in each caller: tap, shake, and the
+    // journey-overdue auto-trigger all call this, and a second SOS while one
+    // is already active/counting down would clobber the first run's GPS
+    // watch, live-tracking session, and DB event.
+    if (sos.phase !== "idle") return;
     const runId = ++sosRunIdRef.current;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setSos({ ...SOS_DEFAULTS, phase: "countdown", countdown: COUNTDOWN_START, loading: true });
     void fetchLocationAndStartTracking(runId);
-  }, [fetchLocationAndStartTracking]);
+  }, [sos.phase, fetchLocationAndStartTracking]);
 
   // ── Shake-to-SOS (opt-in, off by default) ──────────────────────────
-  const handleShake = useCallback(() => {
-    if (sos.phase !== "idle") return; // already mid-SOS — a shake shouldn't restart it
-    triggerSOS();
-  }, [sos.phase, triggerSOS]);
-
-  useShakeDetector(handleShake, settings.shakeToSos);
+  useShakeDetector(triggerSOS, settings.shakeToSos);
 
   const cancelSOS = useCallback(() => {
     sosRunIdRef.current++;
@@ -285,7 +289,7 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
   );
 
   const startJourney = useCallback(
-    () => setJourney({ ...JOURNEY_DEFAULTS, active: true, duration: JOURNEY_DEFAULTS.duration }),
+    () => setJourney((j) => ({ ...JOURNEY_DEFAULTS, active: true, duration: j.duration })),
     [],
   );
 

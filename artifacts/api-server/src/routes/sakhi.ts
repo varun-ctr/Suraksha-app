@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { SendSakhiMessageBody, SendSakhiMessageResponse } from "@workspace/api-zod";
+import { getBearerToken, verifyFirebaseToken } from "../lib/firebaseAdmin";
 
 const router: IRouter = Router();
 
@@ -149,6 +150,14 @@ STYLE
 • Use simple language — avoid legal or medical jargon unless explaining it.`;
 
 router.post("/sakhi/chat", async (req, res) => {
+  // Verify the caller's Firebase ID token — this proxies a paid OpenAI
+  // endpoint and must not be reachable by anyone who just knows the URL.
+  const user = await verifyFirebaseToken(getBearerToken(req));
+  if (!user) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
   const parsed = SendSakhiMessageBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid request", details: parsed.error.flatten() });

@@ -92,6 +92,36 @@ interface ContactInput {
 interface AlertRequestBody {
   contacts: ContactInput[];
   message: string;
+  /** Client-generated key, stable across its own retries of the same alert. */
+  idempotencyKey?: string;
+}
+
+interface AlertResult {
+  configured: boolean;
+  results: { id: string; success: boolean; error?: string }[];
+}
+
+// Short-lived cache so a client retry after a lost response (not a lost
+// request) returns the already-computed result instead of re-sending SMS
+// via Twilio a second time. Bounded TTL keeps this from growing unbounded.
+const IDEMPOTENCY_TTL_MS = 5 * 60 * 1000;
+const idempotencyCache = new Map<string, { result: AlertResult; expiresAt: number }>();
+
+function getCachedAlertResult(key: string): AlertResult | null {
+  const entry = idempotencyCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    idempotencyCache.delete(key);
+    return null;
+  }
+  return entry.result;
+}
+
+function cacheAlertResult(key: string, result: AlertResult): void {
+  idempotencyCache.set(key, { result, expiresAt: Date.now() + IDEMPOTENCY_TTL_MS });
+  for (const [k, v] of idempotencyCache) {
+    if (v.expiresAt <= Date.now()) idempotencyCache.delete(k);
+  }
 }
 
 router.post("/sos/alert", async (req: Request, res: Response) => {
@@ -101,10 +131,15 @@ router.post("/sos/alert", async (req: Request, res: Response) => {
 
   try {
     const body = req.body as AlertRequestBody;
-    const { contacts, message } = body;
+    const { contacts, message, idempotencyKey } = body;
 
     if (!Array.isArray(contacts) || !message) {
       return res.status(400).json({ error: "contacts[] and message are required" });
+    }
+
+    if (idempotencyKey) {
+      const cached = getCachedAlertResult(idempotencyKey);
+      if (cached) return res.json(cached);
     }
 
     const configured = !!(
@@ -114,10 +149,12 @@ router.post("/sos/alert", async (req: Request, res: Response) => {
     );
 
     if (!configured) {
-      return res.json({
+      const result: AlertResult = {
         configured: false,
         results: contacts.map((c) => ({ id: c.id, success: false, error: "sms_not_configured" })),
-      });
+      };
+      if (idempotencyKey) cacheAlertResult(idempotencyKey, result);
+      return res.json(result);
     }
 
     // Send SMS to every contact in parallel
@@ -128,7 +165,9 @@ router.post("/sos/alert", async (req: Request, res: Response) => {
       }),
     );
 
-    return res.json({ configured: true, results });
+    const result: AlertResult = { configured: true, results };
+    if (idempotencyKey) cacheAlertResult(idempotencyKey, result);
+    return res.json(result);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Internal error";
     return res.status(500).json({ error: msg });
