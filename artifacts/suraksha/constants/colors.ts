@@ -159,35 +159,3 @@ export function withAlpha(hex: string, alpha: number): string {
     .padStart(2, "0");
   return `${hex}${a}`;
 }
-
-// --- Scaffold compatibility (useColors hook) -------------------------------
-function toScaffold(p: Palette) {
-  return {
-    text: p.text,
-    tint: p.primary,
-    background: p.bg,
-    foreground: p.text,
-    card: p.card,
-    cardForeground: p.text,
-    primary: p.primary,
-    primaryForeground: p.onColor,
-    secondary: p.cardAlt,
-    secondaryForeground: p.primary,
-    muted: p.cardAlt,
-    mutedForeground: p.textMuted,
-    accent: p.accent,
-    accentForeground: p.onColor,
-    destructive: p.danger,
-    destructiveForeground: p.onColor,
-    border: p.border,
-    input: p.border,
-  };
-}
-
-const colors = {
-  light: toScaffold(buildPalette("blue", false)),
-  dark: toScaffold(buildPalette("blue", true)),
-  radius: RADIUS,
-};
-
-export default colors;

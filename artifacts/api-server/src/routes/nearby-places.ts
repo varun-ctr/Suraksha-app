@@ -1,10 +1,13 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requiredEnv } from "./../lib/env";
+import { optionalEnv } from "./../lib/env";
 import { getBearerToken, verifyFirebaseToken } from "../lib/firebaseAdmin";
 
 const router: IRouter = Router();
 
-const GOOGLE_PLACES_API_KEY = requiredEnv("GOOGLE_PLACES_API_KEY");
+// Optional: a missing key degrades this one route to a clear 503, instead of
+// crashing the whole process at import time (which previously took down
+// unrelated routes, including SOS alerting, before the server ever started).
+const GOOGLE_PLACES_API_KEY = optionalEnv("GOOGLE_PLACES_API_KEY");
 
 type Category = "police" | "hospital" | "pharmacy" | "shelter";
 
@@ -42,6 +45,7 @@ async function fetchFromGoogle(
   lat: number,
   lng: number,
   category: Category,
+  apiKey: string,
 ): Promise<NearbyPlace[]> {
   const config = CATEGORY_CONFIG[category];
   const fieldMask = "places.id,places.displayName,places.formattedAddress,places.location";
@@ -79,7 +83,7 @@ async function fetchFromGoogle(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+      "X-Goog-Api-Key": apiKey,
       "X-Goog-FieldMask": fieldMask,
     },
     body: JSON.stringify(body),
@@ -119,6 +123,11 @@ router.get("/nearby-places", async (req: Request, res: Response) => {
     return;
   }
 
+  if (!GOOGLE_PLACES_API_KEY) {
+    res.status(503).json({ error: "not_configured", message: "Nearby places search is not configured on the server." });
+    return;
+  }
+
   const { lat: latStr, lng: lngStr, type } = req.query as Record<string, string>;
 
   const lat = parseFloat(latStr ?? "");
@@ -138,7 +147,7 @@ router.get("/nearby-places", async (req: Request, res: Response) => {
   }
 
   try {
-    const places = await fetchFromGoogle(lat, lng, category);
+    const places = await fetchFromGoogle(lat, lng, category, GOOGLE_PLACES_API_KEY);
     cache.set(key, { data: places, expiresAt: Date.now() + 5 * 60 * 1000 });
     res.json({ places });
   } catch (err) {

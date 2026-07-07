@@ -1,16 +1,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { createClient } from "@supabase/supabase-js";
-import { requiredEnv } from "./../lib/env";
+import { getServiceSupabase } from "../lib/supabaseAdmin";
 
 const router: IRouter = Router();
 
-const SUPABASE_URL = requiredEnv("SUPABASE_URL");
-const SUPABASE_SERVICE_ROLE_KEY = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
 const REVENUECAT_WEBHOOK_SECRET = process.env.REVENUECAT_WEBHOOK_SECRET;
-
-const serviceSupabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false },
-});
 
 const PURCHASE_EVENTS = new Set([
   "INITIAL_PURCHASE",
@@ -29,6 +22,12 @@ router.post("/revenuecat-webhook", async (req: Request, res: Response) => {
   const provided = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
   if (provided !== REVENUECAT_WEBHOOK_SECRET) {
     res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+
+  const serviceSupabase = getServiceSupabase();
+  if (!serviceSupabase) {
+    res.status(501).json({ error: "not_configured", message: "Supabase is not configured on the server." });
     return;
   }
 

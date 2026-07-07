@@ -1,8 +1,16 @@
 import { Router, type Request, type Response } from "express";
 import * as https from "https";
 import { getBearerToken, verifyFirebaseToken } from "../lib/firebaseAdmin";
+import { getServiceSupabase } from "../lib/supabaseAdmin";
+import { checkRateLimit } from "../lib/rateLimit";
+import { logger } from "../lib/logger";
 
 const router = Router();
+
+// Generous relative to the client's own retry behaviour (one bounded 2s
+// retry per alert, see lib/sosAlert.ts) — this caps scripted abuse, not
+// legitimate repeated real emergencies.
+const RATE_LIMIT = { windowSeconds: 60 * 60, limit: 20 };
 
 // ── Phone normalisation ───────────────────────────────────────────────────────
 // Twilio requires E.164 format (+CountryCode…). Indian mobile numbers stored
@@ -101,33 +109,58 @@ interface AlertResult {
   results: { id: string; success: boolean; error?: string }[];
 }
 
-// Short-lived cache so a client retry after a lost response (not a lost
-// request) returns the already-computed result instead of re-sending SMS
-// via Twilio a second time. Bounded TTL keeps this from growing unbounded.
+// Idempotency cache lives in Supabase (migrations/001_sos_idempotency_and_
+// rate_limit.sql) rather than an in-memory Map: under autoscale, a client
+// retry can land on a different backend instance than its original request,
+// and an in-memory cache on the *other* instance wouldn't know the first
+// attempt already succeeded — resulting in a duplicate SMS to a trusted
+// contact during a real emergency. A shared store fixes that; if the store
+// itself is unreachable, both helpers below return/no-op so the request
+// still gets processed (once, without dedup) rather than failing SOS
+// delivery over a caching concern.
 const IDEMPOTENCY_TTL_MS = 5 * 60 * 1000;
-const idempotencyCache = new Map<string, { result: AlertResult; expiresAt: number }>();
 
-function getCachedAlertResult(key: string): AlertResult | null {
-  const entry = idempotencyCache.get(key);
-  if (!entry) return null;
-  if (entry.expiresAt <= Date.now()) {
-    idempotencyCache.delete(key);
+async function getCachedAlertResult(key: string): Promise<AlertResult | null> {
+  const supabase = getServiceSupabase();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from("sos_idempotency_cache")
+    .select("result, expires_at")
+    .eq("key", key)
+    .maybeSingle();
+  if (error) {
+    logger.warn({ err: error }, "Idempotency cache read failed — proceeding without dedup");
     return null;
   }
-  return entry.result;
+  if (!data || new Date(data.expires_at).getTime() <= Date.now()) return null;
+  return data.result as AlertResult;
 }
 
-function cacheAlertResult(key: string, result: AlertResult): void {
-  idempotencyCache.set(key, { result, expiresAt: Date.now() + IDEMPOTENCY_TTL_MS });
-  for (const [k, v] of idempotencyCache) {
-    if (v.expiresAt <= Date.now()) idempotencyCache.delete(k);
-  }
+async function cacheAlertResult(key: string, result: AlertResult): Promise<void> {
+  const supabase = getServiceSupabase();
+  if (!supabase) return;
+
+  const expiresAt = new Date(Date.now() + IDEMPOTENCY_TTL_MS).toISOString();
+  const { error } = await supabase
+    .from("sos_idempotency_cache")
+    .upsert({ key, result, expires_at: expiresAt });
+  if (error) logger.warn({ err: error }, "Idempotency cache write failed");
 }
 
 router.post("/sos/alert", async (req: Request, res: Response) => {
   // Verify the caller's Firebase ID token.
   const user = await verifyFirebaseToken(getBearerToken(req));
-  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  if (!user) {
+    logger.warn({ path: "/sos/alert" }, "SOS alert rejected — invalid or missing token");
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  const rate = await checkRateLimit("sos_alert", user.uid, RATE_LIMIT);
+  if (!rate.allowed) {
+    logger.warn({ uid: user.uid, count: rate.count }, "SOS alert rate limit exceeded");
+    return res.status(429).json({ error: "rate_limited", message: "Too many SOS alerts — please try again shortly." });
+  }
 
   try {
     const body = req.body as AlertRequestBody;
@@ -138,8 +171,11 @@ router.post("/sos/alert", async (req: Request, res: Response) => {
     }
 
     if (idempotencyKey) {
-      const cached = getCachedAlertResult(idempotencyKey);
-      if (cached) return res.json(cached);
+      const cached = await getCachedAlertResult(idempotencyKey);
+      if (cached) {
+        logger.info({ uid: user.uid }, "SOS alert served from idempotency cache (retry of a prior request)");
+        return res.json(cached);
+      }
     }
 
     const configured = !!(
@@ -153,7 +189,8 @@ router.post("/sos/alert", async (req: Request, res: Response) => {
         configured: false,
         results: contacts.map((c) => ({ id: c.id, success: false, error: "sms_not_configured" })),
       };
-      if (idempotencyKey) cacheAlertResult(idempotencyKey, result);
+      if (idempotencyKey) await cacheAlertResult(idempotencyKey, result);
+      logger.warn({ uid: user.uid, contactCount: contacts.length }, "SOS alert dispatched — Twilio not configured, no SMS sent");
       return res.json(result);
     }
 
@@ -166,9 +203,16 @@ router.post("/sos/alert", async (req: Request, res: Response) => {
     );
 
     const result: AlertResult = { configured: true, results };
-    if (idempotencyKey) cacheAlertResult(idempotencyKey, result);
+    if (idempotencyKey) await cacheAlertResult(idempotencyKey, result);
+
+    const successCount = results.filter((r) => r.success).length;
+    logger.info(
+      { uid: user.uid, contactCount: contacts.length, successCount, failCount: contacts.length - successCount },
+      "SOS alert dispatched",
+    );
     return res.json(result);
   } catch (err) {
+    logger.error({ err, uid: user.uid }, "SOS alert failed unexpectedly");
     const msg = err instanceof Error ? err.message : "Internal error";
     return res.status(500).json({ error: msg });
   }

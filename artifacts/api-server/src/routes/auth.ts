@@ -1,17 +1,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { createClient } from "@supabase/supabase-js";
-import { requiredEnv } from "./../lib/env";
 import { getBearerToken, verifyFirebaseToken } from "../lib/firebaseAdmin";
+import { getServiceSupabase } from "../lib/supabaseAdmin";
 
 const router: IRouter = Router();
-
-const SUPABASE_URL = requiredEnv("SUPABASE_URL");
-const SUPABASE_SERVICE_ROLE_KEY = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
-
-// Service-role client bypasses RLS — used only for server-side data cleanup.
-const serviceSupabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false },
-});
 
 // Supabase tables that store user-owned rows keyed by `user_id` (the Firebase uid).
 const USER_DATA_TABLES = [
@@ -70,6 +61,17 @@ router.delete("/auth/account", async (req: Request, res: Response) => {
   }
 
   const errors: string[] = [];
+  const serviceSupabase = getServiceSupabase();
+
+  if (!serviceSupabase) {
+    // Firebase user deletion (client-side, authoritative) still proceeds
+    // regardless of this response — this is best-effort server cleanup only.
+    res.status(200).json({
+      success: true,
+      cleanupErrors: ["Supabase not configured on the server — data cleanup was skipped."],
+    });
+    return;
+  }
 
   // Delete owned rows from every user-data table (best-effort, keep going on error).
   await Promise.all(

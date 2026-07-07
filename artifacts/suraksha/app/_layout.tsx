@@ -28,8 +28,11 @@ import { onFirebaseAuthStateChanged } from "@/lib/firebaseAuth";
 import { registerForPushNotifications } from "@/lib/notifications";
 import { initSupabase } from "@/lib/supabaseClient";
 import { validateConfig } from "@/lib/config";
+import { initCrashReporting, reportError } from "@/lib/crashReporting";
 
 const APP_CONFIG = validateConfig();
+
+initCrashReporting();
 
 if (APP_CONFIG.ok) {
   initFirebase({
@@ -193,7 +196,7 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <ErrorBoundary>
+      <ErrorBoundary onError={reportError}>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <KeyboardProvider>
             <ThemeProvider>

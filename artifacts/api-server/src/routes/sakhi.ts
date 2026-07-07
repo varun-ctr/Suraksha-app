@@ -2,8 +2,16 @@ import { Router, type IRouter } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { SendSakhiMessageBody, SendSakhiMessageResponse } from "@workspace/api-zod";
 import { getBearerToken, verifyFirebaseToken } from "../lib/firebaseAdmin";
+import { checkRateLimit } from "../lib/rateLimit";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
+
+// Caps per-user OpenAI cost exposure — this proxies a paid model with no
+// other spend control. The client already has a full "limit reached" UI
+// (sakhi.tsx's 402 handling) that was previously unreachable because no
+// route ever returned 402; reusing that status code here wires it up.
+const RATE_LIMIT = { windowSeconds: 60 * 60, limit: 30 };
 
 const SYSTEM_PROMPT = `You are "Sakhi" (सखी, meaning "female friend"), a warm, calm and supportive AI safety companion inside Suraksha — a women's safety and empowerment app for India.
 
@@ -155,7 +163,17 @@ router.post("/sakhi/chat", async (req, res) => {
   // functional when Firebase Admin env vars aren't configured.
   const user = await verifyFirebaseToken(getBearerToken(req)).catch(() => null);
   if (!user) {
+    logger.warn({ path: "/sakhi/chat" }, "Sakhi chat rejected — invalid or missing token");
+    res.status(401).json({ error: "Unauthorized" });
+    return;
     req.log.info("Sakhi: proceeding without verified Firebase token");
+  }
+
+  const rate = await checkRateLimit("sakhi_chat", user.uid, RATE_LIMIT);
+  if (!rate.allowed) {
+    logger.warn({ uid: user.uid, count: rate.count }, "Sakhi chat rate limit exceeded");
+    res.status(402).json({ error: "limit_reached" });
+    return;
   }
 
   const parsed = SendSakhiMessageBody.safeParse(req.body);
