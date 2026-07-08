@@ -16,8 +16,7 @@ import { withAlpha } from "@/constants/colors";
 import { useI18n } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
 import { getCurrentUser, signOut } from "@/lib/auth";
-import { getBackendUrl } from "@/lib/env";
-import { firebaseAuth } from "@/lib/firebase";
+import { apiFetch } from "@/lib/apiClient";
 import type { User } from "firebase/auth";
 
 // ---------------------------------------------------------------------------
@@ -139,19 +138,10 @@ export default function SessionsScreen() {
   };
 
   const fetchSessions = async (): Promise<SessionInfo[]> => {
+    const { response } = await apiFetch("/auth/sessions", { timeoutMs: 8_000 });
+    if (!response || !response.ok) return [];
     try {
-      const fbUser = firebaseAuth.currentUser;
-      const token = fbUser ? await fbUser.getIdToken().catch(() => null) : null;
-      if (!token) return [];
-
-      const backendUrl = getBackendUrl();
-      const res = await fetch(`${backendUrl}/auth/sessions`, {
-        headers: { Authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(8_000),
-      });
-
-      if (!res.ok) return [];
-      const body = await res.json() as { sessions?: SessionInfo[] };
+      const body = (await response.json()) as { sessions?: SessionInfo[] };
       return body.sessions ?? [];
     } catch {
       return [];

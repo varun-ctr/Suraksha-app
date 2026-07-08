@@ -14,7 +14,7 @@ import {
   onFirebaseAuthStateChanged,
   getCurrentFirebaseUser,
 } from "./firebaseAuth";
-import { getBackendUrl } from "./env";
+import { apiFetch } from "./apiClient";
 import type { User } from "firebase/auth";
 
 export type { User };
@@ -64,18 +64,9 @@ export async function deleteAccount(): Promise<{ error: string | null }> {
     const user = firebaseAuth.currentUser;
     if (!user) return { error: "Not signed in." };
 
-    const token = await user.getIdToken().catch(() => null);
-    const backendUrl = getBackendUrl();
-
     // Best-effort: notify backend so it can clean up server-side data.
-    // Failures are swallowed — Firebase account deletion is authoritative.
-    if (token && backendUrl) {
-      await fetch(`${backendUrl}/auth/account`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(8_000),
-      }).catch(() => {});
-    }
+    // Failures are ignored — Firebase account deletion is authoritative.
+    await apiFetch("/auth/account", { method: "DELETE", timeoutMs: 8_000 });
 
     await deleteUser(user);
     return { error: null };
