@@ -6,6 +6,12 @@ import { logger } from "./lib/logger";
 import { getAllowedOrigins } from "./lib/env";
 
 const app: Express = express();
+
+// Replit's autoscale deployment sits behind a reverse proxy — without this,
+// req.ip is always the proxy's own address, not the real client's. Needed
+// for the IP-keyed rate-limit fallback on unauthenticated /sakhi/chat calls.
+app.set("trust proxy", 1);
+
 const allowedOrigins = getAllowedOrigins();
 
 if (allowedOrigins.length === 0) {
