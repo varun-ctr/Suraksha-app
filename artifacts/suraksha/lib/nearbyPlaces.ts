@@ -1,7 +1,4 @@
-import { firebaseAuth } from "./firebase";
-import { getBackendUrl } from "./env";
-
-const BACKEND_URL = getBackendUrl();
+import { apiFetch } from "./apiClient";
 
 export interface NearbyPlace {
   id: string;
@@ -18,17 +15,10 @@ export async function fetchNearbyPlaces(
   lng: number,
   category: PlaceCategory,
 ): Promise<NearbyPlace[]> {
+  const { response } = await apiFetch(`/nearby-places?lat=${lat}&lng=${lng}&type=${category}`);
+  if (!response || !response.ok) return [];
   try {
-    const url = `${BACKEND_URL}/nearby-places?lat=${lat}&lng=${lng}&type=${category}`;
-    const headers: Record<string, string> = {};
-    try {
-      const token = await firebaseAuth.currentUser?.getIdToken();
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-    } catch { /* no token — request will 401 and surface as no results */ }
-
-    const res = await fetch(url, { headers });
-    if (!res.ok) return [];
-    const data = (await res.json()) as { places?: NearbyPlace[] };
+    const data = (await response.json()) as { places?: NearbyPlace[] };
     return data.places ?? [];
   } catch {
     return [];

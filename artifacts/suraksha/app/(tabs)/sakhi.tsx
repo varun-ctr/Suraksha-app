@@ -19,8 +19,7 @@ import { Icon } from "@/components/Icon";
 import { findOfflineAnswer } from "@/constants/emergencyKnowledge";
 import { useI18n } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
-import { firebaseAuth } from "@/lib/firebase";
-import { getBackendUrl } from "@/lib/env";
+import { apiFetch } from "@/lib/apiClient";
 import {
   cacheReply,
   clearSakhiHistory,
@@ -51,26 +50,24 @@ async function sendSakhiMessage(
   messages: { role: "user" | "assistant"; content: string }[],
   language: string,
 ): Promise<SendResult> {
-  const backendUrl = getBackendUrl();
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  try {
-    const token = await firebaseAuth.currentUser?.getIdToken();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-  } catch { /* no token — proceed unauthenticated */ }
+  // Longer than the default timeout — LLM replies are slower than a typical
+  // API call, but this was previously *unbounded* (no timeout at all), the
+  // one backend call in the app that could hang forever.
+  const { response } = await apiFetch("/sakhi/chat", {
+    method: "POST",
+    body: JSON.stringify({ messages, language }),
+    timeoutMs: 15_000,
+  });
 
+  if (!response) return { ok: false, reason: "network" };
+  if (response.status === 401) return { ok: false, reason: "auth_required" };
+  if (response.status === 402) return { ok: false, reason: "limit_reached" };
+  if (!response.ok)            return { ok: false, reason: "server" };
   try {
-    const res = await fetch(`${backendUrl}/sakhi/chat`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ messages, language }),
-    });
-    if (res.status === 401) return { ok: false, reason: "auth_required" };
-    if (res.status === 402) return { ok: false, reason: "limit_reached" };
-    if (!res.ok)            return { ok: false, reason: "server" };
-    const data = (await res.json()) as { reply: string };
+    const data = (await response.json()) as { reply: string };
     return { ok: true, reply: data.reply };
   } catch {
-    return { ok: false, reason: "network" };
+    return { ok: false, reason: "server" };
   }
 }
 

@@ -160,18 +160,18 @@ STYLE
 router.post("/sakhi/chat", async (req, res) => {
   // Attempt to identify the caller via Firebase ID token. Auth is advisory
   // here — we don't block unauthenticated requests so that the app remains
-  // functional when Firebase Admin env vars aren't configured.
+  // functional when Firebase Admin env vars aren't configured. Cost exposure
+  // is still bounded below via rate limiting, keyed by uid when we have one
+  // and falling back to IP otherwise.
   const user = await verifyFirebaseToken(getBearerToken(req)).catch(() => null);
   if (!user) {
-    logger.warn({ path: "/sakhi/chat" }, "Sakhi chat rejected — invalid or missing token");
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-    req.log.info("Sakhi: proceeding without verified Firebase token");
+    logger.info({ path: "/sakhi/chat" }, "Sakhi chat proceeding without verified Firebase token");
   }
 
-  const rate = await checkRateLimit("sakhi_chat", user.uid, RATE_LIMIT);
+  const rateLimitKey = user ? `uid:${user.uid}` : `ip:${req.ip}`;
+  const rate = await checkRateLimit("sakhi_chat", rateLimitKey, RATE_LIMIT);
   if (!rate.allowed) {
-    logger.warn({ uid: user.uid, count: rate.count }, "Sakhi chat rate limit exceeded");
+    logger.warn({ key: rateLimitKey, count: rate.count }, "Sakhi chat rate limit exceeded");
     res.status(402).json({ error: "limit_reached" });
     return;
   }
