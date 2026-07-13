@@ -2,6 +2,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInAnonymously as fbSignInAnonymously,
+  signInWithCustomToken,
   linkWithCredential,
   EmailAuthProvider,
   sendPasswordResetEmail,
@@ -85,6 +86,16 @@ export async function resendVerificationEmail(): Promise<{
 export async function reloadCurrentUser(): Promise<void> {
   const user = firebaseAuth.currentUser;
   if (user) await reload(user);
+}
+
+/** Completes sign-in after the backend has verified an email OTP code and minted a Firebase custom token. */
+export async function signInWithCustomTokenFB(token: string): Promise<AuthResult> {
+  try {
+    const cred = await signInWithCustomToken(firebaseAuth, token);
+    return { user: cred.user, error: null };
+  } catch (e) {
+    return { user: null, error: firebaseErrMsg(e) };
+  }
 }
 
 export async function signInAnonymouslyFB(): Promise<AuthResult> {

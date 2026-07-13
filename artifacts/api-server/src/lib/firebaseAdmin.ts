@@ -80,3 +80,36 @@ export async function verifyFirebaseToken(token: string | null): Promise<Verifie
     return null;
   }
 }
+
+/**
+ * Finds the Firebase user for an email (used after a successful email-OTP
+ * verification), creating one if it doesn't exist yet — this is effectively
+ * "sign in or create" in one step, standard for OTP-style auth. Marks the
+ * new/existing user as email-verified, since the OTP itself just proved
+ * ownership of the inbox.
+ */
+export async function getOrCreateUserByEmail(email: string): Promise<string> {
+  const auth = getAuth(getFirebaseApp());
+  try {
+    const existing = await auth.getUserByEmail(email);
+    return existing.uid;
+  } catch {
+    const created = await auth.createUser({ email, emailVerified: true });
+    return created.uid;
+  }
+}
+
+/**
+ * Mints a Firebase custom token for the given uid so the client can complete
+ * sign-in via `signInWithCustomToken` — the bridge between our own
+ * email-OTP verification and a real Firebase session.
+ *
+ * Unlike `verifyFirebaseToken` above (which only needs a project id to
+ * verify ID tokens against Google's public certs), minting a custom token
+ * requires signing a JWT with a real service-account private key. This
+ * throws if Firebase Admin was initialized in the project-id-only path —
+ * callers must catch this and degrade gracefully rather than crash.
+ */
+export async function mintCustomToken(uid: string): Promise<string> {
+  return getAuth(getFirebaseApp()).createCustomToken(uid);
+}

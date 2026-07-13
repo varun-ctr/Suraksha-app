@@ -20,8 +20,10 @@ import { Icon } from "@/components/Icon";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { withAlpha } from "@/constants/colors";
+import { requestEmailOtp, verifyEmailOtp } from "@/lib/emailOtp";
+import { db } from "@/lib/supabaseClient";
 
-type Mode = "signin" | "signup" | "forgot" | "verify" | "success";
+type Mode = "signin" | "signup" | "forgot" | "verify" | "success" | "otp-request" | "otp-verify";
 
 function SuccessView({ email, onDone }: { email: string; onDone: () => void }) {
   const { c } = useTheme();
@@ -132,11 +134,181 @@ function VerifyEmailView({
   );
 }
 
+function OtpRequestView({
+  email,
+  setEmail,
+  onSend,
+  sending,
+  error,
+  onBack,
+}: {
+  email: string;
+  setEmail: (v: string) => void;
+  onSend: () => void;
+  sending: boolean;
+  error: string | null;
+  onBack: () => void;
+}) {
+  const { c } = useTheme();
+  const [focused, setFocused] = useState(false);
+  return (
+    <View>
+      <View style={styles.cardHeader}>
+        <View style={[styles.cardIconWrap, { backgroundColor: withAlpha(c.primary, 0.1) }]}>
+          <Icon name="send" size={20} color={c.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.cardTitle, { color: c.text }]}>Sign in with a code</Text>
+          <Text style={[styles.cardSub, { color: c.textMuted }]}>We'll email you a 6-digit code — no password needed.</Text>
+        </View>
+      </View>
+
+      <Text style={[styles.fieldLabel, { color: c.textMuted }]}>Email address</Text>
+      <View style={[styles.inputWrap, { borderColor: c.border, backgroundColor: c.inputBg }, focused && { borderColor: c.primary, backgroundColor: withAlpha(c.primary, 0.06) }]}>
+        <View style={[styles.inputIcon, { borderRightColor: c.border }]}>
+          <Icon name="send" size={15} color={focused ? c.primary : c.textFaint} />
+        </View>
+        <TextInput
+          value={email}
+          onChangeText={setEmail}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholder="you@example.com"
+          placeholderTextColor={c.textFaint}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          style={[styles.fieldInput, { color: c.text }]}
+          returnKeyType="done"
+          onSubmitEditing={onSend}
+        />
+      </View>
+
+      {error && (
+        <View style={[styles.errorRow, { backgroundColor: withAlpha(c.danger, 0.1), borderColor: withAlpha(c.danger, 0.3) }]}>
+          <Icon name="info" size={13} color={c.danger} />
+          <Text style={[styles.errorText, { color: c.danger }]}>{error}</Text>
+        </View>
+      )}
+
+      <Pressable onPress={onSend} disabled={sending} style={({ pressed }) => ({ opacity: pressed || sending ? 0.85 : 1 })}>
+        <LinearGradient colors={[c.primary, c.primaryDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.primaryBtn, { shadowColor: c.primary }]}>
+          {sending ? <ActivityIndicator color={c.onColor} /> : (
+            <>
+              <Icon name="send" size={17} color={c.onColor} />
+              <Text style={[styles.primaryBtnText, { color: c.onColor }]}>Send code</Text>
+            </>
+          )}
+        </LinearGradient>
+      </Pressable>
+
+      <Pressable onPress={onBack} style={styles.ghostBtn}>
+        <Text style={[styles.ghostBtnText, { color: c.textMuted }]}>Back to sign in</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function OtpVerifyView({
+  email,
+  code,
+  setCode,
+  onVerify,
+  verifying,
+  onResend,
+  resending,
+  onBack,
+  error,
+  msg,
+}: {
+  email: string;
+  code: string;
+  setCode: (v: string) => void;
+  onVerify: () => void;
+  verifying: boolean;
+  onResend: () => void;
+  resending: boolean;
+  onBack: () => void;
+  error: string | null;
+  msg: string | null;
+}) {
+  const { c } = useTheme();
+  return (
+    <View>
+      <View style={styles.cardHeader}>
+        <View style={[styles.cardIconWrap, { backgroundColor: withAlpha(c.primary, 0.1) }]}>
+          <Icon name="lock" size={20} color={c.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.cardTitle, { color: c.text }]}>Enter your code</Text>
+          <Text style={[styles.cardSub, { color: c.textMuted }]}>
+            We sent a 6-digit code to{"\n"}
+            <Text style={{ color: c.primary, fontFamily: "Inter_700Bold" }}>{email}</Text>
+          </Text>
+        </View>
+      </View>
+
+      <Text style={[styles.fieldLabel, { color: c.textMuted }]}>6-digit code</Text>
+      <View style={[styles.inputWrap, { borderColor: c.border, backgroundColor: c.inputBg }]}>
+        <View style={[styles.inputIcon, { borderRightColor: c.border }]}>
+          <Icon name="lock" size={15} color={c.textFaint} />
+        </View>
+        <TextInput
+          value={code}
+          onChangeText={(v) => setCode(v.replace(/\D/g, "").slice(0, 6))}
+          placeholder="123456"
+          placeholderTextColor={c.textFaint}
+          keyboardType="number-pad"
+          style={[styles.fieldInput, { color: c.text, letterSpacing: 4 }]}
+          returnKeyType="done"
+          onSubmitEditing={onVerify}
+          maxLength={6}
+        />
+      </View>
+
+      {error && (
+        <View style={[styles.errorRow, { backgroundColor: withAlpha(c.danger, 0.1), borderColor: withAlpha(c.danger, 0.3) }]}>
+          <Icon name="info" size={13} color={c.danger} />
+          <Text style={[styles.errorText, { color: c.danger }]}>{error}</Text>
+        </View>
+      )}
+      {msg && (
+        <View style={[styles.successRow, { backgroundColor: withAlpha(c.success, 0.12), borderColor: withAlpha(c.success, 0.35) }]}>
+          <Icon name="check" size={13} color={c.successDark} />
+          <Text style={[styles.successText, { color: c.successDark }]}>{msg}</Text>
+        </View>
+      )}
+
+      <Pressable
+        onPress={onVerify}
+        disabled={verifying || code.length !== 6}
+        style={({ pressed }) => ({ opacity: pressed || verifying || code.length !== 6 ? 0.85 : 1 })}
+      >
+        <LinearGradient colors={[c.primary, c.primaryDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.primaryBtn, { shadowColor: c.primary }]}>
+          {verifying ? <ActivityIndicator color={c.onColor} /> : (
+            <>
+              <Icon name="shield" size={17} color={c.onColor} />
+              <Text style={[styles.primaryBtnText, { color: c.onColor }]}>Verify & Sign In</Text>
+            </>
+          )}
+        </LinearGradient>
+      </Pressable>
+
+      <Pressable onPress={onResend} disabled={resending} style={styles.ghostBtn}>
+        <Text style={[styles.ghostBtnText, { color: c.textMuted }]}>{resending ? "Sending…" : "Resend code"}</Text>
+      </Pressable>
+      <Pressable onPress={onBack} style={styles.ghostBtn}>
+        <Text style={[styles.ghostBtnText, { color: c.textMuted, fontSize: 12.5 }]}>Use a different email</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { c } = useTheme();
-  const { signIn, signUp, resetPassword, resendVerification, reloadUser, user } = useAuth();
+  const { signIn, signUp, resetPassword, resendVerification, reloadUser, user, signInWithCustomToken } = useAuth();
 
   const [mode,    setMode]    = useState<Mode>("signin");
   const [email,   setEmail]   = useState("");
@@ -150,6 +322,14 @@ export default function LoginScreen() {
   const [focusEmail, setFocusEmail] = useState(false);
   const [focusPass,  setFocusPass]  = useState(false);
   const [focusPass2, setFocusPass2] = useState(false);
+
+  const [otpEmail,     setOtpEmail]     = useState("");
+  const [otpCode,      setOtpCode]      = useState("");
+  const [otpSending,   setOtpSending]   = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [otpResending, setOtpResending] = useState(false);
+  const [otpError,     setOtpError]     = useState<string | null>(null);
+  const [otpMsg,       setOtpMsg]       = useState<string | null>(null);
 
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const cardSlide   = useRef(new Animated.Value(40)).current;
@@ -212,6 +392,67 @@ export default function LoginScreen() {
     setSuccess("Password reset email sent! Check your inbox.");
   }, [email, resetPassword]);
 
+  const handleRequestOtp = useCallback(async () => {
+    const e = otpEmail.trim().toLowerCase();
+    if (!e.includes("@") || !e.includes(".")) { setOtpError("Enter a valid email address."); return; }
+    setOtpError(null);
+    setOtpMsg(null);
+    setOtpSending(true);
+    const result = await requestEmailOtp(e);
+    setOtpSending(false);
+    if (!result.ok) { setOtpError(result.error); return; }
+    setOtpCode("");
+    animateMode("otp-verify");
+  }, [otpEmail]);
+
+  const handleResendOtp = useCallback(async () => {
+    const e = otpEmail.trim().toLowerCase();
+    setOtpResending(true);
+    const result = await requestEmailOtp(e);
+    setOtpResending(false);
+    setOtpMsg(result.ok ? "Code sent! Check your inbox." : null);
+    if (!result.ok) setOtpError(result.error);
+  }, [otpEmail]);
+
+  const handleVerifyOtp = useCallback(async () => {
+    const e = otpEmail.trim().toLowerCase();
+    setOtpError(null);
+    setOtpVerifying(true);
+    const result = await verifyEmailOtp(e, otpCode);
+    if (!result.ok || !result.customToken) {
+      setOtpVerifying(false);
+      setOtpError(result.error);
+      return;
+    }
+    const signInResult = await signInWithCustomToken(result.customToken);
+    setOtpVerifying(false);
+    if (signInResult.error) { setOtpError(signInResult.error); return; }
+    setEmail(e);
+    animateMode("success");
+  }, [otpEmail, otpCode, signInWithCustomToken]);
+
+  /**
+   * A first-time (non-anonymous) sign-in should land on the post-login
+   * walkthrough instead of straight back to wherever the user came from —
+   * `walkthrough_seen` is per-account (Supabase), not per-device, so a
+   * returning user never sees it twice regardless of which device they're on.
+   */
+  const goPostLogin = async () => {
+    const uid = user?.uid;
+    if (uid) {
+      try {
+        const { data } = await db.profiles.getById(uid);
+        if (!data?.walkthrough_seen) {
+          router.replace("/walkthrough" as never);
+          return;
+        }
+      } catch {
+        // profiles table may not be ready yet — fall through to normal navigation
+      }
+    }
+    handleSkip();
+  };
+
   const isVerified = !!(user && !user.isAnonymous && user.emailVerified);
 
   return (
@@ -266,7 +507,7 @@ export default function LoginScreen() {
             style={[styles.card, { backgroundColor: c.card, opacity: cardOpacity, transform: [{ translateY: cardSlide }] }]}
           >
             {mode === "success" && (
-              <SuccessView email={email.trim().toLowerCase()} onDone={handleSkip} />
+              <SuccessView email={email.trim().toLowerCase()} onDone={goPostLogin} />
             )}
 
             {mode === "verify" && (
@@ -278,6 +519,32 @@ export default function LoginScreen() {
                   else handleSkip();
                 }}
                 onReload={reloadUser}
+              />
+            )}
+
+            {mode === "otp-request" && (
+              <OtpRequestView
+                email={otpEmail}
+                setEmail={(v) => { setOtpEmail(v); setOtpError(null); }}
+                onSend={handleRequestOtp}
+                sending={otpSending}
+                error={otpError}
+                onBack={() => { setOtpError(null); animateMode("signin"); }}
+              />
+            )}
+
+            {mode === "otp-verify" && (
+              <OtpVerifyView
+                email={otpEmail.trim().toLowerCase()}
+                code={otpCode}
+                setCode={(v) => { setOtpCode(v); setOtpError(null); }}
+                onVerify={handleVerifyOtp}
+                verifying={otpVerifying}
+                onResend={handleResendOtp}
+                resending={otpResending}
+                onBack={() => { setOtpError(null); setOtpMsg(null); animateMode("otp-request"); }}
+                error={otpError}
+                msg={otpMsg}
               />
             )}
 
@@ -411,6 +678,14 @@ export default function LoginScreen() {
                 {mode === "signin" && (
                   <Pressable onPress={() => animateMode("forgot")} style={styles.ghostBtn}>
                     <Text style={[styles.ghostBtnText, { color: c.textMuted }]}>Forgot password?</Text>
+                  </Pressable>
+                )}
+                {(mode === "signin" || mode === "signup") && (
+                  <Pressable
+                    onPress={() => { setOtpEmail(email); setOtpError(null); animateMode("otp-request"); }}
+                    style={styles.ghostBtn}
+                  >
+                    <Text style={[styles.ghostBtnText, { color: c.primary }]}>Sign in with a one-time code instead</Text>
                   </Pressable>
                 )}
                 {mode === "forgot" && (
