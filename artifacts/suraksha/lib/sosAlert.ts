@@ -16,7 +16,19 @@ import type { Contact } from "@/context/AppContext";
 import type { Coords } from "@/context/SafetyContext";
 import { callNumber, sendSms } from "@/lib/native";
 import { apiFetch } from "@/lib/apiClient";
+import { firebaseAuth } from "@/lib/firebase";
+import { getBackendUrl } from "@/lib/env";
 import { buildEmergencyMessage, type Translate } from "@/lib/emergencyMessage";
+
+// Cheap, synchronous check used to skip the backend attempt outright when it
+// can never succeed (no backend configured) or would just round-trip to a
+// guaranteed 401 (no signed-in user) — both previously skipped for free via
+// `if (token && backendUrl)` before apiClient centralized the fetch. Without
+// this, a real SOS activation pays a network round-trip (or a full
+// BACKEND_RETRY_DELAY_MS retry cycle) for an outcome already known locally.
+function canAttemptBackend(): boolean {
+  return !!getBackendUrl() && !!firebaseAuth.currentUser;
+}
 
 export type SmsState  = "idle" | "sending" | "sent" | "opening" | "failed";
 export type CallState = "idle" | "calling" | "done";
@@ -101,10 +113,13 @@ export async function sendSosAlerts(
   // retry and return the cached result instead of re-sending via Twilio.
   const idempotencyKey = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
-  let result = await attemptBackendAlert(contacts, message, idempotencyKey);
-  if (!result.ok && result.retryable) {
-    await new Promise((r) => setTimeout(r, BACKEND_RETRY_DELAY_MS));
+  let result: BackendAlertResult = { ok: false, retryable: false };
+  if (canAttemptBackend()) {
     result = await attemptBackendAlert(contacts, message, idempotencyKey);
+    if (!result.ok && result.retryable) {
+      await new Promise((r) => setTimeout(r, BACKEND_RETRY_DELAY_MS));
+      result = await attemptBackendAlert(contacts, message, idempotencyKey);
+    }
   }
 
   if (result.ok && result.configured) {
@@ -184,14 +199,16 @@ export async function sendJourneyAlerts(
 
   let backendSent = false;
 
-  const { response } = await apiFetch("/sos/alert", {
-    method: "POST",
-    body: JSON.stringify({
-      contacts: contacts.map((c) => ({ id: c.id, name: c.name, phone: c.phone })),
-      message,
-    }),
-    timeoutMs: 8_000,
-  });
+  const response = canAttemptBackend()
+    ? (await apiFetch("/sos/alert", {
+        method: "POST",
+        body: JSON.stringify({
+          contacts: contacts.map((c) => ({ id: c.id, name: c.name, phone: c.phone })),
+          message,
+        }),
+        timeoutMs: 8_000,
+      })).response
+    : null;
 
   if (response?.ok) {
     try {

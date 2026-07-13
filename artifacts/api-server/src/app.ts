@@ -94,7 +94,8 @@ app.use((req: Request, res: Response) => {
 app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
   req.log?.error?.({ err }, "Unhandled error");
   if (res.headersSent) return;
-  const message = err instanceof Error ? err.message : "Internal error";
+  const detail = err instanceof Error ? err.message : undefined;
+  const message = process.env.NODE_ENV === "production" ? "Internal error" : (detail ?? "Internal error");
   res.status(500).json({ error: "internal_error", message });
 });
 

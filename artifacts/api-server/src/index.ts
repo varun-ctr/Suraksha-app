@@ -1,3 +1,4 @@
+import type { Server } from "http";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { parsePort } from "./lib/env";
@@ -8,19 +9,46 @@ import { parsePort } from "./lib/env";
 // considers the process state unreliable after either, so log with as much
 // context as we have and exit — the process manager (Replit's autoscale)
 // restarts a fresh instance rather than this one silently limping on.
+//
+// Exiting immediately would also cut off any *unrelated* request still
+// in-flight on this process (e.g. another user's /sos/alert dispatch) — so
+// stop accepting new connections and give in-flight ones a grace period to
+// finish before exiting, with a hard timeout in case one never does.
+const SHUTDOWN_GRACE_MS = 10_000;
+
+let server: Server | undefined;
+let shuttingDown = false;
+
+function crashExit(message: string, err: unknown): void {
+  logger.error({ err }, message);
+  if (shuttingDown) return;
+  shuttingDown = true;
+
+  if (!server) {
+    process.exit(1);
+    return;
+  }
+
+  const forceExit = setTimeout(() => {
+    logger.error("Graceful shutdown timed out — forcing exit");
+    process.exit(1);
+  }, SHUTDOWN_GRACE_MS);
+  forceExit.unref();
+
+  server.close(() => process.exit(1));
+}
+
 process.on("unhandledRejection", (reason) => {
-  logger.error({ err: reason }, "Unhandled promise rejection — exiting");
-  process.exit(1);
+  crashExit("Unhandled promise rejection — exiting", reason);
 });
 
 process.on("uncaughtException", (err) => {
-  logger.error({ err }, "Uncaught exception — exiting");
-  process.exit(1);
+  crashExit("Uncaught exception — exiting", err);
 });
 
 const port = parsePort(process.env.PORT);
 
-app.listen(port, (err) => {
+server = app.listen(port, (err) => {
   if (err) {
     logger.error({ err }, "Error listening on port");
     process.exit(1);
