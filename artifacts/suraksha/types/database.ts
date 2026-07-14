@@ -12,6 +12,7 @@ export interface ProfileRow {
   phone: string | null;
   language: string;
   avatar_url: string | null;
+  walkthrough_seen: boolean;
   created_at: string;
   updated_at: string;
 }

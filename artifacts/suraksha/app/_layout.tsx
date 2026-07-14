@@ -58,6 +58,7 @@ function RootLayoutNav() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="login" />
+      <Stack.Screen name="walkthrough" />
       <Stack.Screen name="contacts" />
       <Stack.Screen name="helpline" />
       <Stack.Screen name="fakecall" />

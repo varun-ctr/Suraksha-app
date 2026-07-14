@@ -12,6 +12,7 @@ import {
   signInWithEmail,
   signUpWithEmail,
   signInAnonymouslyFB,
+  signInWithCustomTokenFB,
   signOutFB,
   sendPasswordReset,
   resendVerificationEmail,
@@ -26,6 +27,7 @@ interface AuthContextValue {
   isAnon: boolean;
   signIn:   (email: string, password: string) => Promise<{ error: string | null }>;
   signUp:   (email: string, password: string) => Promise<{ error: string | null }>;
+  signInWithCustomToken: (token: string) => Promise<{ error: string | null }>;
   signOut:  () => Promise<void>;
   resetPassword:      (email: string) => Promise<{ error: string | null }>;
   resendVerification: () => Promise<{ error: string | null }>;
@@ -63,6 +65,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error: r.error };
   }, []);
 
+  const signInWithCustomToken = useCallback(async (token: string) => {
+    const r = await signInWithCustomTokenFB(token);
+    return { error: r.error };
+  }, []);
+
   const signOut = useCallback(async () => {
     await signOutFB();
     await signInAnonymouslyFB();
@@ -97,13 +104,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAnon,
       signIn,
       signUp,
+      signInWithCustomToken,
       signOut,
       resetPassword,
       resendVerification,
       reloadUser,
       getIdToken,
     }),
-    [user, loading, isAnon, signIn, signUp, signOut, resetPassword, resendVerification, reloadUser, getIdToken],
+    [user, loading, isAnon, signIn, signUp, signInWithCustomToken, signOut, resetPassword, resendVerification, reloadUser, getIdToken],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
