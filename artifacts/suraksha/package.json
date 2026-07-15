@@ -61,12 +61,12 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
-    "@sentry/react-native": "^8.16.0",
+    "@sentry/react-native": "~7.2.0",
     "@supabase/supabase-js": "^2.108.2",
     "expo": "~54.0.35",
-    "expo-notifications": "^56.0.18",
+    "expo-notifications": "~0.32.17",
     "expo-secure-store": "~15.0.8",
-    "expo-updates": "^56.0.19",
+    "expo-updates": "~29.0.18",
     "firebase": "^12.15.0",
     "react": "catalog:",
     "react-native": "0.81.5",
