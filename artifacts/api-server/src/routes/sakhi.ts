@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { getOpenAI } from "@workspace/integrations-openai-ai-server";
 import { SendSakhiMessageBody, SendSakhiMessageResponse } from "@workspace/api-zod";
 import { getBearerToken, verifyFirebaseToken } from "../lib/firebaseAdmin";
 import { checkRateLimit } from "../lib/rateLimit";
@@ -187,6 +187,23 @@ router.post("/sakhi/chat", async (req, res) => {
     language === "hi"
       ? "The user's preferred language is Hindi. Reply in natural Hindi (Devanagari script)."
       : "The user's preferred language is English. Reply in English.";
+
+  // Resolve the OpenAI client lazily. If no API key is configured, this throws
+  // — respond with a clear 503 rather than the generic 502 so the operator can
+  // tell "not set up" apart from "OpenAI errored".
+  let openai;
+  try {
+    openai = getOpenAI();
+  } catch {
+    logger.error({ path: "/sakhi/chat" }, "Sakhi chat: OpenAI API key not configured");
+    res.status(503).json({
+      error:
+        language === "hi"
+          ? "सखी अभी सेट अप नहीं है। सर्वर पर OpenAI कुंजी कॉन्फ़िगर करें।"
+          : "Sakhi isn't set up yet — configure an OpenAI API key on the server.",
+    });
+    return;
+  }
 
   try {
     const completion = await openai.chat.completions.create({
