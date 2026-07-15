@@ -12,7 +12,24 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useTheme } from "@/context/ThemeContext";
+/**
+ * Fixed, self-contained palette. This component is rendered by the top-level
+ * ErrorBoundary, which sits ABOVE ThemeProvider in the tree — so it must NOT
+ * call useTheme() (that threw "useTheme must be used within ThemeProvider"
+ * and turned every caught error into a second, fatal crash). An error screen
+ * has to be maximally robust: it can't depend on any context that might be
+ * part of what failed. A clean neutral light scheme reads fine regardless of
+ * the user's theme.
+ */
+const c = {
+  bg: "#FFFFFF",
+  card: "#F2F2F7",
+  text: "#1C1C1E",
+  textMuted: "#6B7280",
+  primary: "#7C3AED",
+  onColor: "#FFFFFF",
+  border: "#E5E7EB",
+} as const;
 
 export type ErrorFallbackProps = {
   error: Error;
@@ -20,7 +37,6 @@ export type ErrorFallbackProps = {
 };
 
 export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
-  const { c } = useTheme();
   const insets = useSafeAreaInsets();
 
   const [isModalVisible, setIsModalVisible] = useState(false);
