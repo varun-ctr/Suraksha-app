@@ -70,19 +70,19 @@ function scoreLabelKey(score: number): string {
   return score >= 70 ? "home.statusProtected" : score >= 40 ? "home.statusModerateRisk" : "home.statusHighRisk";
 }
 
-function getSafetySuggestions(weather: WeatherData | null): string[] {
+function getSafetySuggestions(t: (key: string) => string, weather: WeatherData | null): string[] {
   const out: string[] = [];
   const h = new Date().getHours();
   if (weather?.code !== undefined) {
-    if (weather.code >= 95) out.push("⛈ Storm warning — stay indoors if possible");
-    else if (weather.code >= 61) out.push("🌧 Carry an umbrella today");
-    else if (weather.code >= 45) out.push("🌫 Low visibility — drive carefully");
-    else if (weather.code < 3) out.push("☀️ Clear skies — great travel conditions");
+    if (weather.code >= 95) out.push(t("home.tipStorm"));
+    else if (weather.code >= 61) out.push(t("home.tipUmbrella"));
+    else if (weather.code >= 45) out.push(t("home.tipLowVisibility"));
+    else if (weather.code < 3) out.push(t("home.tipClearSkies"));
   }
-  if (h >= 21 || h < 5) out.push("🌙 Avoid poorly lit streets tonight");
-  else if (h >= 6 && h < 10) out.push("🚦 Morning rush — plan your commute");
-  else if (h >= 17 && h < 20) out.push("🚦 Evening rush hour ahead");
-  out.push("📍 Share your live location with trusted contacts");
+  if (h >= 21 || h < 5) out.push(t("home.tipNightStreets"));
+  else if (h >= 6 && h < 10) out.push(t("home.tipMorningRush"));
+  else if (h >= 17 && h < 20) out.push(t("home.tipEveningRush"));
+  out.push(t("home.tipShareLocation"));
   return out.slice(0, 3);
 }
 
@@ -294,7 +294,7 @@ export default function HomeScreen() {
       address,
     );
   }, [startJourney, showToast, t, contacts, point, journey.duration, profile.name, address]);
-  const suggestions = getSafetySuggestions(weather);
+  const suggestions = getSafetySuggestions(t, weather);
 
   useEffect(() => {
     if (point) {
