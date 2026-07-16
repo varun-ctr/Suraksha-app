@@ -7,18 +7,30 @@ import { logger } from "../lib/logger";
 const router: IRouter = Router();
 
 // In-memory fixed-window rate limiter for Sakhi chat.
-// Keyed by uid (authenticated) or IP (anonymous). Entries expire automatically
-// when a new window starts — no cleanup needed because the entry count is
-// bounded by the number of distinct users active within one window.
+// Keyed by uid (authenticated) or IP (anonymous). A periodic sweep removes
+// buckets from the previous window so memory is bounded to active users
+// within one window, not all-time users.
 const WINDOW_SECONDS = 60 * 60; // 1 hour
 const LIMIT = 30;
 
 interface RateBucket { count: number; windowStart: number }
 const rateBuckets = new Map<string, RateBucket>();
 
+// Evict stale buckets once per window. Runs on first request after a
+// window boundary so the Map never holds more than ~2 windows of keys.
+let lastEviction = 0;
+function evictStaleBuckets(currentWindowStart: number): void {
+  if (currentWindowStart <= lastEviction) return;
+  lastEviction = currentWindowStart;
+  for (const [key, bucket] of rateBuckets) {
+    if (bucket.windowStart < currentWindowStart) rateBuckets.delete(key);
+  }
+}
+
 function checkSakhiRateLimit(key: string): { allowed: boolean; count: number } {
   const now = Math.floor(Date.now() / 1000);
   const windowStart = Math.floor(now / WINDOW_SECONDS) * WINDOW_SECONDS;
+  evictStaleBuckets(windowStart);
   const bucket = rateBuckets.get(key);
   if (!bucket || bucket.windowStart !== windowStart) {
     rateBuckets.set(key, { count: 1, windowStart });
