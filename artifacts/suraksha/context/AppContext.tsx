@@ -28,7 +28,7 @@ const PLAIN_KEY = "suraksha.app.v2";
 /** Keys written by older builds; cleared on reset so "delete all" is truthful. */
 const LEGACY_PLAIN_KEYS = ["suraksha.app.v1"];
 
-const MAX_CONTACTS = 1;
+const MAX_CONTACTS = 5;
 
 export interface Contact {
   id: string;

@@ -103,12 +103,14 @@ const config: ExpoConfig = {
       },
     ],
     "expo-apple-authentication",
-    [
-      "@react-native-google-signin/google-signin",
-      {
-        iosUrlScheme: process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME ?? "",
-      },
-    ],
+    ...(process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME
+      ? ([
+          [
+            "@react-native-google-signin/google-signin",
+            { iosUrlScheme: process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME },
+          ],
+        ] as [string, any][])
+      : []),
   ],
   experiments: {
     typedRoutes: true,
