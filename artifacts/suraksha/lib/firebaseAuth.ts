@@ -8,12 +8,14 @@ import {
   EmailAuthProvider,
   GoogleAuthProvider,
   OAuthProvider,
+  fetchSignInMethodsForEmail,
   sendPasswordResetEmail,
   sendEmailVerification,
   signOut as fbSignOut,
   onAuthStateChanged,
   reload,
   type User,
+  type OAuthCredential,
 } from "firebase/auth";
 import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
 import * as AppleAuthentication from "expo-apple-authentication";
@@ -22,7 +24,17 @@ import { firebaseAuth } from "./firebase";
 import { optionalPublicEnv } from "./env";
 
 export type FirebaseUser = User;
-export type AuthResult = { user: User | null; error: string | null; cancelled?: boolean };
+export type { OAuthCredential };
+
+export type AuthResult = {
+  user: User | null;
+  error: string | null;
+  cancelled?: boolean;
+  needsLink?: {
+    email: string;
+    pendingCredential: OAuthCredential;
+  };
+};
 
 // ── Google Sign-In ─────────────────────────────────────────────────────────────
 
@@ -44,29 +56,23 @@ export async function signInWithGoogle(): Promise<AuthResult> {
     if (!idToken) throw new Error("No ID token returned from Google Sign-In.");
 
     const credential = GoogleAuthProvider.credential(idToken);
-    const current = firebaseAuth.currentUser;
-
-    if (current?.isAnonymous) {
-      try {
-        const linked = await linkWithCredential(current, credential);
-        return { user: linked.user, error: null };
-      } catch (linkErr: unknown) {
-        const code = (linkErr as { code?: string }).code;
-        if (code === "auth/credential-already-in-use" || code === "auth/email-already-in-use") {
-          const cred = await signInWithCredential(firebaseAuth, credential);
-          return { user: cred.user, error: null };
-        }
-        return { user: null, error: firebaseErrMsg(linkErr) };
-      }
-    }
-
-    const cred = await signInWithCredential(firebaseAuth, credential);
-    return { user: cred.user, error: null };
+    return await _applyCredential(credential, () => GoogleAuthProvider.credentialFromResult({ user: null } as never) ?? credential);
   } catch (e: unknown) {
     const code = (e as { code?: string }).code;
     if (code === statusCodes.SIGN_IN_CANCELLED) return { user: null, error: null, cancelled: true };
-    if (code === statusCodes.IN_PROGRESS) return { user: null, error: "Sign-in already in progress.", cancelled: false };
-    if (code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) return { user: null, error: "Google Play Services are not available on this device.", cancelled: false };
+    if (code === statusCodes.IN_PROGRESS) return { user: null, error: "Sign-in already in progress." };
+    if (code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) return { user: null, error: "Google Play Services are not available on this device." };
+
+    // Handle account-exists-with-different-credential from the signInWithCredential call
+    if ((e as { code?: string }).code === "auth/account-exists-with-different-credential") {
+      const err = e as { code: string; customData?: { email?: string }; credential?: OAuthCredential };
+      const email = err.customData?.email ?? "";
+      const pendingCredential = (err.credential ?? GoogleAuthProvider.credentialFromError(e as never)) as OAuthCredential | null;
+      if (email && pendingCredential) {
+        return { user: null, error: null, needsLink: { email, pendingCredential } };
+      }
+    }
+
     return { user: null, error: firebaseErrMsg(e) };
   }
 }
@@ -95,39 +101,122 @@ export async function signInWithApple(): Promise<AuthResult> {
     if (!identityToken) throw new Error("No identity token returned from Apple Sign-In.");
 
     const provider = new OAuthProvider("apple.com");
-    const firebaseCredential = provider.credential({ idToken: identityToken });
-
-    const current = firebaseAuth.currentUser;
-
-    if (current?.isAnonymous) {
-      try {
-        const linked = await linkWithCredential(current, firebaseCredential);
-        return { user: linked.user, error: null };
-      } catch (linkErr: unknown) {
-        const code = (linkErr as { code?: string }).code;
-        if (code === "auth/credential-already-in-use" || code === "auth/email-already-in-use") {
-          const cred = await signInWithCredential(firebaseAuth, firebaseCredential);
-          return { user: cred.user, error: null };
-        }
-        return { user: null, error: firebaseErrMsg(linkErr) };
-      }
-    }
-
-    const cred = await signInWithCredential(firebaseAuth, firebaseCredential);
-    return { user: cred.user, error: null };
+    const firebaseCredential = provider.credential({ idToken: identityToken }) as OAuthCredential;
+    return await _applyCredential(firebaseCredential, () => OAuthProvider.credentialFromResult({ user: null } as never) ?? firebaseCredential);
   } catch (e: unknown) {
     const code = (e as { code?: string }).code;
     if (code === "ERR_REQUEST_CANCELED") return { user: null, error: null, cancelled: true };
+
+    if (code === "auth/account-exists-with-different-credential") {
+      const err = e as { code: string; customData?: { email?: string }; credential?: OAuthCredential };
+      const email = err.customData?.email ?? "";
+      const pendingCredential = (err.credential ?? (OAuthProvider.credentialFromError(e as never) as OAuthCredential | null));
+      if (email && pendingCredential) {
+        return { user: null, error: null, needsLink: { email, pendingCredential } };
+      }
+    }
+
     return { user: null, error: firebaseErrMsg(e) };
+  }
+}
+
+// ── Internal: apply credential with anon-upgrade + same-email merge ───────────
+
+async function _applyCredential(
+  credential: OAuthCredential,
+  _getCredential: () => OAuthCredential,
+): Promise<AuthResult> {
+  const current = firebaseAuth.currentUser;
+
+  // Anonymous → link to preserve UID and user data
+  if (current?.isAnonymous) {
+    try {
+      const linked = await linkWithCredential(current, credential);
+      return { user: linked.user, error: null };
+    } catch (linkErr: unknown) {
+      const code = (linkErr as { code?: string }).code;
+      if (code === "auth/credential-already-in-use") {
+        // Social account already exists: sign in directly (data already there)
+        const cred = await signInWithCredential(firebaseAuth, credential);
+        return { user: cred.user, error: null };
+      }
+      if (code === "auth/email-already-in-use" || code === "auth/account-exists-with-different-credential") {
+        // Email is registered with a different provider: need to link accounts
+        const err = linkErr as { customData?: { email?: string }; credential?: OAuthCredential };
+        const email = err.customData?.email ?? current.email ?? "";
+        const pendingCredential = (err.credential ?? credential) as OAuthCredential;
+        if (email && pendingCredential) {
+          return { user: null, error: null, needsLink: { email, pendingCredential } };
+        }
+      }
+      return { user: null, error: firebaseErrMsg(linkErr) };
+    }
+  }
+
+  // Non-anonymous or signed-out: straight sign-in
+  try {
+    const cred = await signInWithCredential(firebaseAuth, credential);
+    return { user: cred.user, error: null };
+  } catch (e: unknown) {
+    const code = (e as { code?: string }).code;
+    if (code === "auth/account-exists-with-different-credential") {
+      const err = e as { customData?: { email?: string }; credential?: OAuthCredential };
+      const email = err.customData?.email ?? "";
+      const pendingCredential = (err.credential ?? credential) as OAuthCredential;
+      if (email && pendingCredential) {
+        return { user: null, error: null, needsLink: { email, pendingCredential } };
+      }
+    }
+    return { user: null, error: firebaseErrMsg(e) };
+  }
+}
+
+// ── Account linking: email+password sign-in then attach pending social cred ───
+
+/**
+ * Called after a `needsLink` result. The user provides their existing
+ * email/password; we sign them in and immediately link the pending social
+ * credential so both providers work going forward.
+ */
+export async function linkPendingCredential(
+  email: string,
+  password: string,
+  pendingCredential: OAuthCredential,
+): Promise<AuthResult> {
+  try {
+    // Sign in with the existing email/password account
+    const cred = await signInWithEmailAndPassword(firebaseAuth, email, password);
+    // Link the social credential to this account
+    try {
+      await linkWithCredential(cred.user, pendingCredential);
+    } catch (linkErr: unknown) {
+      const code = (linkErr as { code?: string }).code;
+      // If already linked (e.g. user retried), that's fine — still signed in
+      if (code !== "auth/provider-already-linked" && code !== "auth/credential-already-in-use") {
+        return { user: cred.user, error: firebaseErrMsg(linkErr) };
+      }
+    }
+    return { user: cred.user, error: null };
+  } catch (e) {
+    return { user: null, error: firebaseErrMsg(e) };
+  }
+}
+
+/**
+ * Fetch which sign-in methods exist for an email so we can show the right
+ * prompt to the user (e.g. "you used Google before").
+ */
+export async function getSignInMethodsForEmail(email: string): Promise<string[]> {
+  try {
+    return await fetchSignInMethodsForEmail(firebaseAuth, email);
+  } catch {
+    return [];
   }
 }
 
 // ── Email / Password ───────────────────────────────────────────────────────────
 
-export async function signInWithEmail(
-  email: string,
-  password: string,
-): Promise<AuthResult> {
+export async function signInWithEmail(email: string, password: string): Promise<AuthResult> {
   try {
     const cred = await signInWithEmailAndPassword(firebaseAuth, email, password);
     return { user: cred.user, error: null };
@@ -136,10 +225,7 @@ export async function signInWithEmail(
   }
 }
 
-export async function signUpWithEmail(
-  email: string,
-  password: string,
-): Promise<AuthResult> {
+export async function signUpWithEmail(email: string, password: string): Promise<AuthResult> {
   try {
     const current = firebaseAuth.currentUser;
     let cred;
@@ -166,9 +252,7 @@ export async function signUpWithEmail(
   }
 }
 
-export async function sendPasswordReset(
-  email: string,
-): Promise<{ error: string | null }> {
+export async function sendPasswordReset(email: string): Promise<{ error: string | null }> {
   try {
     await sendPasswordResetEmail(firebaseAuth, email);
     return { error: null };
@@ -177,9 +261,7 @@ export async function sendPasswordReset(
   }
 }
 
-export async function resendVerificationEmail(): Promise<{
-  error: string | null;
-}> {
+export async function resendVerificationEmail(): Promise<{ error: string | null }> {
   const user = firebaseAuth.currentUser;
   if (!user) return { error: "Not signed in." };
   try {
@@ -226,9 +308,7 @@ export function getCurrentFirebaseUser(): User | null {
   return firebaseAuth.currentUser;
 }
 
-export function onFirebaseAuthStateChanged(
-  callback: (user: User | null) => void,
-): () => void {
+export function onFirebaseAuthStateChanged(callback: (user: User | null) => void): () => void {
   return onAuthStateChanged(firebaseAuth, callback);
 }
 
@@ -253,6 +333,8 @@ function firebaseErrMsg(e: unknown): string {
         return "This account has been disabled. Please contact support.";
       case "auth/credential-already-in-use":
         return "This account is already linked to another sign-in method.";
+      case "auth/provider-already-linked":
+        return "This sign-in method is already linked to your account.";
       default:
         return "Something went wrong. Please try again.";
     }

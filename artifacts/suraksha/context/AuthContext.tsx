@@ -7,6 +7,7 @@ import React, {
   useState,
 } from "react";
 import type { User } from "firebase/auth";
+import type { OAuthCredential } from "@/lib/firebaseAuth";
 
 import {
   signInWithEmail,
@@ -16,6 +17,7 @@ import {
   signInWithGoogle as fbSignInWithGoogle,
   signInWithApple as fbSignInWithApple,
   isAppleSignInAvailable,
+  linkPendingCredential as fbLinkPendingCredential,
   signOutFB,
   sendPasswordReset,
   resendVerificationEmail,
@@ -31,8 +33,9 @@ interface AuthContextValue {
   signIn:   (email: string, password: string) => Promise<{ error: string | null }>;
   signUp:   (email: string, password: string) => Promise<{ error: string | null }>;
   signInWithCustomToken: (token: string) => Promise<{ error: string | null }>;
-  signInWithGoogle: () => Promise<{ error: string | null; cancelled?: boolean }>;
-  signInWithApple: () => Promise<{ error: string | null; cancelled?: boolean }>;
+  signInWithGoogle: () => Promise<{ error: string | null; cancelled?: boolean; needsLink?: { email: string; pendingCredential: OAuthCredential } }>;
+  signInWithApple: () => Promise<{ error: string | null; cancelled?: boolean; needsLink?: { email: string; pendingCredential: OAuthCredential } }>;
+  linkPendingCredential: (email: string, password: string, pendingCredential: OAuthCredential) => Promise<{ error: string | null }>;
   appleAvailable: boolean;
   signOut:  () => Promise<void>;
   resetPassword:      (email: string) => Promise<{ error: string | null }>;
@@ -83,13 +86,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = useCallback(async () => {
     const r = await fbSignInWithGoogle();
-    return { error: r.error, cancelled: r.cancelled };
+    return { error: r.error, cancelled: r.cancelled, needsLink: r.needsLink };
   }, []);
 
   const signInWithApple = useCallback(async () => {
     const r = await fbSignInWithApple();
-    return { error: r.error, cancelled: r.cancelled };
+    return { error: r.error, cancelled: r.cancelled, needsLink: r.needsLink };
   }, []);
+
+  const linkPendingCredential = useCallback(
+    async (email: string, password: string, pendingCredential: OAuthCredential) => {
+      const r = await fbLinkPendingCredential(email, password, pendingCredential);
+      return { error: r.error };
+    },
+    [],
+  );
 
   const signOut = useCallback(async () => {
     await signOutFB();
@@ -128,6 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInWithCustomToken,
       signInWithGoogle,
       signInWithApple,
+      linkPendingCredential,
       appleAvailable,
       signOut,
       resetPassword,
@@ -135,7 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       reloadUser,
       getIdToken,
     }),
-    [user, loading, isAnon, signIn, signUp, signInWithCustomToken, signInWithGoogle, signInWithApple, appleAvailable, signOut, resetPassword, resendVerification, reloadUser, getIdToken],
+    [user, loading, isAnon, signIn, signUp, signInWithCustomToken, signInWithGoogle, signInWithApple, linkPendingCredential, appleAvailable, signOut, resetPassword, resendVerification, reloadUser, getIdToken],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
