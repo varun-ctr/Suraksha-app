@@ -3,8 +3,11 @@ import {
   createUserWithEmailAndPassword,
   signInAnonymously as fbSignInAnonymously,
   signInWithCustomToken,
+  signInWithCredential,
   linkWithCredential,
   EmailAuthProvider,
+  GoogleAuthProvider,
+  OAuthProvider,
   sendPasswordResetEmail,
   sendEmailVerification,
   signOut as fbSignOut,
@@ -12,10 +15,114 @@ import {
   reload,
   type User,
 } from "firebase/auth";
+import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
+import * as AppleAuthentication from "expo-apple-authentication";
+import { Platform } from "react-native";
 import { firebaseAuth } from "./firebase";
+import { optionalPublicEnv } from "./env";
 
 export type FirebaseUser = User;
-export type AuthResult = { user: User | null; error: string | null };
+export type AuthResult = { user: User | null; error: string | null; cancelled?: boolean };
+
+// ── Google Sign-In ─────────────────────────────────────────────────────────────
+
+let _googleConfigured = false;
+
+function ensureGoogleConfigured(): void {
+  if (_googleConfigured) return;
+  const webClientId = optionalPublicEnv("EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID");
+  GoogleSignin.configure({ webClientId });
+  _googleConfigured = true;
+}
+
+export async function signInWithGoogle(): Promise<AuthResult> {
+  try {
+    ensureGoogleConfigured();
+    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+    await GoogleSignin.signIn();
+    const { idToken } = await GoogleSignin.getTokens();
+    if (!idToken) throw new Error("No ID token returned from Google Sign-In.");
+
+    const credential = GoogleAuthProvider.credential(idToken);
+    const current = firebaseAuth.currentUser;
+
+    if (current?.isAnonymous) {
+      try {
+        const linked = await linkWithCredential(current, credential);
+        return { user: linked.user, error: null };
+      } catch (linkErr: unknown) {
+        const code = (linkErr as { code?: string }).code;
+        if (code === "auth/credential-already-in-use" || code === "auth/email-already-in-use") {
+          const cred = await signInWithCredential(firebaseAuth, credential);
+          return { user: cred.user, error: null };
+        }
+        return { user: null, error: firebaseErrMsg(linkErr) };
+      }
+    }
+
+    const cred = await signInWithCredential(firebaseAuth, credential);
+    return { user: cred.user, error: null };
+  } catch (e: unknown) {
+    const code = (e as { code?: string }).code;
+    if (code === statusCodes.SIGN_IN_CANCELLED) return { user: null, error: null, cancelled: true };
+    if (code === statusCodes.IN_PROGRESS) return { user: null, error: "Sign-in already in progress.", cancelled: false };
+    if (code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) return { user: null, error: "Google Play Services are not available on this device.", cancelled: false };
+    return { user: null, error: firebaseErrMsg(e) };
+  }
+}
+
+// ── Apple Sign-In ──────────────────────────────────────────────────────────────
+
+export async function isAppleSignInAvailable(): Promise<boolean> {
+  if (Platform.OS !== "ios") return false;
+  try {
+    return await AppleAuthentication.isAvailableAsync();
+  } catch {
+    return false;
+  }
+}
+
+export async function signInWithApple(): Promise<AuthResult> {
+  try {
+    const appleCredential = await AppleAuthentication.signInAsync({
+      requestedScopes: [
+        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+        AppleAuthentication.AppleAuthenticationScope.EMAIL,
+      ],
+    });
+
+    const { identityToken } = appleCredential;
+    if (!identityToken) throw new Error("No identity token returned from Apple Sign-In.");
+
+    const provider = new OAuthProvider("apple.com");
+    const firebaseCredential = provider.credential({ idToken: identityToken });
+
+    const current = firebaseAuth.currentUser;
+
+    if (current?.isAnonymous) {
+      try {
+        const linked = await linkWithCredential(current, firebaseCredential);
+        return { user: linked.user, error: null };
+      } catch (linkErr: unknown) {
+        const code = (linkErr as { code?: string }).code;
+        if (code === "auth/credential-already-in-use" || code === "auth/email-already-in-use") {
+          const cred = await signInWithCredential(firebaseAuth, firebaseCredential);
+          return { user: cred.user, error: null };
+        }
+        return { user: null, error: firebaseErrMsg(linkErr) };
+      }
+    }
+
+    const cred = await signInWithCredential(firebaseAuth, firebaseCredential);
+    return { user: cred.user, error: null };
+  } catch (e: unknown) {
+    const code = (e as { code?: string }).code;
+    if (code === "ERR_REQUEST_CANCELED") return { user: null, error: null, cancelled: true };
+    return { user: null, error: firebaseErrMsg(e) };
+  }
+}
+
+// ── Email / Password ───────────────────────────────────────────────────────────
 
 export async function signInWithEmail(
   email: string,
@@ -88,7 +195,6 @@ export async function reloadCurrentUser(): Promise<void> {
   if (user) await reload(user);
 }
 
-/** Completes sign-in after the backend has verified an email OTP code and minted a Firebase custom token. */
 export async function signInWithCustomTokenFB(token: string): Promise<AuthResult> {
   try {
     const cred = await signInWithCustomToken(firebaseAuth, token);
@@ -146,7 +252,7 @@ function firebaseErrMsg(e: unknown): string {
       case "auth/user-disabled":
         return "This account has been disabled. Please contact support.";
       case "auth/credential-already-in-use":
-        return "This email is already linked to another account.";
+        return "This account is already linked to another sign-in method.";
       default:
         return "Something went wrong. Please try again.";
     }

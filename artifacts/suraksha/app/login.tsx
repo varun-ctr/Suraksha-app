@@ -16,12 +16,73 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { FontAwesome } from "@expo/vector-icons";
+
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { withAlpha } from "@/constants/colors";
 import { requestEmailOtp, verifyEmailOtp } from "@/lib/emailOtp";
 import { db } from "@/lib/supabaseClient";
+
+function SocialDivider({ color }: { color: string }) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 16, gap: 10 }}>
+      <View style={{ flex: 1, height: 1, backgroundColor: color }} />
+      <Text style={{ fontSize: 11, color, fontFamily: "Inter_500Medium", letterSpacing: 0.6 }}>OR CONTINUE WITH</Text>
+      <View style={{ flex: 1, height: 1, backgroundColor: color }} />
+    </View>
+  );
+}
+
+function SocialButton({
+  label,
+  faIcon,
+  iconColor,
+  onPress,
+  loading,
+  bg,
+  textColor,
+  borderColor,
+}: {
+  label: string;
+  faIcon: React.ComponentProps<typeof FontAwesome>["name"];
+  iconColor: string;
+  onPress: () => void;
+  loading: boolean;
+  bg: string;
+  textColor: string;
+  borderColor: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={loading}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 10,
+        backgroundColor: bg,
+        borderWidth: 1.5,
+        borderColor,
+        borderRadius: 14,
+        paddingVertical: 13,
+        marginBottom: 10,
+        opacity: pressed || loading ? 0.8 : 1,
+      })}
+    >
+      {loading
+        ? <ActivityIndicator size="small" color={textColor} />
+        : (
+          <>
+            <FontAwesome name={faIcon} size={19} color={iconColor} />
+            <Text style={{ fontSize: 15, fontFamily: "Inter_600SemiBold", color: textColor }}>{label}</Text>
+          </>
+        )}
+    </Pressable>
+  );
+}
 
 type Mode = "signin" | "signup" | "forgot" | "verify" | "success" | "otp-request" | "otp-verify";
 
@@ -308,13 +369,15 @@ export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { c } = useTheme();
-  const { signIn, signUp, resetPassword, resendVerification, reloadUser, user, signInWithCustomToken } = useAuth();
+  const { signIn, signUp, resetPassword, resendVerification, reloadUser, user, signInWithCustomToken, signInWithGoogle, signInWithApple, appleAvailable } = useAuth();
 
   const [mode,    setMode]    = useState<Mode>("signin");
   const [email,   setEmail]   = useState("");
   const [pass,    setPass]    = useState("");
   const [pass2,   setPass2]   = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleLoading,  setAppleLoading]  = useState(false);
   const [error,   setError]   = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showPass,  setShowPass]  = useState(false);
@@ -413,6 +476,26 @@ export default function LoginScreen() {
     setOtpMsg(result.ok ? "Code sent! Check your inbox." : null);
     if (!result.ok) setOtpError(result.error);
   }, [otpEmail]);
+
+  const handleGoogleSignIn = useCallback(async () => {
+    setGoogleLoading(true);
+    setError(null);
+    const result = await signInWithGoogle();
+    setGoogleLoading(false);
+    if (result.cancelled) return;
+    if (result.error) { setError(result.error); return; }
+    animateMode("success");
+  }, [signInWithGoogle]);
+
+  const handleAppleSignIn = useCallback(async () => {
+    setAppleLoading(true);
+    setError(null);
+    const result = await signInWithApple();
+    setAppleLoading(false);
+    if (result.cancelled) return;
+    if (result.error) { setError(result.error); return; }
+    animateMode("success");
+  }, [signInWithApple]);
 
   const handleVerifyOtp = useCallback(async () => {
     const e = otpEmail.trim().toLowerCase();
@@ -693,6 +776,35 @@ export default function LoginScreen() {
                     <Text style={[styles.ghostBtnText, { color: c.textMuted }]}>Back to sign in</Text>
                   </Pressable>
                 )}
+
+                {(mode === "signin" || mode === "signup") && (
+                  <>
+                    <SocialDivider color={c.border} />
+                    <SocialButton
+                      label="Continue with Google"
+                      faIcon="google"
+                      iconColor="#4285F4"
+                      onPress={handleGoogleSignIn}
+                      loading={googleLoading}
+                      bg={c.card}
+                      textColor={c.text}
+                      borderColor={c.border}
+                    />
+                    {appleAvailable && (
+                      <SocialButton
+                        label="Continue with Apple"
+                        faIcon="apple"
+                        iconColor="#fff"
+                        onPress={handleAppleSignIn}
+                        loading={appleLoading}
+                        bg="#000"
+                        textColor="#fff"
+                        borderColor="#000"
+                      />
+                    )}
+                  </>
+                )}
+
                 {mode !== "forgot" && (
                   <Pressable onPress={handleSkip} style={[styles.ghostBtn, { marginTop: 4 }]}>
                     <Text style={[styles.ghostBtnText, { color: c.textMuted, fontSize: 12.5 }]}>Maybe later — continue without saving</Text>

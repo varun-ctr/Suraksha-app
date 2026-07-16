@@ -13,6 +13,9 @@ import {
   signUpWithEmail,
   signInAnonymouslyFB,
   signInWithCustomTokenFB,
+  signInWithGoogle as fbSignInWithGoogle,
+  signInWithApple as fbSignInWithApple,
+  isAppleSignInAvailable,
   signOutFB,
   sendPasswordReset,
   resendVerificationEmail,
@@ -28,6 +31,9 @@ interface AuthContextValue {
   signIn:   (email: string, password: string) => Promise<{ error: string | null }>;
   signUp:   (email: string, password: string) => Promise<{ error: string | null }>;
   signInWithCustomToken: (token: string) => Promise<{ error: string | null }>;
+  signInWithGoogle: () => Promise<{ error: string | null; cancelled?: boolean }>;
+  signInWithApple: () => Promise<{ error: string | null; cancelled?: boolean }>;
+  appleAvailable: boolean;
   signOut:  () => Promise<void>;
   resetPassword:      (email: string) => Promise<{ error: string | null }>;
   resendVerification: () => Promise<{ error: string | null }>;
@@ -38,8 +44,9 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser]       = useState<User | null>(getCurrentFirebaseUser());
-  const [loading, setLoading] = useState(true);
+  const [user, setUser]               = useState<User | null>(getCurrentFirebaseUser());
+  const [loading, setLoading]         = useState(true);
+  const [appleAvailable, setAppleAvailable] = useState(false);
 
   useEffect(() => {
     const unsub = onFirebaseAuthStateChanged((u) => {
@@ -55,6 +62,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [loading, user]);
 
+  useEffect(() => {
+    isAppleSignInAvailable().then(setAppleAvailable);
+  }, []);
+
   const signIn = useCallback(async (email: string, password: string) => {
     const r = await signInWithEmail(email, password);
     return { error: r.error };
@@ -68,6 +79,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithCustomToken = useCallback(async (token: string) => {
     const r = await signInWithCustomTokenFB(token);
     return { error: r.error };
+  }, []);
+
+  const signInWithGoogle = useCallback(async () => {
+    const r = await fbSignInWithGoogle();
+    return { error: r.error, cancelled: r.cancelled };
+  }, []);
+
+  const signInWithApple = useCallback(async () => {
+    const r = await fbSignInWithApple();
+    return { error: r.error, cancelled: r.cancelled };
   }, []);
 
   const signOut = useCallback(async () => {
@@ -105,13 +126,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signIn,
       signUp,
       signInWithCustomToken,
+      signInWithGoogle,
+      signInWithApple,
+      appleAvailable,
       signOut,
       resetPassword,
       resendVerification,
       reloadUser,
       getIdToken,
     }),
-    [user, loading, isAnon, signIn, signUp, signInWithCustomToken, signOut, resetPassword, resendVerification, reloadUser, getIdToken],
+    [user, loading, isAnon, signIn, signUp, signInWithCustomToken, signInWithGoogle, signInWithApple, appleAvailable, signOut, resetPassword, resendVerification, reloadUser, getIdToken],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
