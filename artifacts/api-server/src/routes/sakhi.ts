@@ -2,16 +2,31 @@ import { Router, type IRouter } from "express";
 import { getOpenAI } from "@workspace/integrations-openai-ai-server";
 import { SendSakhiMessageBody, SendSakhiMessageResponse } from "@workspace/api-zod";
 import { getBearerToken, verifyFirebaseToken } from "../lib/firebaseAdmin";
-import { checkRateLimit } from "../lib/rateLimit";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
-// Caps per-user OpenAI cost exposure — this proxies a paid model with no
-// other spend control. The client already has a full "limit reached" UI
-// (sakhi.tsx's 402 handling) that was previously unreachable because no
-// route ever returned 402; reusing that status code here wires it up.
-const RATE_LIMIT = { windowSeconds: 60 * 60, limit: 30 };
+// In-memory fixed-window rate limiter for Sakhi chat.
+// Keyed by uid (authenticated) or IP (anonymous). Entries expire automatically
+// when a new window starts — no cleanup needed because the entry count is
+// bounded by the number of distinct users active within one window.
+const WINDOW_SECONDS = 60 * 60; // 1 hour
+const LIMIT = 30;
+
+interface RateBucket { count: number; windowStart: number }
+const rateBuckets = new Map<string, RateBucket>();
+
+function checkSakhiRateLimit(key: string): { allowed: boolean; count: number } {
+  const now = Math.floor(Date.now() / 1000);
+  const windowStart = Math.floor(now / WINDOW_SECONDS) * WINDOW_SECONDS;
+  const bucket = rateBuckets.get(key);
+  if (!bucket || bucket.windowStart !== windowStart) {
+    rateBuckets.set(key, { count: 1, windowStart });
+    return { allowed: true, count: 1 };
+  }
+  bucket.count++;
+  return { allowed: bucket.count <= LIMIT, count: bucket.count };
+}
 
 const SYSTEM_PROMPT = `You are "Sakhi" (सखी, meaning "female friend"), a warm, calm and supportive AI safety companion inside Suraksha — a women's safety and empowerment app for India.
 
@@ -169,7 +184,7 @@ router.post("/sakhi/chat", async (req, res) => {
   }
 
   const rateLimitKey = user ? `uid:${user.uid}` : `ip:${req.ip}`;
-  const rate = await checkRateLimit("sakhi_chat", rateLimitKey, RATE_LIMIT);
+  const rate = checkSakhiRateLimit(rateLimitKey);
   if (!rate.allowed) {
     logger.warn({ key: rateLimitKey, count: rate.count }, "Sakhi chat rate limit exceeded");
     res.status(402).json({ error: "limit_reached" });
