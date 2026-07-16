@@ -24,6 +24,7 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: false,
     bundleIdentifier: "com.sakhisuraksha.app",
+    usesAppleSignIn: true,
     config: {
       googleMapsApiKey: mapsKey,
     },
@@ -99,6 +100,13 @@ const config: ExpoConfig = {
       {
         contactsPermission:
           "Suraksha uses your contacts so you can quickly pick trusted contacts to receive your SOS alerts.",
+      },
+    ],
+    "expo-apple-authentication",
+    [
+      "@react-native-google-signin/google-signin",
+      {
+        iosUrlScheme: process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME ?? "",
       },
     ],
   ],
