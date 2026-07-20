@@ -153,6 +153,10 @@ overrides:
 importers:
 
   .:
+    dependencies:
+      '@replit/revenuecat-sdk':
+        specifier: ^5.0.0
+        version: 5.0.0(typescript@5.9.3)
     devDependencies:
       prettier:
         specifier: ^3.8.3
@@ -2711,6 +2715,11 @@ packages:
 
   '@react-navigation/routers@7.6.0':
     resolution: {integrity: sha512-lblhDXfS75jLc7G2K7BZGM+7cjqQXk13X/MA4fq/12r62zM+fBhhreLzYflSitrDDXFRJpSvJXy0ziiGU04Xow==}
+
+  '@replit/revenuecat-sdk@5.0.0':
+    resolution: {integrity: sha512-waW/1S5P53KNoTAfDdN+aDevzaTKSPb1GdLTWdFSwYaRqOlS+ljm8lkD3SHcLqhjnTgC/tmhNH4oo1TeLfKeXA==}
+    peerDependencies:
+      typescript: ^5
 
   '@replit/vite-plugin-cartographer@0.5.21':
     resolution: {integrity: sha512-E5rco8Mov05QDfUOjoim3MVJdDX0/pBYql5Jay3w9cqmU/QOL6cEOUAjsBZPB/V8FEChsk++sZUrcWt1bHaAoQ==}
@@ -10061,6 +10070,10 @@ snapshots:
   '@react-navigation/routers@7.6.0':
     dependencies:
       nanoid: 3.3.12
+
+  '@replit/revenuecat-sdk@5.0.0(typescript@5.9.3)':
+    dependencies:
+      typescript: 5.9.3
 
   '@replit/vite-plugin-cartographer@0.5.21':
     dependencies:
