@@ -279,6 +279,9 @@ const hi: Record<string, string> = {
   "premium.purchaseFailed": "खरीदारी पूरी नहीं हो सकी। कृपया पुनः प्रयास करें।",
   "premium.restored": "आपकी खरीदारी पुनर्स्थापित कर दी गई है।",
   "premium.noPurchases": "कोई पिछली खरीदारी नहीं मिली।",
+  "premium.activeBody": "You have an active Suraksha Pro subscription.",
+  "premium.manageSubscription": "Manage Subscription",
+  "premium.bestValue": "Best Value",
 
   "legal.privacyTitle": "गोपनीयता नीति",
   "legal.termsTitle": "उपयोग की शर्तें",

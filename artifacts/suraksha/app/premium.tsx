@@ -1,7 +1,25 @@
+/**
+ * Premium / Suraksha Pro paywall screen.
+ *
+ * On native (iOS/Android): uses RevenueCat's native Paywall UI via
+ * react-native-purchases-ui, which renders the offering configured in the
+ * RevenueCat dashboard. A Customer Center button lets users manage their
+ * subscription without leaving the app.
+ *
+ * On web / Expo Go: falls back to a custom inline paywall that lists all
+ * packages from the current offering and handles purchase + restore.
+ */
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BackHeader } from "@/components/Headers";
@@ -12,20 +30,60 @@ import { useI18n } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useToast } from "@/context/ToastContext";
 import {
-  getPremiumOffering,
-  getPremiumStatus,
+  ENTITLEMENT_ID,
+  getAllOfferings,
+  getCustomerInfo,
+  hasPremiumEntitlement,
+  isPaywallUIAvailable,
   isPurchasesAvailable,
+  presentCustomerCenter,
+  presentPaywall,
   purchasePackage,
   restorePurchases,
+  type CustomerInfo,
+  type PurchasesOffering,
   type PurchasesPackage,
 } from "@/lib/purchases";
 
-// Only what Premium actually delivers today. Planned features are described
-// honestly below as "coming" — never listed as if already included, which is
-// both a store-review requirement and fair to paying users.
+// Features included in Suraksha Pro today (honest, no planned features)
 const INCLUDED: { en: string; hi: string }[] = [
   { en: "Custom color themes", hi: "कस्टम रंग थीम" },
 ];
+
+// Duration labels for package keys
+const DURATION_LABEL: Record<string, { en: string; hi: string }> = {
+  "$rc_monthly": { en: "/ month", hi: "/ महीना" },
+  "$rc_annual": { en: "/ year", hi: "/ साल" },
+  "$rc_lifetime": { en: "one-time", hi: "एक बार" },
+  "$rc_weekly": { en: "/ week", hi: "/ सप्ताह" },
+};
+
+function usePremiumState() {
+  const { setProfile } = useApp();
+  const [loading, setLoading] = useState(true);
+  const [offerings, setOfferings] = useState<PurchasesOffering[]>([]);
+  const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
+  const mounted = useRef(true);
+
+  const reload = useCallback(async () => {
+    if (!isPurchasesAvailable()) { setLoading(false); return; }
+    setLoading(true);
+    const [info, offs] = await Promise.all([getCustomerInfo(), getAllOfferings()]);
+    if (!mounted.current) return;
+    setCustomerInfo(info);
+    setOfferings(offs);
+    if (hasPremiumEntitlement(info)) setProfile({ premium: true });
+    setLoading(false);
+  }, [setProfile]);
+
+  useEffect(() => {
+    mounted.current = true;
+    reload();
+    return () => { mounted.current = false; };
+  }, [reload]);
+
+  return { loading, offerings, customerInfo, reload };
+}
 
 export default function PremiumScreen() {
   const { c } = useTheme();
@@ -36,30 +94,42 @@ export default function PremiumScreen() {
   const router = useRouter();
 
   const available = isPurchasesAvailable();
-  const [loading, setLoading] = useState(available);
-  const [packages, setPackages] = useState<PurchasesPackage[]>([]);
+  const nativePaywall = isPaywallUIAvailable();
+
+  const { loading, offerings, customerInfo, reload } = usePremiumState();
+
+  // Current offering — prefer "default", else first
+  const currentOffering =
+    offerings.find((o) => o.identifier === "default") ?? offerings[0] ?? null;
+  const packages = currentOffering?.availablePackages ?? [];
+
+  const isPro = hasPremiumEntitlement(customerInfo) || profile.premium;
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [busy, setBusy] = useState<null | "buy" | "restore">(null);
-
   useEffect(() => {
-    let cancelled = false;
-    if (!available) return;
-    (async () => {
-      // Reflect any already-active entitlement, then load the store offering.
-      const isPremium = await getPremiumStatus();
-      if (!cancelled && isPremium) setProfile({ premium: true });
-      const offering = await getPremiumOffering();
-      if (cancelled) return;
-      const pkgs = offering?.availablePackages ?? [];
-      setPackages(pkgs);
-      setSelectedId(pkgs[0]?.identifier ?? null);
-      setLoading(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [available, setProfile]);
+    if (!selectedId && packages.length > 0) {
+      // Pre-select annual if available (best value), else first
+      const annual = packages.find((p) => p.packageType === "ANNUAL" || p.identifier === "$rc_annual");
+      setSelectedId(annual?.identifier ?? packages[0]?.identifier ?? null);
+    }
+  }, [packages, selectedId]);
 
+  const [busy, setBusy] = useState<null | "paywall" | "buy" | "restore" | "center">(null);
+
+  // ── Native paywall (iOS / Android) ──────────────────────────
+  const onShowNativePaywall = async () => {
+    if (busy) return;
+    setBusy("paywall");
+    const purchased = await presentPaywall(currentOffering ?? undefined);
+    setBusy(null);
+    if (purchased) {
+      await reload();
+      showToast(t("premium.purchaseSuccess"));
+      router.back();
+    }
+  };
+
+  // ── Inline purchase (web / Expo Go) ─────────────────────────
   const onSubscribe = async () => {
     const pkg = packages.find((p) => p.identifier === selectedId) ?? packages[0];
     if (!pkg || busy) return;
@@ -91,10 +161,22 @@ export default function PremiumScreen() {
     }
   };
 
+  const onCustomerCenter = async () => {
+    if (busy) return;
+    setBusy("center");
+    await presentCustomerCenter();
+    await reload(); // refresh after returning
+    setBusy(null);
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <BackHeader title={t("premium.title")} />
-      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 30 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: insets.bottom + 30 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Hero gradient */}
         <LinearGradient
           colors={[c.accent, c.accentDark]}
           start={{ x: 0, y: 0 }}
@@ -104,145 +186,211 @@ export default function PremiumScreen() {
           <View style={styles.crown}>
             <Icon name="crown" size={32} color="#fff" />
           </View>
-          <Text style={{ color: "#fff", fontSize: 22, fontFamily: "Inter_700Bold", marginTop: 12 }}>
-            {t("premium.title")}
-          </Text>
-          <Text style={{ color: "rgba(255,255,255,0.9)", fontSize: 13, textAlign: "center", marginTop: 6 }}>
-            {t("premium.sub")}
-          </Text>
-          {profile.premium && (
+          <Text style={styles.heroTitle}>{t("premium.title")}</Text>
+          <Text style={styles.heroSub}>{t("premium.sub")}</Text>
+          {isPro && (
             <View style={styles.activeBadge}>
               <Icon name="check" size={13} color="#fff" />
-              <Text style={{ color: "#fff", fontSize: 12, fontFamily: "Inter_700Bold" }}>
-                {t("premium.currentPlan")}
-              </Text>
+              <Text style={styles.activeBadgeText}>{t("premium.currentPlan")}</Text>
             </View>
           )}
         </LinearGradient>
 
         <View style={{ padding: 18 }}>
-          {/* What Premium unlocks today */}
-          <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 12 }}>
-            {t("premium.included")}
-          </Text>
-          <View style={[styles.featureCard, { backgroundColor: c.card, borderColor: c.border }]}>
+
+          {/* What's included */}
+          <Text style={[styles.sectionLabel, { color: c.text }]}>{t("premium.included")}</Text>
+          <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
             {INCLUDED.map((f, i) => (
               <View
                 key={f.en}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 12,
-                  paddingVertical: 10,
-                  borderTopWidth: i === 0 ? 0 : StyleSheet.hairlineWidth,
-                  borderTopColor: c.border,
-                }}
+                style={[
+                  styles.featureRow,
+                  i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border },
+                ]}
               >
                 <View style={[styles.featureIcon, { backgroundColor: c.successSoft }]}>
                   <Icon name="check" size={15} color={c.success} />
                 </View>
-                <Text style={{ flex: 1, fontSize: 13, color: c.text, fontFamily: "Inter_500Medium" }}>{pick(f)}</Text>
+                <Text style={[styles.featureText, { color: c.text }]}>{pick(f)}</Text>
               </View>
             ))}
           </View>
-          <View
-            style={[
-              styles.comingSoon,
-              { backgroundColor: withAlpha(c.accent, 0.1), borderColor: withAlpha(c.accent, 0.25) },
-            ]}
-          >
+
+          {/* Coming soon */}
+          <View style={[styles.comingSoon, { backgroundColor: withAlpha(c.accent, 0.1), borderColor: withAlpha(c.accent, 0.25) }]}>
             <Icon name="info" size={15} color={c.accent} />
-            <Text style={{ flex: 1, fontSize: 11.5, color: c.text, lineHeight: 17 }}>{t("premium.comingSoon")}</Text>
+            <Text style={[styles.comingSoonText, { color: c.text }]}>{t("premium.comingSoon")}</Text>
           </View>
 
           {/* Purchase area */}
-          {profile.premium ? (
-            <Pressable onPress={onRestore} disabled={busy != null} style={{ marginTop: 8 }}>
-              <Text style={{ fontSize: 13, color: c.accent, textAlign: "center", fontFamily: "Inter_600SemiBold" }}>
-                {busy === "restore" ? t("premium.restoring") : t("premium.restore")}
-              </Text>
-            </Pressable>
-          ) : available && loading ? (
-            <View style={{ paddingVertical: 28, alignItems: "center" }}>
-              <ActivityIndicator color={c.accent} />
-              <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 10 }}>{t("premium.loading")}</Text>
+          {!available ? (
+            // No API key configured at all
+            <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border, marginTop: 16 }]}>
+              <Text style={[styles.unavailableTitle, { color: c.text }]}>{t("premium.unavailableTitle")}</Text>
+              <Text style={[styles.unavailableBody, { color: c.textMuted }]}>{t("premium.unavailableBody")}</Text>
             </View>
-          ) : available && packages.length > 0 ? (
-            <>
-              <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text, marginTop: 22, marginBottom: 12 }}>
-                {t("premium.choosePlan")}
-              </Text>
 
-              {packages.map((p) => {
+          ) : loading ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator color={c.accent} />
+              <Text style={[styles.loadingText, { color: c.textMuted }]}>{t("premium.loading")}</Text>
+            </View>
+
+          ) : isPro ? (
+            // Already subscribed — show manage options
+            <View style={{ marginTop: 20, gap: 12 }}>
+              <View style={[styles.card, { backgroundColor: withAlpha(c.success, 0.08), borderColor: withAlpha(c.success, 0.3) }]}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <Icon name="check" size={18} color={c.success} />
+                  <Text style={[styles.sectionLabel, { color: c.success, marginBottom: 0 }]}>
+                    {t("premium.currentPlan")}
+                  </Text>
+                </View>
+                <Text style={[styles.unavailableBody, { color: c.textMuted, marginTop: 4 }]}>
+                  {t("premium.activeBody")}
+                </Text>
+              </View>
+
+              {nativePaywall && (
+                <Pressable
+                  onPress={onCustomerCenter}
+                  disabled={busy != null}
+                  style={[styles.secondaryBtn, { borderColor: c.accent }]}
+                >
+                  {busy === "center" ? (
+                    <ActivityIndicator color={c.accent} size="small" />
+                  ) : (
+                    <Text style={[styles.secondaryBtnText, { color: c.accent }]}>{t("premium.manageSubscription")}</Text>
+                  )}
+                </Pressable>
+              )}
+
+              <Pressable onPress={onRestore} disabled={busy != null}>
+                <Text style={[styles.linkText, { color: c.textMuted }]}>
+                  {busy === "restore" ? t("premium.restoring") : t("premium.restore")}
+                </Text>
+              </Pressable>
+            </View>
+
+          ) : nativePaywall ? (
+            // Native: show feature list + single "Get Suraksha Pro" button that opens RevenueCat paywall
+            <View style={{ marginTop: 20, gap: 12 }}>
+              <Pressable
+                onPress={onShowNativePaywall}
+                disabled={busy != null}
+                style={{ opacity: busy ? 0.7 : 1 }}
+              >
+                <LinearGradient
+                  colors={[c.accent, c.accentDark]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.primaryBtn}
+                >
+                  {busy === "paywall" ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Icon name="crown" size={16} color="#fff" />
+                      <Text style={styles.primaryBtnText}>{t("premium.subscribe")}</Text>
+                    </>
+                  )}
+                </LinearGradient>
+              </Pressable>
+
+              <Pressable onPress={onRestore} disabled={busy != null}>
+                <Text style={[styles.linkText, { color: c.accent }]}>
+                  {busy === "restore" ? t("premium.restoring") : t("premium.restore")}
+                </Text>
+              </Pressable>
+              <Text style={[styles.noteText, { color: c.textFaint }]}>{t("premium.note")}</Text>
+            </View>
+
+          ) : packages.length > 0 ? (
+            // Web / Expo Go: inline package picker
+            <>
+              <Text style={[styles.sectionLabel, { color: c.text, marginTop: 22 }]}>{t("premium.choosePlan")}</Text>
+
+              {packages.map((p: PurchasesPackage) => {
                 const active = selectedId === p.identifier;
+                const durLabel = DURATION_LABEL[p.identifier] ?? { en: "", hi: "" };
+                const isAnnual = p.identifier === "$rc_annual";
                 return (
                   <Pressable
                     key={p.identifier}
                     onPress={() => setSelectedId(p.identifier)}
                     style={[
-                      styles.plan,
-                      { backgroundColor: c.card, borderColor: active ? c.accent : c.border, borderWidth: active ? 2 : 1 },
+                      styles.planRow,
+                      {
+                        backgroundColor: c.card,
+                        borderColor: active ? c.accent : c.border,
+                        borderWidth: active ? 2 : 1,
+                      },
                     ]}
                   >
                     <View style={[styles.radio, { borderColor: active ? c.accent : c.border }]}>
                       {active && <View style={[styles.radioDot, { backgroundColor: c.accent }]} />}
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 15, fontFamily: "Inter_700Bold", color: c.text }}>{p.product.title}</Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <Text style={[styles.planTitle, { color: c.text }]}>{p.product.title}</Text>
+                        {isAnnual && (
+                          <View style={[styles.saveBadge, { backgroundColor: c.successSoft }]}>
+                            <Text style={[styles.saveBadgeText, { color: c.success }]}>
+                              {t("premium.bestValue")}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                       {!!p.product.description && (
-                        <Text style={{ fontSize: 11, color: c.textMuted, marginTop: 2 }}>{p.product.description}</Text>
+                        <Text style={[styles.planDesc, { color: c.textMuted }]}>{p.product.description}</Text>
                       )}
                     </View>
-                    <Text style={{ fontSize: 17, fontFamily: "Inter_700Bold", color: c.accent }}>
-                      {p.product.priceString}
-                    </Text>
+                    <View style={{ alignItems: "flex-end" }}>
+                      <Text style={[styles.planPrice, { color: c.accent }]}>{p.product.priceString}</Text>
+                      <Text style={[styles.planDuration, { color: c.textMuted }]}>{pick(durLabel)}</Text>
+                    </View>
                   </Pressable>
                 );
               })}
 
-              <Pressable onPress={onSubscribe} disabled={busy != null} style={{ marginTop: 18, opacity: busy ? 0.7 : 1 }}>
+              <Pressable
+                onPress={onSubscribe}
+                disabled={busy != null}
+                style={{ marginTop: 18, opacity: busy ? 0.7 : 1 }}
+              >
                 <LinearGradient
                   colors={[c.accent, c.accentDark]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
-                  style={styles.subscribeBtn}
+                  style={styles.primaryBtn}
                 >
                   {busy === "buy" ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
                     <>
                       <Icon name="crown" size={16} color="#fff" />
-                      <Text style={{ color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" }}>
-                        {t("premium.subscribe")}
-                      </Text>
+                      <Text style={styles.primaryBtnText}>{t("premium.subscribe")}</Text>
                     </>
                   )}
                 </LinearGradient>
               </Pressable>
 
               <Pressable onPress={onRestore} disabled={busy != null} style={{ marginTop: 14 }}>
-                <Text style={{ fontSize: 13, color: c.accent, textAlign: "center", fontFamily: "Inter_600SemiBold" }}>
+                <Text style={[styles.linkText, { color: c.accent }]}>
                   {busy === "restore" ? t("premium.restoring") : t("premium.restore")}
                 </Text>
               </Pressable>
-
-              <Text style={{ fontSize: 11, color: c.textFaint, textAlign: "center", marginTop: 12 }}>
-                {t("premium.note")}
-              </Text>
+              <Text style={[styles.noteText, { color: c.textFaint }]}>{t("premium.note")}</Text>
             </>
+
           ) : (
-            // Not a native build (Expo Go / web), or the offering failed to load.
-            <View style={[styles.featureCard, { backgroundColor: c.card, borderColor: c.border, marginTop: 16 }]}>
-              <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: c.text, marginBottom: 6 }}>
-                {available ? t("premium.loadError") : t("premium.unavailableTitle")}
-              </Text>
-              {!available && (
-                <Text style={{ fontSize: 12.5, color: c.textMuted, lineHeight: 18 }}>
-                  {t("premium.unavailableBody")}
-                </Text>
-              )}
+            // Offering failed to load
+            <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border, marginTop: 16 }]}>
+              <Text style={[styles.unavailableTitle, { color: c.text }]}>{t("premium.loadError")}</Text>
             </View>
           )}
+
         </View>
       </ScrollView>
     </View>
@@ -250,51 +398,56 @@ export default function PremiumScreen() {
 }
 
 const styles = StyleSheet.create({
+  heroTitle: { color: "#fff", fontSize: 22, fontFamily: "Inter_700Bold", marginTop: 12 },
+  heroSub: { color: "rgba(255,255,255,0.9)", fontSize: 13, textAlign: "center", marginTop: 6 },
   crown: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 64, height: 64, borderRadius: 32,
     backgroundColor: "rgba(255,255,255,0.2)",
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: "center", justifyContent: "center",
   },
   activeBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
+    flexDirection: "row", alignItems: "center", gap: 6,
     backgroundColor: "rgba(0,0,0,0.2)",
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 20,
-    marginTop: 12,
+    paddingHorizontal: 12, paddingVertical: 5,
+    borderRadius: 20, marginTop: 12,
   },
-  comingSoon: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 9,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    marginTop: 14,
-  },
-  featureCard: { borderWidth: 1, borderRadius: 16, padding: 14 },
+  activeBadgeText: { color: "#fff", fontSize: 12, fontFamily: "Inter_700Bold" },
+  sectionLabel: { fontSize: 14, fontFamily: "Inter_700Bold", marginBottom: 12 },
+  card: { borderWidth: 1, borderRadius: 16, padding: 14 },
+  featureRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
   featureIcon: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
-  plan: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 10,
+  featureText: { flex: 1, fontSize: 13, fontFamily: "Inter_500Medium" },
+  comingSoon: {
+    flexDirection: "row", alignItems: "flex-start", gap: 9,
+    borderWidth: 1, borderRadius: 12, padding: 12, marginTop: 14,
+  },
+  comingSoonText: { flex: 1, fontSize: 11.5, lineHeight: 17 },
+  loadingRow: { paddingVertical: 28, alignItems: "center" },
+  loadingText: { fontSize: 12, marginTop: 10 },
+  unavailableTitle: { fontSize: 14, fontFamily: "Inter_700Bold", marginBottom: 6 },
+  unavailableBody: { fontSize: 12.5, lineHeight: 18 },
+  primaryBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 8, borderRadius: 14, paddingVertical: 15,
+  },
+  primaryBtnText: { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
+  secondaryBtn: {
+    borderWidth: 1.5, borderRadius: 14, paddingVertical: 13,
+    alignItems: "center", justifyContent: "center",
+  },
+  secondaryBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  linkText: { fontSize: 13, fontFamily: "Inter_600SemiBold", textAlign: "center" },
+  noteText: { fontSize: 11, textAlign: "center", marginTop: 4 },
+  planRow: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    borderRadius: 14, padding: 16, marginBottom: 10,
   },
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: "center", justifyContent: "center" },
   radioDot: { width: 11, height: 11, borderRadius: 5.5 },
-  subscribeBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    borderRadius: 14,
-    paddingVertical: 15,
-  },
+  planTitle: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  planDesc: { fontSize: 11, marginTop: 2 },
+  planPrice: { fontSize: 17, fontFamily: "Inter_700Bold" },
+  planDuration: { fontSize: 10, marginTop: 1 },
+  saveBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
+  saveBadgeText: { fontSize: 10, fontFamily: "Inter_700Bold" },
 });

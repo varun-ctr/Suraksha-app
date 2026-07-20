@@ -302,6 +302,9 @@ const en: Record<string, string> = {
   "premium.purchaseFailed": "Purchase couldn't be completed. Please try again.",
   "premium.restored": "Your purchases have been restored.",
   "premium.noPurchases": "No previous purchases were found.",
+  "premium.activeBody": "You have an active Suraksha Pro subscription.",
+  "premium.manageSubscription": "Manage Subscription",
+  "premium.bestValue": "Best Value",
 
   "legal.privacyTitle": "Privacy Policy",
   "legal.termsTitle": "Terms of Use",
