@@ -6,7 +6,7 @@
 - [Suraksha i18n discipline](suraksha-i18n.md) — all user-facing strings must go through t(); hardcoded English in .tsx files will fail architect review.
 - [Suraksha TS router casts](suraksha-router-casts.md) — Expo Router typed-routes may not include dynamically added screens; cast with `as never` or `as string` at call sites to silence TS errors.
 - [Expo web + react-native-maps](expo-native-maps-web.md) — never import react-native-maps at route level; use NativeMap.tsx + NativeMap.web.tsx component wrapper so Metro resolves platform-correctly.
-- [Expo CI startup](expo-ci-startup.md) — prepend `fuser -k $PORT/tcp 2>/dev/null; CI=1` to dev script; --non-interactive flag is rejected by this Expo version, CI=1 is the correct non-interactive mode.
+- [Expo CI startup](expo-ci-startup.md) — do NOT use CI=1 (causes 500 on Expo Go); use `</dev/null` for stdin instead; `--offline` conflicts with `--localhost` so cannot be combined.
 - [Supabase key naming](supabase-key-naming.md) — EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY must be set as a Replit secret with the real anon key from Supabase dashboard; static .replit value was confirmed invalid. API routes use SUPABASE_URL (added as shared env alias). Sakhi AI uses sakhi.ts (Replit OpenAI integration) at /sakhi/chat — no SUPABASE_SERVICE_ROLE_KEY needed.
 - [Suraksha CommunityReportType expansion](suraksha-report-types.md) — extending the union in types/database.ts requires updating TYPE_META in my-reports.tsx AND adding new locale keys in en.ts+hi.ts simultaneously; TS will error if TYPE_META Record is incomplete.
 - [Suraksha i18n no-fallback](suraksha-i18n-discipline.md) — hi.ts/bn.ts do NOT auto-fallback to en.ts for missing keys; t() returns the raw key string. Always add new keys to ALL locale files.
