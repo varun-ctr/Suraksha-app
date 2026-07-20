@@ -30,6 +30,7 @@ import {
 import { Card, SectionTitle } from "@/components/ui";
 import {
   ACCENTS,
+  isPremiumTheme,
   THEME_LABELS,
   THEME_ORDER,
   type ThemeKey,
@@ -411,8 +412,15 @@ export default function ProfileScreen() {
           <View style={{ flexDirection: "row", gap: 12, marginBottom: 6 }}>
             {THEME_ORDER.map((k: ThemeKey) => {
               const active = themeKey === k;
+              // Premium colour themes are locked for free users — tapping one
+              // opens the paywall instead of applying it. Purely cosmetic gating.
+              const locked = isPremiumTheme(k) && !profile.premium;
               return (
-                <Pressable key={k} onPress={() => setThemeKey(k)} style={{ alignItems: "center", gap: 6 }}>
+                <Pressable
+                  key={k}
+                  onPress={() => (locked ? router.push("/premium") : setThemeKey(k))}
+                  style={{ alignItems: "center", gap: 6 }}
+                >
                   <View
                     style={{
                       width: 46,
@@ -423,9 +431,11 @@ export default function ProfileScreen() {
                       borderColor: c.text,
                       alignItems: "center",
                       justifyContent: "center",
+                      opacity: locked ? 0.55 : 1,
                     }}
                   >
                     {active && <Icon name="check" size={18} color="#fff" />}
+                    {locked && !active && <Icon name="crown" size={16} color="#fff" />}
                   </View>
                   <Text style={{ fontSize: 11, color: c.textMuted, fontFamily: "Inter_500Medium" }}>
                     {pick(THEME_LABELS[k])}

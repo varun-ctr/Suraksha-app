@@ -28,7 +28,9 @@ const PLAIN_KEY = "suraksha.app.v2";
 /** Keys written by older builds; cleared on reset so "delete all" is truthful. */
 const LEGACY_PLAIN_KEYS = ["suraksha.app.v1"];
 
-const MAX_CONTACTS = 1;
+// A safety app must let a user reach more than one person in an emergency.
+// This is the same cap for everyone — trusted contacts are never paywalled.
+const MAX_CONTACTS = 5;
 
 export interface Contact {
   id: string;
