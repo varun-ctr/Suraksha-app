@@ -9,6 +9,19 @@ const REQUIRED_VARS = [
   "EXPO_PUBLIC_FIREBASE_APP_ID",
 ] as const;
 
+// Not required to boot, but a production/store build should have them. Missing
+// ones degrade a specific feature (no crash reporting, blank native map, no
+// purchases) rather than breaking the app — so these WARN, never block, so an
+// in-emergency user is never locked out over a misconfigured release.
+const RECOMMENDED_VARS = [
+  "EXPO_PUBLIC_SENTRY_DSN",
+  "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY",
+  "EXPO_PUBLIC_REVENUECAT_IOS_KEY",
+  "EXPO_PUBLIC_REVENUECAT_ANDROID_KEY",
+] as const;
+
+const MAPS_PLACEHOLDER = "YOUR_GOOGLE_MAPS_API_KEY";
+
 export type ConfigKey = (typeof REQUIRED_VARS)[number];
 
 export interface ConfigValidation {
@@ -26,6 +39,19 @@ export function validateConfig(): ConfigValidation {
       "[Suraksha] Missing required environment variables:\n" +
         missing.map((k) => `  • ${k}`).join("\n"),
     );
+  }
+
+  if (__DEV__) {
+    const warnings = RECOMMENDED_VARS.filter((key) => !process.env[key]?.trim()) as string[];
+    if (process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() === MAPS_PLACEHOLDER) {
+      warnings.push("EXPO_PUBLIC_GOOGLE_MAPS_API_KEY (still the placeholder value)");
+    }
+    if (warnings.length > 0) {
+      console.warn(
+        "[Suraksha] Recommended config not set (feature will degrade, app still runs):\n" +
+          warnings.map((k) => `  • ${k}`).join("\n"),
+      );
+    }
   }
 
   return { ok: missing.length === 0, missing };

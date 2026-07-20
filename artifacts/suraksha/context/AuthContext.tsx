@@ -25,6 +25,7 @@ import {
   onFirebaseAuthStateChanged,
   getCurrentFirebaseUser,
 } from "@/lib/firebaseAuth";
+import { initPurchases } from "@/lib/purchases";
 
 interface AuthContextValue {
   user: User | null;
@@ -64,6 +65,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       void signInAnonymouslyFB();
     }
   }, [loading, user]);
+
+  // Associate RevenueCat's app_user_id with the Firebase uid on every sign-in
+  // so purchases/entitlements track the user and match the backend webhook's
+  // app_user_id (= profiles.id). No-op in Expo Go / web / without an SDK key.
+  useEffect(() => {
+    if (user) void initPurchases(user.uid);
+  }, [user]);
 
   useEffect(() => {
     isAppleSignInAvailable().then(setAppleAvailable);

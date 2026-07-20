@@ -4,6 +4,7 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { getAllowedOrigins } from "./lib/env";
+import { captureError } from "./lib/errorReporting";
 
 const app: Express = express();
 
@@ -93,6 +94,7 @@ app.use((req: Request, res: Response) => {
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
   req.log?.error?.({ err }, "Unhandled error");
+  captureError(err, { path: req.path, method: req.method });
   if (res.headersSent) return;
   const detail = err instanceof Error ? err.message : undefined;
   const message = process.env.NODE_ENV === "production" ? "Internal error" : (detail ?? "Internal error");

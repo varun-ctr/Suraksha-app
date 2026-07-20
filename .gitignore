@@ -27,6 +27,11 @@ node_modules
 !.vscode/launch.json
 !.vscode/extensions.json
 
+# secrets — never commit real env files (the documented .env.example is kept)
+.env
+.env.*
+!.env.example
+
 # misc
 /.sass-cache
 /connect.lock

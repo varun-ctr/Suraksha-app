@@ -1,9 +1,17 @@
+import { timingSafeEqual } from "crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { getServiceSupabase } from "../lib/supabaseAdmin";
 
 const router: IRouter = Router();
 
 const REVENUECAT_WEBHOOK_SECRET = process.env.REVENUECAT_WEBHOOK_SECRET;
+
+/** Constant-time secret comparison — avoids leaking the secret via timing. */
+function secretMatches(provided: string, expected: string): boolean {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 const PURCHASE_EVENTS = new Set([
   "INITIAL_PURCHASE",
@@ -20,7 +28,7 @@ router.post("/revenuecat-webhook", async (req: Request, res: Response) => {
 
   const authHeader = req.headers["authorization"] ?? "";
   const provided = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
-  if (provided !== REVENUECAT_WEBHOOK_SECRET) {
+  if (!secretMatches(provided, REVENUECAT_WEBHOOK_SECRET)) {
     res.status(401).json({ error: "unauthorized" });
     return;
   }

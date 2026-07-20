@@ -49,6 +49,14 @@ export interface Palette extends AccentSet {
 
 export const THEME_ORDER: ThemeKey[] = ["blue", "purple", "rose", "ocean", "sunset"];
 
+// Colour themes available on the free tier; the rest are unlocked by Premium.
+// (Cosmetic only — never gates any safety feature.)
+export const FREE_THEMES: ThemeKey[] = ["blue", "purple"];
+
+export function isPremiumTheme(k: ThemeKey): boolean {
+  return !FREE_THEMES.includes(k);
+}
+
 export const ACCENTS: Record<ThemeKey, AccentSet> = {
   blue: {
     primary: "#2563EB",

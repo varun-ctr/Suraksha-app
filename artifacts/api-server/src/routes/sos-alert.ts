@@ -1,9 +1,12 @@
 import { Router, type Request, type Response } from "express";
 import * as https from "https";
+import { SendSosAlertBody } from "@workspace/api-zod";
 import { getBearerToken, verifyFirebaseToken } from "../lib/firebaseAdmin";
 import { getServiceSupabase } from "../lib/supabaseAdmin";
 import { checkRateLimit } from "../lib/rateLimit";
+import { normalizePhone } from "../lib/phone";
 import { logger } from "../lib/logger";
+import { captureAlert } from "../lib/errorReporting";
 
 const router = Router();
 
@@ -11,18 +14,6 @@ const router = Router();
 // retry per alert, see lib/sosAlert.ts) — this caps scripted abuse, not
 // legitimate repeated real emergencies.
 const RATE_LIMIT = { windowSeconds: 60 * 60, limit: 20 };
-
-// ── Phone normalisation ───────────────────────────────────────────────────────
-// Twilio requires E.164 format (+CountryCode…). Indian mobile numbers stored
-// without a country code (10 digits, starting 6-9) get the +91 prefix added.
-function normalizePhone(phone: string): string {
-  const trimmed = phone.trim();
-  if (trimmed.startsWith("+")) return trimmed;          // already E.164
-  const digits = trimmed.replace(/\D/g, "");
-  if (digits.length === 10 && /^[6-9]/.test(digits)) return `+91${digits}`;
-  if (digits.length === 12 && digits.startsWith("91")) return `+${digits}`;
-  return trimmed;                                        // unknown format — pass as-is
-}
 
 // ── Twilio SMS helper ─────────────────────────────────────────────────────────
 
@@ -91,19 +82,6 @@ router.get("/sos/config", (_req: Request, res: Response) => {
 
 // ── POST /sos/alert — send emergency SMS to all trusted contacts ─────────────
 
-interface ContactInput {
-  id: string;
-  name: string;
-  phone: string;
-}
-
-interface AlertRequestBody {
-  contacts: ContactInput[];
-  message: string;
-  /** Client-generated key, stable across its own retries of the same alert. */
-  idempotencyKey?: string;
-}
-
 interface AlertResult {
   configured: boolean;
   results: { id: string; success: boolean; error?: string }[];
@@ -130,7 +108,8 @@ async function getCachedAlertResult(key: string): Promise<AlertResult | null> {
     .eq("key", key)
     .maybeSingle();
   if (error) {
-    logger.warn({ err: error }, "Idempotency cache read failed — proceeding without dedup");
+    // Dedup is off for this request — a client retry could double-send SOS SMS.
+    captureAlert("sos_idempotency_read_failed", { err: error });
     return null;
   }
   if (!data || new Date(data.expires_at).getTime() <= Date.now()) return null;
@@ -145,7 +124,7 @@ async function cacheAlertResult(key: string, result: AlertResult): Promise<void>
   const { error } = await supabase
     .from("sos_idempotency_cache")
     .upsert({ key, result, expires_at: expiresAt });
-  if (error) logger.warn({ err: error }, "Idempotency cache write failed");
+  if (error) captureAlert("sos_idempotency_write_failed", { err: error });
 }
 
 router.post("/sos/alert", async (req: Request, res: Response) => {
@@ -162,14 +141,16 @@ router.post("/sos/alert", async (req: Request, res: Response) => {
     return res.status(429).json({ error: "rate_limited", message: "Too many SOS alerts — please try again shortly." });
   }
 
+  // Validate + bound the request: each contact's phone is fanned out to Twilio,
+  // so an unbounded/malformed body would let an authenticated caller send
+  // arbitrary text to unlimited arbitrary numbers on the account.
+  const parsed = SendSosAlertBody.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid request", details: parsed.error.flatten() });
+  }
+  const { contacts, message, idempotencyKey } = parsed.data;
+
   try {
-    const body = req.body as AlertRequestBody;
-    const { contacts, message, idempotencyKey } = body;
-
-    if (!Array.isArray(contacts) || !message) {
-      return res.status(400).json({ error: "contacts[] and message are required" });
-    }
-
     if (idempotencyKey) {
       const cached = await getCachedAlertResult(idempotencyKey);
       if (cached) {
@@ -206,15 +187,26 @@ router.post("/sos/alert", async (req: Request, res: Response) => {
     if (idempotencyKey) await cacheAlertResult(idempotencyKey, result);
 
     const successCount = results.filter((r) => r.success).length;
+    const failCount = contacts.length - successCount;
     logger.info(
-      { uid: user.uid, contactCount: contacts.length, successCount, failCount: contacts.length - successCount },
+      { uid: user.uid, contactCount: contacts.length, successCount, failCount },
       "SOS alert dispatched",
     );
+    // An emergency alert that reached nobody (or only some) is exactly the
+    // failure an operator must see — the SMS pipeline is the last resort.
+    if (failCount > 0) {
+      captureAlert("sos_delivery_failure", {
+        uid: user.uid,
+        contactCount: contacts.length,
+        successCount,
+        failCount,
+        errors: results.filter((r) => !r.success).map((r) => r.error),
+      });
+    }
     return res.json(result);
   } catch (err) {
     logger.error({ err, uid: user.uid }, "SOS alert failed unexpectedly");
-    const msg = err instanceof Error ? err.message : "Internal error";
-    return res.status(500).json({ error: msg });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 

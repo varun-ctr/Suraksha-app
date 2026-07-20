@@ -7,15 +7,30 @@ const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL?.trim() || "https://examp
 const googleServicesPath = path.resolve(__dirname, "google-services.json");
 const googleServicesFile = process.env.GOOGLE_SERVICES_JSON ?? (fs.existsSync(googleServicesPath) ? "./google-services.json" : undefined);
 
+// The EAS project id ties this app to an Expo project for build/update/submit.
+// `eas init` writes the real id here (or set EXPO_PUBLIC_EAS_PROJECT_ID). Until
+// then it stays a placeholder and `updates`/`runtimeVersion` below are inert.
+const easProjectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID?.trim() || "TODO_EAS_PROJECT_ID";
+// The Expo account/org that owns the project — set by `eas init`.
+const easOwner = process.env.EXPO_PUBLIC_EAS_OWNER?.trim() || undefined;
+
 const config: ExpoConfig = {
   name: "Sakhi Suraksha",
   slug: "sakhisuraksha",
   version: "1.0.0",
+  owner: easOwner,
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: "sakhisuraksha",
   userInterfaceStyle: "automatic",
   newArchEnabled: true,
+  // OTA JS-only updates via EAS Update. runtimeVersion is tied to the native
+  // app version so a JS update only lands on builds with a compatible binary.
+  runtimeVersion: { policy: "appVersion" },
+  updates: {
+    url: `https://u.expo.dev/${easProjectId}`,
+    fallbackToCacheTimeout: 0,
+  },
   splash: {
     image: "./assets/images/icon.png",
     resizeMode: "contain",
@@ -24,9 +39,13 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: false,
     bundleIdentifier: "com.sakhisuraksha.app",
+    buildNumber: "1",
     usesAppleSignIn: true,
     config: {
       googleMapsApiKey: mapsKey,
+      // No custom encryption beyond standard HTTPS — declaring this skips the
+      // App Store Connect export-compliance prompt on every submission.
+      usesNonExemptEncryption: false,
     },
     // NS*UsageDescription strings are supplied via the expo-location /
     // expo-image-picker / expo-contacts plugin config below, which writes
@@ -119,6 +138,9 @@ const config: ExpoConfig = {
   extra: {
     googleMapsApiKey: mapsKey,
     backendUrl,
+    eas: {
+      projectId: easProjectId,
+    },
   },
 };
 

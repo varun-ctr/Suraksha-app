@@ -2,6 +2,11 @@ import type { Server } from "http";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { parsePort } from "./lib/env";
+import { initErrorReporting, captureError, flushErrorReporting } from "./lib/errorReporting";
+
+// Enable error reporting as early as possible so even a crash during startup is
+// captured. No-op unless SENTRY_DSN is set (always logs a greppable alert).
+initErrorReporting();
 
 // Defense in depth beyond the Express error middleware in app.ts: this
 // catches anything happening entirely outside a request's lifecycle (a
@@ -20,12 +25,15 @@ let server: Server | undefined;
 let shuttingDown = false;
 
 function crashExit(message: string, err: unknown): void {
-  logger.error({ err }, message);
+  captureError(err, { fatal: true, message });
   if (shuttingDown) return;
   shuttingDown = true;
 
+  // Best-effort flush of buffered error events before the process dies.
+  const exit = () => void flushErrorReporting().finally(() => process.exit(1));
+
   if (!server) {
-    process.exit(1);
+    exit();
     return;
   }
 
@@ -35,7 +43,7 @@ function crashExit(message: string, err: unknown): void {
   }, SHUTDOWN_GRACE_MS);
   forceExit.unref();
 
-  server.close(() => process.exit(1));
+  server.close(exit);
 }
 
 process.on("unhandledRejection", (reason) => {
