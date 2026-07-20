@@ -56,7 +56,7 @@ async function sendSakhiMessage(
   const { response } = await apiFetch("/sakhi/chat", {
     method: "POST",
     body: JSON.stringify({ messages, language }),
-    timeoutMs: 15_000,
+    timeoutMs: 45_000,
   });
 
   if (!response) return { ok: false, reason: "network" };

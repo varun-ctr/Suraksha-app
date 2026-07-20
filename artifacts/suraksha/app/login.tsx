@@ -16,14 +16,76 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { FontAwesome } from "@expo/vector-icons";
+
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { withAlpha } from "@/constants/colors";
 import { requestEmailOtp, verifyEmailOtp } from "@/lib/emailOtp";
 import { db } from "@/lib/supabaseClient";
+import type { OAuthCredential } from "@/lib/firebaseAuth";
 
-type Mode = "signin" | "signup" | "forgot" | "verify" | "success" | "otp-request" | "otp-verify";
+function SocialDivider({ color }: { color: string }) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 16, gap: 10 }}>
+      <View style={{ flex: 1, height: 1, backgroundColor: color }} />
+      <Text style={{ fontSize: 11, color, fontFamily: "Inter_500Medium", letterSpacing: 0.6 }}>OR CONTINUE WITH</Text>
+      <View style={{ flex: 1, height: 1, backgroundColor: color }} />
+    </View>
+  );
+}
+
+function SocialButton({
+  label,
+  faIcon,
+  iconColor,
+  onPress,
+  loading,
+  bg,
+  textColor,
+  borderColor,
+}: {
+  label: string;
+  faIcon: React.ComponentProps<typeof FontAwesome>["name"];
+  iconColor: string;
+  onPress: () => void;
+  loading: boolean;
+  bg: string;
+  textColor: string;
+  borderColor: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={loading}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 10,
+        backgroundColor: bg,
+        borderWidth: 1.5,
+        borderColor,
+        borderRadius: 14,
+        paddingVertical: 13,
+        marginBottom: 10,
+        opacity: pressed || loading ? 0.8 : 1,
+      })}
+    >
+      {loading
+        ? <ActivityIndicator size="small" color={textColor} />
+        : (
+          <>
+            <FontAwesome name={faIcon} size={19} color={iconColor} />
+            <Text style={{ fontSize: 15, fontFamily: "Inter_600SemiBold", color: textColor }}>{label}</Text>
+          </>
+        )}
+    </Pressable>
+  );
+}
+
+type Mode = "signin" | "signup" | "forgot" | "verify" | "success" | "otp-request" | "otp-verify" | "link-accounts";
 
 function SuccessView({ email, onDone }: { email: string; onDone: () => void }) {
   const { c } = useTheme();
@@ -308,13 +370,20 @@ export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { c } = useTheme();
-  const { signIn, signUp, resetPassword, resendVerification, reloadUser, user, signInWithCustomToken } = useAuth();
+  const { signIn, signUp, resetPassword, resendVerification, reloadUser, user, signInWithCustomToken, signInWithGoogle, signInWithApple, linkPendingCredential, appleAvailable } = useAuth();
 
   const [mode,    setMode]    = useState<Mode>("signin");
   const [email,   setEmail]   = useState("");
   const [pass,    setPass]    = useState("");
   const [pass2,   setPass2]   = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleLoading,  setAppleLoading]  = useState(false);
+  const [linkLoading,   setLinkLoading]   = useState(false);
+  const [linkEmail,     setLinkEmail]     = useState("");
+  const [linkPass,      setLinkPass]      = useState("");
+  const [linkProvider,  setLinkProvider]  = useState<"google" | "apple">("google");
+  const [linkCredential, setLinkCredential] = useState<OAuthCredential | null>(null);
   const [error,   setError]   = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showPass,  setShowPass]  = useState(false);
@@ -413,6 +482,55 @@ export default function LoginScreen() {
     setOtpMsg(result.ok ? "Code sent! Check your inbox." : null);
     if (!result.ok) setOtpError(result.error);
   }, [otpEmail]);
+
+  const handleGoogleSignIn = useCallback(async () => {
+    setGoogleLoading(true);
+    setError(null);
+    const result = await signInWithGoogle();
+    setGoogleLoading(false);
+    if (result.cancelled) return;
+    if (result.needsLink) {
+      setLinkEmail(result.needsLink.email);
+      setLinkCredential(result.needsLink.pendingCredential);
+      setLinkProvider("google");
+      setLinkPass("");
+      animateMode("link-accounts");
+      return;
+    }
+    if (result.error) { setError(result.error); return; }
+    animateMode("success");
+  }, [signInWithGoogle]);
+
+  const handleAppleSignIn = useCallback(async () => {
+    setAppleLoading(true);
+    setError(null);
+    const result = await signInWithApple();
+    setAppleLoading(false);
+    if (result.cancelled) return;
+    if (result.needsLink) {
+      setLinkEmail(result.needsLink.email);
+      setLinkCredential(result.needsLink.pendingCredential);
+      setLinkProvider("apple");
+      setLinkPass("");
+      animateMode("link-accounts");
+      return;
+    }
+    if (result.error) { setError(result.error); return; }
+    animateMode("success");
+  }, [signInWithApple]);
+
+  const handleLinkAccounts = useCallback(async () => {
+    if (!linkCredential) return;
+    if (linkPass.length < 6) { setError("Enter your existing password (6+ characters)."); return; }
+    setError(null);
+    setLinkLoading(true);
+    const result = await linkPendingCredential(linkEmail, linkPass, linkCredential);
+    setLinkLoading(false);
+    if (result.error) { setError(result.error); return; }
+    setEmail(linkEmail);
+    setLinkCredential(null);
+    animateMode("success");
+  }, [linkCredential, linkEmail, linkPass, linkPendingCredential]);
 
   const handleVerifyOtp = useCallback(async () => {
     const e = otpEmail.trim().toLowerCase();
@@ -531,6 +649,71 @@ export default function LoginScreen() {
                 error={otpError}
                 onBack={() => { setOtpError(null); animateMode("signin"); }}
               />
+            )}
+
+            {mode === "link-accounts" && (
+              <View>
+                <View style={styles.cardHeader}>
+                  <View style={[styles.cardIconWrap, { backgroundColor: withAlpha(c.warning, 0.15) }]}>
+                    <Icon name="lock" size={20} color={c.warning} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.cardTitle, { color: c.text }]}>Link your accounts</Text>
+                    <Text style={[styles.cardSub, { color: c.textMuted }]}>
+                      An account already exists for{"\n"}
+                      <Text style={{ color: c.primary, fontFamily: "Inter_700Bold" }}>{linkEmail}</Text>
+                      {"\n\n"}Enter your password to connect your{" "}
+                      {linkProvider === "google" ? "Google" : "Apple"} account and sign in.
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={[styles.fieldLabel, { color: c.textMuted }]}>Password</Text>
+                <View style={[styles.inputWrap, { borderColor: c.border, backgroundColor: c.inputBg }]}>
+                  <View style={[styles.inputIcon, { borderRightColor: c.border }]}>
+                    <Icon name="lock" size={15} color={c.textFaint} />
+                  </View>
+                  <TextInput
+                    value={linkPass}
+                    onChangeText={(v) => { setLinkPass(v); setError(null); }}
+                    placeholder="Your existing password"
+                    placeholderTextColor={c.textFaint}
+                    secureTextEntry
+                    style={[styles.fieldInput, { color: c.text }]}
+                    returnKeyType="done"
+                    onSubmitEditing={handleLinkAccounts}
+                    autoFocus
+                  />
+                </View>
+
+                {error && (
+                  <View style={[styles.errorRow, { backgroundColor: withAlpha(c.danger, 0.1), borderColor: withAlpha(c.danger, 0.3) }]}>
+                    <Icon name="info" size={13} color={c.danger} />
+                    <Text style={[styles.errorText, { color: c.danger }]}>{error}</Text>
+                  </View>
+                )}
+
+                <Pressable
+                  onPress={handleLinkAccounts}
+                  disabled={linkLoading || linkPass.length < 6}
+                  style={({ pressed }) => ({ opacity: pressed || linkLoading || linkPass.length < 6 ? 0.85 : 1 })}
+                >
+                  <LinearGradient colors={[c.primary, c.primaryDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.primaryBtn, { shadowColor: c.primary }]}>
+                    {linkLoading ? <ActivityIndicator color={c.onColor} /> : (
+                      <>
+                        <FontAwesome name={linkProvider === "google" ? "google" : "apple"} size={16} color={c.onColor} />
+                        <Text style={[styles.primaryBtnText, { color: c.onColor }]}>
+                          Link {linkProvider === "google" ? "Google" : "Apple"} & Sign In
+                        </Text>
+                      </>
+                    )}
+                  </LinearGradient>
+                </Pressable>
+
+                <Pressable onPress={() => { setError(null); animateMode("signin"); }} style={styles.ghostBtn}>
+                  <Text style={[styles.ghostBtnText, { color: c.textMuted }]}>Use a different sign-in method</Text>
+                </Pressable>
+              </View>
             )}
 
             {mode === "otp-verify" && (
@@ -693,6 +876,35 @@ export default function LoginScreen() {
                     <Text style={[styles.ghostBtnText, { color: c.textMuted }]}>Back to sign in</Text>
                   </Pressable>
                 )}
+
+                {(mode === "signin" || mode === "signup") && (
+                  <>
+                    <SocialDivider color={c.border} />
+                    <SocialButton
+                      label="Continue with Google"
+                      faIcon="google"
+                      iconColor="#4285F4"
+                      onPress={handleGoogleSignIn}
+                      loading={googleLoading}
+                      bg={c.card}
+                      textColor={c.text}
+                      borderColor={c.border}
+                    />
+                    {appleAvailable && (
+                      <SocialButton
+                        label="Continue with Apple"
+                        faIcon="apple"
+                        iconColor="#fff"
+                        onPress={handleAppleSignIn}
+                        loading={appleLoading}
+                        bg="#000"
+                        textColor="#fff"
+                        borderColor="#000"
+                      />
+                    )}
+                  </>
+                )}
+
                 {mode !== "forgot" && (
                   <Pressable onPress={handleSkip} style={[styles.ghostBtn, { marginTop: 4 }]}>
                     <Text style={[styles.ghostBtnText, { color: c.textMuted, fontSize: 12.5 }]}>Maybe later — continue without saving</Text>
