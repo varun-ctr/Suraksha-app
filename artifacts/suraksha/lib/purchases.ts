@@ -1,12 +1,9 @@
 /**
  * RevenueCat in-app purchases wrapper.
  *
- * react-native-purchases' native module is NOT present in Expo Go or on web,
- * so every function here is guarded by `isPurchasesAvailable()` and degrades to
- * a no-op / "unavailable" result rather than throwing — mirroring the Expo-Go
- * guard in `app/(tabs)/map.tsx` and the graceful-failure style of
- * `lib/notifications.ts`. Importing the SDK is safe even in Expo Go: it only
- * constructs its NativeEventEmitter when the native module actually exists.
+ * react-native-purchases supports Expo Go (Preview API Mode) and web (Browser
+ * Mode) via the test store key, so `isPurchasesAvailable()` returns true in
+ * those environments when EXPO_PUBLIC_REVENUECAT_TEST_API_KEY is set.
  *
  * The RevenueCat `app_user_id` is set to the Firebase uid (via `logIn`) so it
  * matches `profiles.id` — the key the backend webhook
@@ -22,20 +19,25 @@ import Purchases, {
 } from "react-native-purchases";
 
 const IS_EXPO_GO = Constants.executionEnvironment === "storeClient";
+const IS_DEV = typeof __DEV__ !== "undefined" && __DEV__;
 
 /** The entitlement identifier configured in the RevenueCat dashboard. */
 const ENTITLEMENT_ID = "premium";
 
-const iosKey = process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY?.trim();
-const androidKey = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY?.trim();
+const testKey = process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY?.trim();
+const iosKey = process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY?.trim();
+const androidKey = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY?.trim();
 
 function platformKey(): string | undefined {
-  return Platform.OS === "ios" ? iosKey : Platform.OS === "android" ? androidKey : undefined;
+  // Dev build, Expo Go, or web all use the test store key
+  if (IS_DEV || IS_EXPO_GO || Platform.OS === "web") return testKey;
+  if (Platform.OS === "ios") return iosKey;
+  if (Platform.OS === "android") return androidKey;
+  return testKey;
 }
 
-/** True only on a native build (not Expo Go, not web) with an SDK key configured. */
+/** True when a valid API key exists for the current platform/environment. */
 export function isPurchasesAvailable(): boolean {
-  if (Platform.OS === "web" || IS_EXPO_GO) return false;
   return !!platformKey();
 }
 
@@ -46,12 +48,11 @@ let configured = false;
  * on every sign-in — subsequent calls just re-`logIn` the (possibly new) uid.
  */
 export async function initPurchases(appUserId: string): Promise<void> {
-  if (!isPurchasesAvailable()) return;
   const apiKey = platformKey();
   if (!apiKey) return;
   try {
     if (!configured) {
-      Purchases.setLogLevel(LOG_LEVEL.ERROR);
+      Purchases.setLogLevel(IS_DEV ? LOG_LEVEL.DEBUG : LOG_LEVEL.ERROR);
       Purchases.configure({ apiKey, appUserID: appUserId });
       configured = true;
     } else {

@@ -18,3 +18,4 @@
 - [OpenAI integration key fallback](openai-integration-fallback.md) — integrations-openai-ai-server expects AI_INTEGRATIONS_OPENAI_API_KEY; fall back to OPENAI_API_KEY so server starts when Replit integration is not provisioned
 - [Expo Go blank screen fix](expo-blank-screen.md) — two root causes: (1) font-load stall: add 4s useState timeout before `return null` guard; (2) Firebase auth state delay: add 6s clearTimeout fallback in Gate's authChecked useEffect
 - [Theme system — colors.ts](theme-system.md) — all design tokens live in constants/colors.ts (NOT theme.ts which does not exist); buildPalette(themeKey, isDark) returns Palette; withAlpha(hex,alpha) for soft variants; onboarding.tsx was the only screen with hardcoded colors — fixed.
+- [RevenueCat connectors proxy](revenuecat-connector-proxy.md) — proxyFetch receives a Request object (not string); extract .url, read body via .text(), forward Content-Type for POSTs; test key used on web/Expo Go/__DEV__.
