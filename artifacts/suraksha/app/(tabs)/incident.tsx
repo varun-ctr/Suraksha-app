@@ -158,7 +158,8 @@ export default function IncidentScreen() {
         const token = await user.getIdToken();
         if (token) headers["Authorization"] = `Bearer ${token}`;
       } catch { /* no token */ }
-      const res = await fetch(`${backendUrl}/community-reports/mine?user_id=${encodeURIComponent(user.uid)}`, { headers });
+      // The backend derives the owner from the verified token; no user_id query param.
+      const res = await fetch(`${backendUrl}/community-reports/mine`, { headers });
       if (res.ok) {
         const data = await res.json() as CommunityReportRow[];
         setMyReports(data);
@@ -248,7 +249,6 @@ export default function IncidentScreen() {
           lng: point.lng,
           address: address ?? null,
           description: descText || null,
-          user_id: user.uid,
           photo_url: photoUrl ?? null,
         }),
       });

@@ -18,7 +18,10 @@ CREATE TABLE IF NOT EXISTS emergency_contacts (
 
 ALTER TABLE emergency_contacts ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS users_manage_own_contacts
+-- PostgreSQL does not support `CREATE POLICY IF NOT EXISTS`; drop-then-create
+-- makes this idempotent and safe to re-run (consistent with community_reports.sql).
+DROP POLICY IF EXISTS users_manage_own_contacts ON emergency_contacts;
+CREATE POLICY users_manage_own_contacts
   ON emergency_contacts
   FOR ALL
   TO authenticated

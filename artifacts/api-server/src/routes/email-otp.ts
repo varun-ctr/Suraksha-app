@@ -1,4 +1,3 @@
-import { randomInt, createHash } from "crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { Resend } from "resend";
 import { getServiceSupabase } from "../lib/supabaseAdmin";
@@ -6,6 +5,15 @@ import { checkRateLimit } from "../lib/rateLimit";
 import { getOrCreateUserByEmail, mintCustomToken } from "../lib/firebaseAdmin";
 import { optionalEnv } from "../lib/env";
 import { logger } from "../lib/logger";
+import {
+  CODE_TTL_MS,
+  MAX_ATTEMPTS,
+  hashCode,
+  generateCode,
+  isValidEmail,
+  isValidCodeFormat,
+  isExpired,
+} from "../lib/otp";
 
 const router: IRouter = Router();
 
@@ -13,20 +21,8 @@ const RESEND_API_KEY = optionalEnv("RESEND_API_KEY");
 const RESEND_FROM_EMAIL = optionalEnv("RESEND_FROM_EMAIL") ?? "onboarding@resend.dev";
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
-const CODE_TTL_MS = 10 * 60 * 1000;
-const MAX_ATTEMPTS = 5;
 const REQUEST_RATE_LIMIT = { windowSeconds: 60 * 60, limit: 5 };
 const REQUEST_RATE_LIMIT_IP = { windowSeconds: 60 * 60, limit: 20 };
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function hashCode(code: string): string {
-  return createHash("sha256").update(code).digest("hex");
-}
-
-function generateCode(): string {
-  return String(randomInt(100000, 1000000));
-}
 
 // ---------------------------------------------------------------------------
 // POST /auth/email-otp/request
@@ -39,7 +35,7 @@ function generateCode(): string {
 router.post("/auth/email-otp/request", async (req: Request, res: Response) => {
   const { email: rawEmail } = req.body as { email?: string };
   const email = rawEmail?.trim().toLowerCase();
-  if (!email || !EMAIL_RE.test(email)) {
+  if (!email || !isValidEmail(email)) {
     res.status(400).json({ error: "invalid_email", message: "Enter a valid email address." });
     return;
   }
@@ -94,7 +90,7 @@ router.post("/auth/email-otp/request", async (req: Request, res: Response) => {
 router.post("/auth/email-otp/verify", async (req: Request, res: Response) => {
   const { email: rawEmail, code } = req.body as { email?: string; code?: string };
   const email = rawEmail?.trim().toLowerCase();
-  if (!email || !EMAIL_RE.test(email) || !code || !/^\d{6}$/.test(code)) {
+  if (!email || !isValidEmail(email) || !code || !isValidCodeFormat(code)) {
     res.status(400).json({ error: "invalid_request", message: "A valid email and 6-digit code are required." });
     return;
   }

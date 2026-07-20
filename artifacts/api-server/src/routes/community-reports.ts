@@ -18,25 +18,29 @@ function getSupabaseClient() {
 
 /** POST /community-reports — insert a new community safety report */
 router.post("/community-reports", async (req, res) => {
-  const token = getBearerToken(req);
-  const user = token ? await verifyFirebaseToken(token).catch(() => null) : null;
+  // Auth is REQUIRED. This route writes with the service-role key (RLS is
+  // bypassed), so the row owner must come from a verified token — never from
+  // client-supplied input — otherwise anyone could forge reports attributed
+  // to any user.
+  const user = await verifyFirebaseToken(getBearerToken(req)).catch(() => null);
+  if (!user) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
 
-  const { type, lat, lng, address, description, user_id, photo_url } = req.body as {
+  const { type, lat, lng, address, description, photo_url } = req.body as {
     type?: string;
     lat?: number;
     lng?: number;
     address?: string | null;
     description?: string | null;
-    user_id?: string;
     photo_url?: string | null;
   };
 
-  if (!type || lat == null || lng == null || !user_id) {
-    res.status(400).json({ error: "type, lat, lng, user_id are required" });
+  if (!type || lat == null || lng == null) {
+    res.status(400).json({ error: "type, lat, lng are required" });
     return;
   }
-
-  const uid = user?.uid ?? user_id;
 
   try {
     const supa = getSupabaseClient();
@@ -48,7 +52,7 @@ router.post("/community-reports", async (req, res) => {
         lng,
         address: address ?? null,
         description: description ?? null,
-        user_id: uid,
+        user_id: user.uid,
         photo_url: photo_url ?? null,
         moderation_status: "pending",
       })
@@ -57,7 +61,7 @@ router.post("/community-reports", async (req, res) => {
 
     if (error) {
       req.log.error({ err: error }, "Community report insert failed");
-      res.status(500).json({ error: error.message, code: error.code });
+      res.status(500).json({ error: "Internal server error" });
       return;
     }
 
@@ -68,11 +72,15 @@ router.post("/community-reports", async (req, res) => {
   }
 });
 
-/** GET /community-reports/mine?user_id=xxx — list reports for a user */
+/** GET /community-reports/mine — list the authenticated caller's own reports */
 router.get("/community-reports/mine", async (req, res) => {
-  const user_id = req.query.user_id as string | undefined;
-  if (!user_id) {
-    res.status(400).json({ error: "user_id query param is required" });
+  // Auth is REQUIRED and the owner is taken from the verified token only. A
+  // prior version read `user_id` from the query string with no auth, which let
+  // anyone read any user's report locations/PII (IDOR). Any `?user_id=` query
+  // param is now ignored.
+  const user = await verifyFirebaseToken(getBearerToken(req)).catch(() => null);
+  if (!user) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
@@ -81,12 +89,12 @@ router.get("/community-reports/mine", async (req, res) => {
     const { data, error } = await supa
       .from("community_reports")
       .select("*")
-      .eq("user_id", user_id)
+      .eq("user_id", user.uid)
       .order("created_at", { ascending: false });
 
     if (error) {
       req.log.error({ err: error }, "Community reports list failed");
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: "Internal server error" });
       return;
     }
 
