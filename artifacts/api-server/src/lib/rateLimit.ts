@@ -1,5 +1,5 @@
 import { getServiceSupabase } from "./supabaseAdmin";
-import { logger } from "./logger";
+import { captureAlert } from "./errorReporting";
 
 export interface RateLimitOptions {
   /** Fixed-window size in seconds. */
@@ -48,7 +48,9 @@ export async function checkRateLimit(
     const count = data as number;
     return { allowed: count <= limit, count };
   } catch (err) {
-    logger.warn({ err, route, uid }, "Rate limit check failed — failing open");
+    // Failing open means this route is momentarily unthrottled — an operator
+    // should know, since it removes cost/abuse protection during the outage.
+    captureAlert("rate_limit_fail_open", { err, route, uid });
     return { allowed: true, count: 0 };
   }
 }

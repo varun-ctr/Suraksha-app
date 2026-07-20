@@ -6,6 +6,7 @@ import { getServiceSupabase } from "../lib/supabaseAdmin";
 import { checkRateLimit } from "../lib/rateLimit";
 import { normalizePhone } from "../lib/phone";
 import { logger } from "../lib/logger";
+import { captureAlert } from "../lib/errorReporting";
 
 const router = Router();
 
@@ -107,7 +108,8 @@ async function getCachedAlertResult(key: string): Promise<AlertResult | null> {
     .eq("key", key)
     .maybeSingle();
   if (error) {
-    logger.warn({ err: error }, "Idempotency cache read failed — proceeding without dedup");
+    // Dedup is off for this request — a client retry could double-send SOS SMS.
+    captureAlert("sos_idempotency_read_failed", { err: error });
     return null;
   }
   if (!data || new Date(data.expires_at).getTime() <= Date.now()) return null;
@@ -122,7 +124,7 @@ async function cacheAlertResult(key: string, result: AlertResult): Promise<void>
   const { error } = await supabase
     .from("sos_idempotency_cache")
     .upsert({ key, result, expires_at: expiresAt });
-  if (error) logger.warn({ err: error }, "Idempotency cache write failed");
+  if (error) captureAlert("sos_idempotency_write_failed", { err: error });
 }
 
 router.post("/sos/alert", async (req: Request, res: Response) => {
@@ -185,10 +187,22 @@ router.post("/sos/alert", async (req: Request, res: Response) => {
     if (idempotencyKey) await cacheAlertResult(idempotencyKey, result);
 
     const successCount = results.filter((r) => r.success).length;
+    const failCount = contacts.length - successCount;
     logger.info(
-      { uid: user.uid, contactCount: contacts.length, successCount, failCount: contacts.length - successCount },
+      { uid: user.uid, contactCount: contacts.length, successCount, failCount },
       "SOS alert dispatched",
     );
+    // An emergency alert that reached nobody (or only some) is exactly the
+    // failure an operator must see — the SMS pipeline is the last resort.
+    if (failCount > 0) {
+      captureAlert("sos_delivery_failure", {
+        uid: user.uid,
+        contactCount: contacts.length,
+        successCount,
+        failCount,
+        errors: results.filter((r) => !r.success).map((r) => r.error),
+      });
+    }
     return res.json(result);
   } catch (err) {
     logger.error({ err, uid: user.uid }, "SOS alert failed unexpectedly");
