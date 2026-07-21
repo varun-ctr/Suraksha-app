@@ -3,11 +3,11 @@ import React, { useRef } from "react";
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Icon } from "@/components/Icon";
-import { SakhiIcon } from "@/components/SakhiIcon";
-import type { IconName } from "@/constants/data";
-import { useI18n } from "@/context/LanguageContext";
-import { useTheme } from "@/context/ThemeContext";
+import { Icon } from "@/shared/components/Icon";
+import { SakhiIcon } from "@/features/community/components/SakhiIcon";
+import type { IconName } from "@/shared/utils/data";
+import { useI18n } from "@/features/settings/context/LanguageContext";
+import { useTheme } from "@/features/settings/context/ThemeContext";
 
 type TabBtnProps = {
   onPress?: ((...args: unknown[]) => void) | null;

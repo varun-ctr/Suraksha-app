@@ -1,14 +1,14 @@
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { BackHeader } from "@/components/Headers";
-import { Icon } from "@/components/Icon";
-import { withAlpha } from "@/constants/colors";
-import { HELPLINES } from "@/constants/data";
-import { useI18n } from "@/context/LanguageContext";
-import { useTheme } from "@/context/ThemeContext";
-import { useToast } from "@/context/ToastContext";
-import { callNumber } from "@/lib/native";
+import { BackHeader } from "@/shared/components/Headers";
+import { Icon } from "@/shared/components/Icon";
+import { withAlpha } from "@/shared/theme/colors";
+import { HELPLINES } from "@/shared/utils/data";
+import { useI18n } from "@/features/settings/context/LanguageContext";
+import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useToast } from "@/features/settings/context/ToastContext";
+import { callNumber } from "@/shared/utils/native";
 
 export default function HelplineScreen() {
   const { c } = useTheme();

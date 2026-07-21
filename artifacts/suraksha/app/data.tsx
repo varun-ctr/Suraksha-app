@@ -2,14 +2,14 @@ import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { BackHeader } from "@/components/Headers";
-import { Icon } from "@/components/Icon";
-import { withAlpha } from "@/constants/colors";
-import { PRIVACY_SECTIONS } from "@/constants/legal";
-import { useApp } from "@/context/AppContext";
-import { useI18n } from "@/context/LanguageContext";
-import { useTheme } from "@/context/ThemeContext";
-import { useToast } from "@/context/ToastContext";
+import { BackHeader } from "@/shared/components/Headers";
+import { Icon } from "@/shared/components/Icon";
+import { withAlpha } from "@/shared/theme/colors";
+import { PRIVACY_SECTIONS } from "@/shared/utils/legal";
+import { useApp } from "@/features/profile/context/AppContext";
+import { useI18n } from "@/features/settings/context/LanguageContext";
+import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useToast } from "@/features/settings/context/ToastContext";
 
 export default function DataScreen() {
   const { c } = useTheme();

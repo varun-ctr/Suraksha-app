@@ -1,9 +1,7 @@
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
-import React, { useRef, useState } from "react";
+import React from "react";
 import {
   Animated,
-  Easing,
   Pressable,
   StyleSheet,
   Text,
@@ -11,12 +9,11 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Icon } from "@/components/Icon";
-import { withAlpha } from "@/constants/colors";
-import type { IconName } from "@/constants/data";
-import { useTheme } from "@/context/ThemeContext";
-import { firebaseAuth } from "@/lib/firebase";
-import { db } from "@/lib/supabaseClient";
+import { Icon } from "@/shared/components/Icon";
+import { withAlpha } from "@/shared/theme/colors";
+import type { IconName } from "@/shared/utils/data";
+import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useWalkthroughScreen } from "@/features/profile/hooks/useWalkthroughScreen";
 
 interface Slide {
   icon: IconName;
@@ -72,43 +69,9 @@ function StepDots({ step }: { step: number }) {
 
 export default function Walkthrough() {
   const { c } = useTheme();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const [step, setStep] = useState(0);
-  const opacity = useRef(new Animated.Value(1)).current;
-  const slideY = useRef(new Animated.Value(0)).current;
-
-  const finish = async () => {
-    const uid = firebaseAuth.currentUser?.uid;
-    if (uid) {
-      try {
-        await db.profiles.upsert({ id: uid, walkthrough_seen: true });
-      } catch {
-        // best-effort — worst case the walkthrough shows again next login
-      }
-    }
-    router.replace("/(tabs)" as never);
-  };
-
-  const goTo = (next: number) => {
-    Animated.parallel([
-      Animated.timing(opacity, { toValue: 0, duration: 120, useNativeDriver: true }),
-      Animated.timing(slideY, { toValue: 20, duration: 120, useNativeDriver: true }),
-    ]).start(() => {
-      setStep(next);
-      slideY.setValue(-20);
-      Animated.parallel([
-        Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-        Animated.timing(slideY, { toValue: 0, duration: 200, easing: Easing.out(Easing.back(1.2)), useNativeDriver: true }),
-      ]).start();
-    });
-  };
-
-  const handleNext = () => {
-    if (step < SLIDES.length - 1) goTo(step + 1);
-    else void finish();
-  };
+  const { step, opacity, slideY, finish, handleNext } = useWalkthroughScreen(SLIDES.length);
 
   const slide = SLIDES[step]!;
   const isLast = step === SLIDES.length - 1;

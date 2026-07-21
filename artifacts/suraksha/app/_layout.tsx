@@ -14,21 +14,21 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import { ConfigErrorScreen } from "@/components/ConfigErrorScreen";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { AppProvider, useApp } from "@/context/AppContext";
-import { BookmarksProvider } from "@/context/BookmarksContext";
-import { LanguageProvider, useI18n } from "@/context/LanguageContext";
-import { SafetyProvider } from "@/context/SafetyContext";
-import { ThemeProvider, useTheme } from "@/context/ThemeContext";
-import { ToastProvider, useToast } from "@/context/ToastContext";
-import { AuthProvider } from "@/context/AuthContext";
-import { initFirebase } from "@/lib/firebase";
-import { onFirebaseAuthStateChanged } from "@/lib/firebaseAuth";
-import { registerForPushNotifications } from "@/lib/notifications";
-import { initSupabase } from "@/lib/supabaseClient";
-import { validateConfig } from "@/lib/config";
-import { initCrashReporting, reportError } from "@/lib/crashReporting";
+import { ConfigErrorScreen } from "@/shared/components/ConfigErrorScreen";
+import { ErrorBoundary } from "@/shared/components/ErrorBoundary";
+import { AppProvider, useApp } from "@/features/profile/context/AppContext";
+import { BookmarksProvider } from "@/features/community/context/BookmarksContext";
+import { LanguageProvider, useI18n } from "@/features/settings/context/LanguageContext";
+import { SafetyProvider } from "@/features/sos/context/SafetyContext";
+import { ThemeProvider, useTheme } from "@/features/settings/context/ThemeContext";
+import { ToastProvider, useToast } from "@/features/settings/context/ToastContext";
+import { AuthProvider } from "@/features/authentication/context/AuthContext";
+import { initFirebase } from "@/repositories/firebase/firebaseClient";
+import { onFirebaseAuthStateChanged } from "@/repositories/firebase/firebaseAuth";
+import { registerForPushNotifications } from "@/core/permissions/notifications";
+import { initSupabase } from "@/repositories/supabase/supabaseClient";
+import { validateConfig } from "@/core/config/config";
+import { initCrashReporting, reportError } from "@/core/analytics/crashReporting";
 
 const APP_CONFIG = validateConfig();
 

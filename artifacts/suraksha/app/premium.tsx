@@ -10,8 +10,7 @@
  * packages from the current offering and handles purchase + restore.
  */
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -22,28 +21,13 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { BackHeader } from "@/components/Headers";
-import { Icon } from "@/components/Icon";
-import { withAlpha } from "@/constants/colors";
-import { useApp } from "@/context/AppContext";
-import { useI18n } from "@/context/LanguageContext";
-import { useTheme } from "@/context/ThemeContext";
-import { useToast } from "@/context/ToastContext";
-import {
-  ENTITLEMENT_ID,
-  getAllOfferings,
-  getCustomerInfo,
-  hasPremiumEntitlement,
-  isPaywallUIAvailable,
-  isPurchasesAvailable,
-  presentCustomerCenter,
-  presentPaywall,
-  purchasePackage,
-  restorePurchases,
-  type CustomerInfo,
-  type PurchasesOffering,
-  type PurchasesPackage,
-} from "@/lib/purchases";
+import { BackHeader } from "@/shared/components/Headers";
+import { Icon } from "@/shared/components/Icon";
+import { withAlpha } from "@/shared/theme/colors";
+import { useI18n } from "@/features/settings/context/LanguageContext";
+import { useTheme } from "@/features/settings/context/ThemeContext";
+import { usePremiumScreen } from "@/features/premium/hooks/usePremiumScreen";
+import type { PurchasesPackage } from "@/features/premium/hooks/usePremiumScreen";
 
 // Features included in Suraksha Pro today (honest, no planned features)
 const INCLUDED: { en: string; hi: string }[] = [
@@ -58,116 +42,16 @@ const DURATION_LABEL: Record<string, { en: string; hi: string }> = {
   "$rc_weekly": { en: "/ week", hi: "/ सप्ताह" },
 };
 
-function usePremiumState() {
-  const { setProfile } = useApp();
-  const [loading, setLoading] = useState(true);
-  const [offerings, setOfferings] = useState<PurchasesOffering[]>([]);
-  const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
-  const mounted = useRef(true);
-
-  const reload = useCallback(async () => {
-    if (!isPurchasesAvailable()) { setLoading(false); return; }
-    setLoading(true);
-    const [info, offs] = await Promise.all([getCustomerInfo(), getAllOfferings()]);
-    if (!mounted.current) return;
-    setCustomerInfo(info);
-    setOfferings(offs);
-    if (hasPremiumEntitlement(info)) setProfile({ premium: true });
-    setLoading(false);
-  }, [setProfile]);
-
-  useEffect(() => {
-    mounted.current = true;
-    reload();
-    return () => { mounted.current = false; };
-  }, [reload]);
-
-  return { loading, offerings, customerInfo, reload };
-}
-
 export default function PremiumScreen() {
   const { c } = useTheme();
   const { t, pick } = useI18n();
-  const { profile, setProfile } = useApp();
-  const { showToast } = useToast();
   const insets = useSafeAreaInsets();
-  const router = useRouter();
 
-  const available = isPurchasesAvailable();
-  const nativePaywall = isPaywallUIAvailable();
-
-  const { loading, offerings, customerInfo, reload } = usePremiumState();
-
-  // Current offering — prefer "default", else first
-  const currentOffering =
-    offerings.find((o) => o.identifier === "default") ?? offerings[0] ?? null;
-  const packages = currentOffering?.availablePackages ?? [];
-
-  const isPro = hasPremiumEntitlement(customerInfo) || profile.premium;
-
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  useEffect(() => {
-    if (!selectedId && packages.length > 0) {
-      // Pre-select annual if available (best value), else first
-      const annual = packages.find((p) => p.packageType === "ANNUAL" || p.identifier === "$rc_annual");
-      setSelectedId(annual?.identifier ?? packages[0]?.identifier ?? null);
-    }
-  }, [packages, selectedId]);
-
-  const [busy, setBusy] = useState<null | "paywall" | "buy" | "restore" | "center">(null);
-
-  // ── Native paywall (iOS / Android) ──────────────────────────
-  const onShowNativePaywall = async () => {
-    if (busy) return;
-    setBusy("paywall");
-    const purchased = await presentPaywall(currentOffering ?? undefined);
-    setBusy(null);
-    if (purchased) {
-      await reload();
-      showToast(t("premium.purchaseSuccess"));
-      router.back();
-    }
-  };
-
-  // ── Inline purchase (web / Expo Go) ─────────────────────────
-  const onSubscribe = async () => {
-    const pkg = packages.find((p) => p.identifier === selectedId) ?? packages[0];
-    if (!pkg || busy) return;
-    setBusy("buy");
-    const res = await purchasePackage(pkg);
-    setBusy(null);
-    if (res.ok) {
-      if (res.premium) {
-        setProfile({ premium: true });
-        showToast(t("premium.purchaseSuccess"));
-        router.back();
-      }
-    } else if (!res.cancelled) {
-      showToast(t("premium.purchaseFailed"));
-    }
-  };
-
-  const onRestore = async () => {
-    if (busy) return;
-    setBusy("restore");
-    const res = await restorePurchases();
-    setBusy(null);
-    if (res.ok) {
-      setProfile({ premium: res.premium });
-      showToast(res.premium ? t("premium.restored") : t("premium.noPurchases"));
-      if (res.premium) router.back();
-    } else {
-      showToast(t("premium.purchaseFailed"));
-    }
-  };
-
-  const onCustomerCenter = async () => {
-    if (busy) return;
-    setBusy("center");
-    await presentCustomerCenter();
-    await reload(); // refresh after returning
-    setBusy(null);
-  };
+  const {
+    available, nativePaywall, loading, isPro,
+    packages, selectedId, setSelectedId, busy,
+    onShowNativePaywall, onSubscribe, onRestore, onCustomerCenter,
+  } = usePremiumScreen();
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>

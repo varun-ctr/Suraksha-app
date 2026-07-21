@@ -1,91 +1,26 @@
-import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import React from "react";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { BackHeader } from "@/components/Headers";
-import { Icon } from "@/components/Icon";
-import { useI18n } from "@/context/LanguageContext";
-import { useTheme } from "@/context/ThemeContext";
-import { useToast } from "@/context/ToastContext";
-import { fmtClock } from "@/lib/format";
+import { BackHeader } from "@/shared/components/Headers";
+import { Icon } from "@/shared/components/Icon";
+import { useI18n } from "@/features/settings/context/LanguageContext";
+import { useTheme } from "@/features/settings/context/ThemeContext";
+import { fmtClock } from "@/shared/utils/format";
+import { useFakeCallScreen } from "@/features/sos/hooks/useFakeCallScreen";
 
 const DELAYS = [5, 10, 30];
 
 export default function FakeCallScreen() {
   const { c } = useTheme();
   const { t } = useI18n();
-  const { showToast } = useToast();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const [name, setName] = useState("Mom");
-  const [delay, setDelay] = useState(10);
-  const [countdown, setCountdown] = useState<number | null>(null);
-  const [phase, setPhase] = useState<"form" | "ringing" | "connected">("form");
-  const [callSeconds, setCallSeconds] = useState(0);
-
-  const countdownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const ringTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const callTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const clearTimers = () => {
-    [countdownTimer, ringTimer, callTimer].forEach((ref) => {
-      if (ref.current) {
-        clearInterval(ref.current);
-        ref.current = null;
-      }
-    });
-  };
-
-  useEffect(() => () => clearTimers(), []);
-
-  const schedule = () => {
-    setCountdown(delay);
-    showToast(t("fake.scheduled"));
-    countdownTimer.current = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev === null) return null;
-        if (prev <= 1) {
-          if (countdownTimer.current) clearInterval(countdownTimer.current);
-          countdownTimer.current = null;
-          startRinging();
-          return null;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  };
-
-  const cancelSchedule = () => {
-    clearTimers();
-    setCountdown(null);
-    showToast(t("common.cancel"));
-  };
-
-  const startRinging = () => {
-    setPhase("ringing");
-    ringTimer.current = setInterval(() => {
-      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    }, 1500);
-  };
-
-  const accept = () => {
-    if (ringTimer.current) clearInterval(ringTimer.current);
-    ringTimer.current = null;
-    setPhase("connected");
-    setCallSeconds(0);
-    callTimer.current = setInterval(() => setCallSeconds((s) => s + 1), 1000);
-  };
-
-  const hangUp = () => {
-    clearTimers();
-    setPhase("form");
-    setCountdown(null);
-    setCallSeconds(0);
-  };
+  const {
+    name, setName, delay, setDelay, countdown, phase, callSeconds,
+    schedule, cancelSchedule, accept, hangUp,
+  } = useFakeCallScreen();
 
   if (phase === "ringing" || phase === "connected") {
     return (
