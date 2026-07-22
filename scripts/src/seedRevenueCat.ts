@@ -24,6 +24,7 @@ import {
   type Offering,
   type Package,
   type CreateProductData,
+  type Duration,
 } from "@replit/revenuecat-sdk";
 
 const PROJECT_NAME = "Suraksha";
@@ -158,7 +159,7 @@ async function seedRevenueCat() {
     storeIdentifier: string,
     displayName: string,
     title: string,
-    duration: string | null,
+    duration: Duration | null,
     isTestStore: boolean,
   ): Promise<Product> => {
     const existing = allProducts.items?.find(
@@ -217,9 +218,9 @@ async function seedRevenueCat() {
 
   for (const def of PRODUCTS) {
     console.log(`\nProcessing product: ${def.displayName} (${def.iosId})`);
-    const testProd = await ensureProduct(testApp, "Test Store", def.iosId, def.displayName, def.title, def.duration as string | null, true);
-    const iosProd = await ensureProduct(iosApp, "App Store", def.iosId, def.displayName, def.title, def.duration as string | null, false);
-    const androidProd = await ensureProduct(androidApp, "Play Store", def.androidId, def.displayName, def.title, def.duration as string | null, false);
+    const testProd = await ensureProduct(testApp, "Test Store", def.iosId, def.displayName, def.title, def.duration, true);
+    const iosProd = await ensureProduct(iosApp, "App Store", def.iosId, def.displayName, def.title, def.duration, false);
+    const androidProd = await ensureProduct(androidApp, "Play Store", def.androidId, def.displayName, def.title, def.duration, false);
 
     await addTestStorePrices(testProd.id, def.priceUsdMicros, def.priceInrMicros);
 
