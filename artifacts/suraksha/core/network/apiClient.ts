@@ -9,6 +9,10 @@
  * endpoint's response shape is different, so status-code/body handling
  * stays with the call site.
  */
+// Needs the Firebase auth client to attach the caller's ID token; not a
+// composition-root concern, but there's no domain-level indirection for
+// "get the current auth token" yet.
+// eslint-disable-next-line import/no-restricted-paths
 import { firebaseAuth } from "@/repositories/firebase/firebaseClient";
 import { getBackendUrl } from "@/core/config/env";
 

@@ -1,3 +1,6 @@
+import { logger } from "@/core/logger/logger";
+import { ValidationError } from "@/domain/errors";
+
 const REQUIRED_VARS = [
   "EXPO_PUBLIC_SUPABASE_URL",
   "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
@@ -35,7 +38,7 @@ export function validateConfig(): ConfigValidation {
   ) as ConfigKey[];
 
   if (__DEV__ && missing.length > 0) {
-    console.error(
+    logger.error(
       "[Suraksha] Missing required environment variables:\n" +
         missing.map((k) => `  • ${k}`).join("\n"),
     );
@@ -47,7 +50,7 @@ export function validateConfig(): ConfigValidation {
       warnings.push("EXPO_PUBLIC_GOOGLE_MAPS_API_KEY (still the placeholder value)");
     }
     if (warnings.length > 0) {
-      console.warn(
+      logger.warn(
         "[Suraksha] Recommended config not set (feature will degrade, app still runs):\n" +
           warnings.map((k) => `  • ${k}`).join("\n"),
       );
@@ -55,4 +58,25 @@ export function validateConfig(): ConfigValidation {
   }
 
   return { ok: missing.length === 0, missing };
+}
+
+/**
+ * Fail-fast variant of validateConfig() for contexts that should hard-stop
+ * rather than degrade gracefully — build/CI scripts, server-side tooling,
+ * or tests. Throws a ValidationError synchronously when required env vars
+ * are missing.
+ *
+ * The Expo Router app entry (app/_layout.tsx) deliberately does NOT use
+ * this: it calls validateConfig() and renders ConfigErrorScreen instead of
+ * crashing, since a hard native crash is worse UX than a clear in-app
+ * message for a safety app. See docs/adr/0004-error-handling-strategy.md.
+ */
+export function assertConfig(): void {
+  const result = validateConfig();
+  if (!result.ok) {
+    throw new ValidationError(
+      `Missing required environment variables: ${result.missing.join(", ")}`,
+      { field: result.missing[0] },
+    );
+  }
 }

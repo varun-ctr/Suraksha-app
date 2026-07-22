@@ -13,7 +13,7 @@ import { BackHeader } from "@/shared/components/Headers";
 import { Icon } from "@/shared/components/Icon";
 import { withAlpha } from "@/shared/theme/colors";
 import { useI18n } from "@/features/settings/context/LanguageContext";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 import { useSessionsScreen } from "@/features/authentication/hooks/useSessionsScreen";
 import type { SessionInfo } from "@/features/authentication/hooks/useSessionsScreen";
 
@@ -61,7 +61,7 @@ function parseDeviceIcon(ua: string | null): "phone" | "globe" | "user" {
 // ---------------------------------------------------------------------------
 // SessionCard
 // ---------------------------------------------------------------------------
-function SessionCard({ session, c }: { session: SessionInfo; c: ReturnType<typeof import("@/features/settings/context/ThemeContext").useTheme>["c"] }) {
+function SessionCard({ session, c }: { session: SessionInfo; c: ReturnType<typeof import("@/shared/theme/ThemeContext").useTheme>["c"] }) {
   const device = parseDeviceName(session.userAgent);
   const icon = parseDeviceIcon(session.userAgent);
   return (

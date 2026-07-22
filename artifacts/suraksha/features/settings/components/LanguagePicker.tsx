@@ -10,7 +10,7 @@ import {
 
 import { Icon } from "@/shared/components/Icon";
 import { LANGUAGES, type LangCode, type LangMeta } from "@/features/settings/constants/languages";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 
 interface Props {
   selected: string;

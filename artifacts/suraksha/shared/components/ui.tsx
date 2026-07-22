@@ -11,7 +11,7 @@ import {
 } from "react-native";
 
 import { withAlpha } from "@/shared/theme/colors";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 import { Icon } from "@/shared/components/Icon";
 import type { IconName } from "@/shared/utils/data";
 

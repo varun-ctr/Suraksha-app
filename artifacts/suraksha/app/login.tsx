@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FontAwesome } from "@expo/vector-icons";
 
 import { Icon } from "@/shared/components/Icon";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 import { withAlpha } from "@/shared/theme/colors";
 import { useLoginScreen } from "@/features/authentication/hooks/useLoginScreen";
 

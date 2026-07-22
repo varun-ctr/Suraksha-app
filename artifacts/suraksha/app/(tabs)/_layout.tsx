@@ -7,7 +7,7 @@ import { Icon } from "@/shared/components/Icon";
 import { SakhiIcon } from "@/features/community/components/SakhiIcon";
 import type { IconName } from "@/shared/utils/data";
 import { useI18n } from "@/features/settings/context/LanguageContext";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 
 type TabBtnProps = {
   onPress?: ((...args: unknown[]) => void) | null;

@@ -15,7 +15,7 @@ import { Icon } from "@/shared/components/Icon";
 import { Avatar } from "@/shared/components/ui";
 import { withAlpha } from "@/shared/theme/colors";
 import { useI18n } from "@/features/settings/context/LanguageContext";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 import { useToast } from "@/features/settings/context/ToastContext";
 import { callNumber } from "@/shared/utils/native";
 import { useContactsScreen } from "@/features/profile/hooks/useContactsScreen";

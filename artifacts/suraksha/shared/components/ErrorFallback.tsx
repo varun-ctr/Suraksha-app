@@ -12,6 +12,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { logger } from "@/core/logger/logger";
+
 /**
  * Fixed, self-contained palette. This component is rendered by the top-level
  * ErrorBoundary, which sits ABOVE ThemeProvider in the tree — so it must NOT
@@ -45,7 +47,7 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
     try {
       await reloadAppAsync();
     } catch (restartError) {
-      console.error("Failed to restart app:", restartError);
+      logger.error("Failed to restart app:", restartError);
       resetError();
     }
   };

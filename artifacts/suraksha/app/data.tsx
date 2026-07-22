@@ -8,7 +8,7 @@ import { withAlpha } from "@/shared/theme/colors";
 import { PRIVACY_SECTIONS } from "@/shared/utils/legal";
 import { useApp } from "@/features/profile/context/AppContext";
 import { useI18n } from "@/features/settings/context/LanguageContext";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 import { useToast } from "@/features/settings/context/ToastContext";
 
 export default function DataScreen() {

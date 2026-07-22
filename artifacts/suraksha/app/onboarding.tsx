@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/shared/components/Icon";
 import { withAlpha } from "@/shared/theme/colors";
 import { useI18n } from "@/features/settings/context/LanguageContext";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 import { ONBOARDING_TOTAL_STEPS, useOnboardingScreen } from "@/features/profile/hooks/useOnboardingScreen";
 
 const TOTAL = ONBOARDING_TOTAL_STEPS;

@@ -17,9 +17,9 @@ import { Icon } from "@/shared/components/Icon";
 import { withAlpha } from "@/shared/theme/colors";
 import { INCIDENT_TYPES } from "@/shared/utils/data";
 import { useI18n } from "@/features/settings/context/LanguageContext";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 import { timeAgo } from "@/shared/utils/format";
-import type { CommunityReportRow } from "@/shared/types/database";
+import type { CommunityReport } from "@/domain/entities/CommunityReport";
 import { useIncidentScreen } from "@/features/community/hooks/useIncidentScreen";
 import type { IncidentTab } from "@/features/community/hooks/useIncidentScreen";
 
@@ -45,7 +45,7 @@ function ModerationBadge({ status }: { status: string }) {
 
 // ── Report card ───────────────────────────────────────────────────────────────
 
-function ReportCard({ report, lang }: { report: CommunityReportRow; lang: string }) {
+function ReportCard({ report, lang }: { report: CommunityReport; lang: string }) {
   const { c } = useTheme();
   const { pick } = useI18n();
   const incident = INCIDENT_TYPES.find((t) => t.key === report.type);
@@ -75,9 +75,9 @@ function ReportCard({ report, lang }: { report: CommunityReportRow; lang: string
           ) : null}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 }}>
             <Text style={{ fontSize: 10.5, color: c.textFaint }}>
-              {timeAgo(new Date(report.created_at).getTime(), lang)}
+              {timeAgo(new Date(report.createdAt).getTime(), lang)}
             </Text>
-            <ModerationBadge status={report.moderation_status} />
+            <ModerationBadge status={report.moderationStatus} />
           </View>
         </View>
       </View>

@@ -12,8 +12,8 @@
  * `lib/emergencyMessage.ts`.
  */
 
-import type { Contact } from "@/shared/types/contact";
-import type { Coords } from "@/features/sos/context/SafetyContext";
+import type { Contact } from "@/domain/entities/Contact";
+import type { Coords } from "@/domain/entities/Coords";
 import { callNumber, sendSms } from "@/shared/utils/native";
 import { apiFetch } from "@/core/network/apiClient";
 import { firebaseAuth } from "@/repositories/firebase/firebaseClient";
