@@ -8,7 +8,7 @@ import React, {
 } from "react";
 import { Animated, StyleSheet, Text } from "react-native";
 
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 
 interface ToastContextValue {
   showToast: (message: string) => void;

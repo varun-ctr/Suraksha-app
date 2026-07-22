@@ -15,7 +15,7 @@ import { withAlpha } from "@/shared/theme/colors";
 import { RIGHTS, RIGHTS_CATEGORIES } from "@/shared/utils/data";
 import { useBookmarks } from "@/features/community/hooks/useBookmarks";
 import { useI18n } from "@/features/settings/context/LanguageContext";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 
 export default function RightDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();

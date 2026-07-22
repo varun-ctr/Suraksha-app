@@ -10,15 +10,17 @@ import React, {
 } from "react";
 
 import { secureDelete, secureGet, secureSet } from "@/core/storage/secureStore";
-import { contactsRepository } from "@/repositories/supabase/contactsRepository";
+import { useContactsRepository } from "@/core/di/hooks";
 import { supabase } from "@/repositories/supabase/supabaseClient";
 import { firebaseAuth } from "@/repositories/firebase/firebaseClient";
 import { onFirebaseAuthStateChanged } from "@/repositories/firebase/firebaseAuth";
 import { normalizePhone } from "@/shared/utils/validate";
 import { clearSakhiHistory } from "@/features/community/services/sakhiHistoryStore";
-import type { Contact } from "@/shared/types/contact";
+import { logger } from "@/core/logger/logger";
+import type { Contact } from "@/domain/entities/Contact";
+import type { Profile } from "@/domain/entities/Profile";
 
-export type { Contact };
+export type { Contact, Profile };
 
 /** Sensitive data (PII) lives in the OS keystore; the rest in plain storage. */
 const SECURE_KEY = "suraksha.secure.v1";
@@ -29,14 +31,6 @@ const LEGACY_PLAIN_KEYS = ["suraksha.app.v1"];
 // A safety app must let a user reach more than one person in an emergency.
 // This is the same cap for everyone — trusted contacts are never paywalled.
 const MAX_CONTACTS = 5;
-
-export interface Profile {
-  name: string;
-  phone: string;
-  email: string;
-  premium: boolean;
-  avatarUrl?: string;
-}
 
 interface Settings {
   notifications: boolean;
@@ -96,6 +90,7 @@ function persist(next: PersistShape) {
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  const contactsRepository = useContactsRepository();
   const [state, setState] = useState<PersistShape>(DEFAULTS);
   const [ready, setReady] = useState(false);
   const stateRef = useRef(state);
@@ -157,22 +152,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!ready) return;
 
     const doSync = async (userId: string) => {
-      try {
-        const merged = await contactsRepository.syncContactsOnLoad(userId, stateRef.current.contacts);
-        const current = stateRef.current.contacts;
-        // Only update if the list actually changed
-        const changed =
-          merged.length !== current.length ||
-          merged.some((m, i) => m.id !== current[i]?.id || m.name !== current[i]?.name);
-        if (changed) {
-          setState((prev) => {
-            const next = { ...prev, contacts: merged };
-            persist(next);
-            return next;
-          });
-        }
-      } catch {
+      const result = await contactsRepository.syncContactsOnLoad(userId, stateRef.current.contacts);
+      if (!result.ok) {
         // Table may not exist yet — silently continue with local data
+        logger.warn("[AppContext] contacts sync failed", result.error);
+        return;
+      }
+      const merged = result.value;
+      const current = stateRef.current.contacts;
+      // Only update if the list actually changed
+      const changed =
+        merged.length !== current.length ||
+        merged.some((m, i) => m.id !== current[i]?.id || m.name !== current[i]?.name);
+      if (changed) {
+        setState((prev) => {
+          const next = { ...prev, contacts: merged };
+          persist(next);
+          return next;
+        });
       }
     };
 
@@ -196,7 +193,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
 
     return unsub;
-  }, [ready, clearLocalStorageOnly]);
+  }, [ready, clearLocalStorageOnly, contactsRepository]);
 
   // ── Helpers ───────────────────────────────────────────────────────
 
@@ -227,11 +224,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       persist(next);
       // Sync to Supabase in background
       getUserId().then((uid) => {
-        if (uid) contactsRepository.upsertContact(uid, newContact).catch(() => {});
+        if (!uid) return;
+        contactsRepository.upsertContact(uid, newContact).then((r) => {
+          if (!r.ok) logger.warn("[AppContext] failed to sync new contact to remote", r.error);
+        });
       }).catch(() => {});
       return { ok: true };
     },
-    [getUserId],
+    [getUserId, contactsRepository],
   );
 
   const addContacts = useCallback((items: { name: string; phone: string }[]) => {
@@ -264,11 +264,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (freshContacts.length > 0) {
       getUserId().then((uid) => {
         if (!uid) return;
-        freshContacts.forEach((c) => contactsRepository.upsertContact(uid, c).catch(() => {}));
+        freshContacts.forEach((c) => {
+          contactsRepository.upsertContact(uid, c).then((r) => {
+            if (!r.ok) logger.warn("[AppContext] failed to sync imported contact to remote", r.error);
+          });
+        });
       }).catch(() => {});
     }
     return added;
-  }, [getUserId]);
+  }, [getUserId, contactsRepository]);
 
   const editContact = useCallback(
     (id: string, patch: Partial<Pick<Contact, "name" | "phone" | "avatarUrl">>): AddContactResult => {
@@ -303,11 +307,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       persist(next);
       // Sync to Supabase
       getUserId().then((userId) => {
-        if (userId) contactsRepository.upsertContact(userId, updated).catch(() => {});
+        if (!userId) return;
+        contactsRepository.upsertContact(userId, updated).then((r) => {
+          if (!r.ok) logger.warn("[AppContext] failed to sync edited contact to remote", r.error);
+        });
       }).catch(() => {});
       return { ok: true };
     },
-    [getUserId],
+    [getUserId, contactsRepository],
   );
 
   const deleteContact = useCallback((id: string) => {
@@ -318,9 +325,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
     // Delete from Supabase
     getUserId().then((userId) => {
-      if (userId) contactsRepository.deleteContact(userId, id).catch(() => {});
+      if (!userId) return;
+      contactsRepository.deleteContact(userId, id).then((r) => {
+        if (!r.ok) logger.warn("[AppContext] failed to delete contact remotely", r.error);
+      });
     }).catch(() => {});
-  }, [getUserId]);
+  }, [getUserId, contactsRepository]);
 
   const setProfile = useCallback((p: Partial<Profile>) => {
     setState((prev) => {
@@ -350,10 +360,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // Account deletion — also wipe the user's own Supabase rows.
     const userId = await getUserId();
     if (userId) {
-      await contactsRepository.deleteAllContacts(userId).catch(() => {});
+      const result = await contactsRepository.deleteAllContacts(userId);
+      if (!result.ok) logger.warn("[AppContext] failed to delete contacts remotely during account reset", result.error);
     }
     await clearLocalStorageOnly();
-  }, [getUserId, clearLocalStorageOnly]);
+  }, [getUserId, clearLocalStorageOnly, contactsRepository]);
 
   const value = useMemo<AppContextValue>(
     () => ({

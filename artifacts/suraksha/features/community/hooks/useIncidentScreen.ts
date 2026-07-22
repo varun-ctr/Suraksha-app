@@ -10,8 +10,9 @@ import { useLocation } from "@/shared/hooks/useLocation";
 import { reverseGeocode } from "@/core/permissions/location";
 import { firebaseAuth } from "@/repositories/firebase/firebaseClient";
 import { supabase } from "@/repositories/supabase/supabaseClient";
-import { communityReportsRepository } from "@/repositories/api/communityReportsRepository";
-import type { CommunityReportRow } from "@/shared/types/database";
+import { useCommunityReportsRepository } from "@/core/di/hooks";
+import { logger } from "@/core/logger/logger";
+import type { CommunityReport } from "@/domain/entities/CommunityReport";
 import { fetchWeather, type WeatherData } from "@/repositories/api/weatherRepository";
 
 export type IncidentTab = "new" | "mine";
@@ -21,6 +22,7 @@ export function useIncidentScreen() {
   const { t } = useI18n();
   const { showToast } = useToast();
   const router = useRouter();
+  const communityReportsRepository = useCommunityReportsRepository();
   const { tab: initialTab } = useLocalSearchParams<{ tab?: string }>();
 
   const [activeTab, setActiveTab] = useState<IncidentTab>(
@@ -40,7 +42,7 @@ export function useIncidentScreen() {
   const [weather, setWeather] = useState<WeatherData | null>(null);
 
   // My reports
-  const [myReports, setMyReports] = useState<CommunityReportRow[]>([]);
+  const [myReports, setMyReports] = useState<CommunityReport[]>([]);
   const [loadingReports, setLoadingReports] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -66,12 +68,16 @@ export function useIncidentScreen() {
     if (!firebaseAuth.currentUser) return;
     setLoadingReports(true);
     try {
-      const reports = await communityReportsRepository.fetchMyReports();
-      setMyReports(reports);
+      const result = await communityReportsRepository.fetchMyReports();
+      if (result.ok) {
+        setMyReports(result.value);
+      } else {
+        logger.warn("[useIncidentScreen] failed to load my reports", result.error);
+      }
     } finally {
       setLoadingReports(false);
     }
-  }, []);
+  }, [communityReportsRepository]);
 
   useEffect(() => {
     void loadMyReports();
@@ -139,9 +145,9 @@ export function useIncidentScreen() {
         lng: point.lng,
         address: address ?? null,
         description: descText || null,
-        photo_url: photoUrl ?? null,
+        photoUrl: photoUrl ?? null,
       });
-      if (!result.ok) throw new Error(result.error);
+      if (!result.ok) throw result.error;
 
       showToast(t("incident.submitted"));
       setDescription("");

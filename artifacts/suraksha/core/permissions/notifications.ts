@@ -1,7 +1,12 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 
+// Needs direct client access to read the current user and persist the
+// device's push token; not a composition-root concern, but there's no
+// domain-level indirection for this device-registration side effect yet.
+// eslint-disable-next-line import/no-restricted-paths
 import { firebaseAuth } from "@/repositories/firebase/firebaseClient";
+// eslint-disable-next-line import/no-restricted-paths
 import { db, supabase } from "@/repositories/supabase/supabaseClient";
 
 /**

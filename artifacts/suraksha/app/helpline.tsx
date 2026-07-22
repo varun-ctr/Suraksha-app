@@ -6,7 +6,7 @@ import { Icon } from "@/shared/components/Icon";
 import { withAlpha } from "@/shared/theme/colors";
 import { HELPLINES } from "@/shared/utils/data";
 import { useI18n } from "@/features/settings/context/LanguageContext";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 import { useToast } from "@/features/settings/context/ToastContext";
 import { callNumber } from "@/shared/utils/native";
 

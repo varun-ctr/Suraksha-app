@@ -16,11 +16,12 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ConfigErrorScreen } from "@/shared/components/ConfigErrorScreen";
 import { ErrorBoundary } from "@/shared/components/ErrorBoundary";
+import { DependencyProvider } from "@/core/di/DependencyProvider";
 import { AppProvider, useApp } from "@/features/profile/context/AppContext";
 import { BookmarksProvider } from "@/features/community/context/BookmarksContext";
 import { LanguageProvider, useI18n } from "@/features/settings/context/LanguageContext";
 import { SafetyProvider } from "@/features/sos/context/SafetyContext";
-import { ThemeProvider, useTheme } from "@/features/settings/context/ThemeContext";
+import { ThemeProvider, useTheme } from "@/shared/theme/ThemeContext";
 import { ToastProvider, useToast } from "@/features/settings/context/ToastContext";
 import { AuthProvider } from "@/features/authentication/context/AuthContext";
 import { initFirebase } from "@/repositories/firebase/firebaseClient";
@@ -200,21 +201,23 @@ export default function RootLayout() {
       <ErrorBoundary onError={reportError}>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <KeyboardProvider>
-            <ThemeProvider>
-              <AuthProvider>
-              <LanguageProvider>
-                <AppProvider>
-                  <SafetyProvider>
-                    <BookmarksProvider>
-                      <ToastProvider>
-                        <Gate />
-                      </ToastProvider>
-                    </BookmarksProvider>
-                  </SafetyProvider>
-                </AppProvider>
-              </LanguageProvider>
-              </AuthProvider>
-            </ThemeProvider>
+            <DependencyProvider>
+              <ThemeProvider>
+                <AuthProvider>
+                <LanguageProvider>
+                  <AppProvider>
+                    <SafetyProvider>
+                      <BookmarksProvider>
+                        <ToastProvider>
+                          <Gate />
+                        </ToastProvider>
+                      </BookmarksProvider>
+                    </SafetyProvider>
+                  </AppProvider>
+                </LanguageProvider>
+                </AuthProvider>
+              </ThemeProvider>
+            </DependencyProvider>
           </KeyboardProvider>
         </GestureHandlerRootView>
       </ErrorBoundary>

@@ -14,43 +14,22 @@ import { SosBottomSheet } from "@/features/sos/components/SosBottomSheet";
 import { useApp } from "@/features/profile/context/AppContext";
 import { useShakeDetector } from "@/features/sos/hooks/useShakeDetector";
 import { getCurrentLocation, reverseGeocode } from "@/core/permissions/location";
-import { liveSessionRepository } from "@/repositories/supabase/liveSessionRepository";
+import { useLiveSessionRepository, useSosEventsRepository } from "@/core/di/hooks";
 import {
   cancelAllScheduledNotifications,
   scheduleLocalNotification,
 } from "@/core/permissions/notifications";
-import { sosEventsRepository } from "@/repositories/supabase/sosEventsRepository";
 import { firebaseAuth } from "@/repositories/firebase/firebaseClient";
+import { logger } from "@/core/logger/logger";
+import type { Coords } from "@/domain/entities/Coords";
+import type { SosPhase, SafetyStatus, SosState, JourneyState } from "@/features/sos/types";
 
-export interface Coords {
-  lat: number;
-  lng: number;
-  accuracy: number | null;
-}
-
-export type SosPhase = "idle" | "countdown" | "active";
-export type SafetyStatus = "safe" | "caution" | "emergency";
-
-export interface SosState {
-  phase: SosPhase;
-  countdown: number;
-  seconds: number;
-  coords: Coords | null;
-  address: string | null;
-  loading: boolean;
-  shareUrl: string | null;
-  eventId: string | null;
-}
-
-export interface JourneyState {
-  active: boolean;
-  seconds: number;
-  duration: number;
-  /** True once seconds >= duration*60 and user hasn't checked in */
-  overdue: boolean;
-  /** Countdown seconds before auto-SOS fires (60 → 0) */
-  overdueSeconds: number;
-}
+// Re-exported for backward compatibility — these types' canonical home is
+// now domain/entities/Coords.ts and features/sos/types.ts (breaks an import
+// cycle: this module is transitively imported by
+// emergencyMessage.ts/sosAlertService.ts/SosBottomSheet.tsx, all of which
+// need one or more of these types).
+export type { Coords, SosPhase, SafetyStatus, SosState, JourneyState };
 
 interface SafetyContextValue {
   sos: SosState;
@@ -91,6 +70,8 @@ const SafetyContext = createContext<SafetyContextValue | null>(null);
 
 export function SafetyProvider({ children }: { children: React.ReactNode }) {
   const { settings } = useApp();
+  const liveSessionRepository = useLiveSessionRepository();
+  const sosEventsRepository = useSosEventsRepository();
   const [sos, setSos]         = useState<SosState>(SOS_DEFAULTS);
   const [journey, setJourney] = useState<JourneyState>(JOURNEY_DEFAULTS);
 
@@ -108,10 +89,11 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
   const stopLiveTracking = useCallback(async () => {
     if (watchRef.current) { watchRef.current.remove(); watchRef.current = null; }
     if (shareIdRef.current) {
-      await liveSessionRepository.endLiveSession(shareIdRef.current);
+      const result = await liveSessionRepository.endLiveSession(shareIdRef.current);
+      if (!result.ok) logger.warn("[SafetyContext] failed to end live session", result.error);
       shareIdRef.current = null;
     }
-  }, []);
+  }, [liveSessionRepository]);
 
   const fetchLocationAndStartTracking = useCallback(async (runId: number) => {
     const point = await getCurrentLocation();
@@ -127,13 +109,14 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
     if (sosRunIdRef.current !== runId) return;
     setSos((s) => s.phase !== "idle" ? { ...s, address: addr } : s);
 
-    const session = await liveSessionRepository.startLiveSession(point.lat, point.lng, point.accuracy);
+    const sessionResult = await liveSessionRepository.startLiveSession(point.lat, point.lng, point.accuracy);
     if (sosRunIdRef.current !== runId) {
-      if (session) await liveSessionRepository.endLiveSession(session.shareId);
+      if (sessionResult.ok) await liveSessionRepository.endLiveSession(sessionResult.value.shareId);
       return;
     }
 
-    if (session) {
+    if (sessionResult.ok) {
+      const session = sessionResult.value;
       shareIdRef.current = session.shareId;
       setSos((s) => s.phase !== "idle" ? { ...s, shareUrl: session.shareUrl } : s);
 
@@ -143,12 +126,14 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
           (loc) => {
             if (sosRunIdRef.current !== runId) return;
             if (shareIdRef.current) {
-              void liveSessionRepository.updateLiveSession(
+              liveSessionRepository.updateLiveSession(
                 shareIdRef.current,
                 loc.coords.latitude,
                 loc.coords.longitude,
                 loc.coords.accuracy ?? null,
-              );
+              ).then((r) => {
+                if (!r.ok) logger.warn("[SafetyContext] failed to update live session", r.error);
+              });
               setSos((s) =>
                 s.phase !== "idle"
                   ? { ...s, coords: { lat: loc.coords.latitude, lng: loc.coords.longitude, accuracy: loc.coords.accuracy ?? null } }
@@ -163,7 +148,7 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
         // Location watch unavailable — SOS still works without continuous updates
       }
     }
-  }, []);
+  }, [liveSessionRepository]);
 
   // ── Supabase sos_events record ────────────────────────────────────
 
@@ -175,8 +160,12 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
         const user = firebaseAuth.currentUser;
         if (sosRunIdRef.current !== runId || !user) return;
 
-        const id = await sosEventsRepository.insertSosEvent(user.uid, coords.lat, coords.lng, address);
-        if (!id) return;
+        const result = await sosEventsRepository.insertSosEvent(user.uid, coords.lat, coords.lng, address);
+        if (!result.ok) {
+          logger.warn("[SafetyContext] failed to record SOS event", result.error);
+          return;
+        }
+        const id = result.value.id;
 
         setSos((s) => {
           // Re-check runId here too: this run may have been cancelled and a
@@ -191,7 +180,7 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
         });
       })();
     },
-    [],
+    [sosEventsRepository],
   );
 
   // ── Countdown timer ───────────────────────────────────────────────
@@ -274,12 +263,16 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
   const cancelSOS = useCallback(() => {
     sosRunIdRef.current++;
     setSos((s) => {
-      if (s.eventId) void sosEventsRepository.resolveSosEvent(s.eventId);
+      if (s.eventId) {
+        sosEventsRepository.resolveSosEvent(s.eventId).then((r) => {
+          if (!r.ok) logger.warn("[SafetyContext] failed to resolve SOS event", r.error);
+        });
+      }
       return { ...SOS_DEFAULTS };
     });
     void stopLiveTracking();
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [stopLiveTracking]);
+  }, [stopLiveTracking, sosEventsRepository]);
 
   // ── Journey timer ─────────────────────────────────────────────────
 

@@ -4,7 +4,7 @@ import { ScrollView, Text, View } from "react-native";
 import { BackHeader } from "@/shared/components/Headers";
 import { TERMS_SECTIONS } from "@/shared/utils/legal";
 import { useI18n } from "@/features/settings/context/LanguageContext";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 
 export default function TermsScreen() {
   const { c } = useTheme();

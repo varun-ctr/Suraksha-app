@@ -32,7 +32,7 @@ import { LANG_BY_CODE } from "@/features/settings/constants/languages";
 import type { LangCode } from "@/features/settings/constants/languages";
 import { useApp } from "@/features/profile/context/AppContext";
 import { useI18n } from "@/features/settings/context/LanguageContext";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 import { useProfileScreen } from "@/features/profile/hooks/useProfileScreen";
 
 function Row({

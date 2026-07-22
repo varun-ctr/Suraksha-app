@@ -2,7 +2,7 @@ import { Link, Stack } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 
 import { useI18n } from "@/features/settings/context/LanguageContext";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 
 export default function NotFoundScreen() {
   const { c } = useTheme();

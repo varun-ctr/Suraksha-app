@@ -3,7 +3,7 @@ import { Platform } from "react-native";
 import { useState } from "react";
 
 import type { IconName } from "@/shared/utils/data";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 import { useLocation } from "@/shared/hooks/useLocation";
 import { searchNearby } from "@/shared/utils/native";
 import {

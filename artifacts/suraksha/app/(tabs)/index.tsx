@@ -28,7 +28,7 @@ import { useApp } from "@/features/profile/context/AppContext";
 import { useI18n } from "@/features/settings/context/LanguageContext";
 import { useSafety } from "@/features/sos/context/SafetyContext";
 import { useSafetyScore } from "@/features/sos/hooks/useSafetyScore";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 import { useToast } from "@/features/settings/context/ToastContext";
 import { useLocation } from "@/shared/hooks/useLocation";
 import { useJourney } from "@/features/journey/hooks/useJourney";

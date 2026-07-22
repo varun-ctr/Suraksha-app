@@ -13,7 +13,7 @@ import { NativeMap } from "@/features/journey/components/NativeMap";
 import { Icon } from "@/shared/components/Icon";
 import { withAlpha } from "@/shared/theme/colors";
 import { useI18n } from "@/features/settings/context/LanguageContext";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 import { navigateTo, searchNearby } from "@/shared/utils/native";
 import { CATEGORIES, useMapScreen } from "@/features/journey/hooks/useMapScreen";
 

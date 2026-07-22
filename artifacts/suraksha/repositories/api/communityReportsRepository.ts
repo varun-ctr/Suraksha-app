@@ -1,6 +1,14 @@
 import { getBackendUrl } from "@/core/config/env";
 import { firebaseAuth } from "@/repositories/firebase/firebaseClient";
-import type { CommunityReportRow } from "@/shared/types/database";
+import { AuthError, NetworkError, type AppError } from "@/domain/errors";
+import { ok, err, type Result } from "@/domain/result/Result";
+import type { CommunityReport } from "@/domain/entities/CommunityReport";
+import type {
+  CommunityReportsRepository,
+  SubmitCommunityReportInput,
+} from "@/domain/repositories/CommunityReportsRepository";
+import type { CommunityReportDto } from "./dto/CommunityReportDto";
+import { toCommunityReport, toSubmitReportBody } from "./mappers/communityReportMapper";
 
 async function authHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
   const headers: Record<string, string> = { ...extra };
@@ -13,61 +21,44 @@ async function authHeaders(extra?: Record<string, string>): Promise<Record<strin
   return headers;
 }
 
-/** The signed-in user's own community incident reports. Empty if signed out or the backend is unreachable. */
-export async function fetchMyReports(): Promise<CommunityReportRow[]> {
+/** The signed-in user's own community incident reports. Empty (Ok([])) if signed out or the backend is unreachable. */
+async function fetchMyReports(): Promise<Result<CommunityReport[], AppError>> {
   const user = firebaseAuth.currentUser;
   const backendUrl = getBackendUrl();
-  if (!user || !backendUrl) return [];
+  if (!user || !backendUrl) return ok([]);
   try {
     const headers = await authHeaders();
     // The backend derives the owner from the verified token; no user_id query param.
     const res = await fetch(`${backendUrl}/community-reports/mine`, { headers });
-    if (!res.ok) return [];
-    return (await res.json()) as CommunityReportRow[];
+    if (!res.ok) return ok([]);
+    const rows = (await res.json()) as CommunityReportDto[];
+    return ok(rows.map(toCommunityReport));
   } catch {
-    return [];
+    return ok([]);
   }
 }
 
-export interface SubmitReportInput {
-  type: string;
-  lat: number;
-  lng: number;
-  address: string | null;
-  description: string | null;
-  photo_url: string | null;
-}
-
-export type SubmitReportResult = { ok: true } | { ok: false; error: string };
-
-export async function submitReport(input: SubmitReportInput): Promise<SubmitReportResult> {
+async function submitReport(input: SubmitCommunityReportInput): Promise<Result<void, AppError>> {
   const user = firebaseAuth.currentUser;
-  if (!user) return { ok: false, error: "Not signed in" };
+  if (!user) return err(new AuthError("Not signed in"));
   const backendUrl = getBackendUrl();
-  if (!backendUrl) return { ok: false, error: "Backend not configured" };
+  if (!backendUrl) return err(new NetworkError("Backend not configured"));
 
   try {
     const headers = await authHeaders({ "Content-Type": "application/json" });
     const res = await fetch(`${backendUrl}/community-reports`, {
       method: "POST",
       headers,
-      body: JSON.stringify(input),
+      body: JSON.stringify(toSubmitReportBody(input)),
     });
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as { error?: string };
-      return { ok: false, error: body.error ?? `HTTP ${res.status}` };
+      return err(new NetworkError(body.error ?? `HTTP ${res.status}`, { status: res.status, url: `${backendUrl}/community-reports` }));
     }
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Network error" };
+    return ok(undefined);
+  } catch (cause) {
+    return err(new NetworkError(cause instanceof Error ? cause.message : "Network error", { cause }));
   }
-}
-
-// ── Repository interface ──────────────────────────────────────────────────────
-
-export interface CommunityReportsRepository {
-  fetchMyReports(): Promise<CommunityReportRow[]>;
-  submitReport(input: SubmitReportInput): Promise<SubmitReportResult>;
 }
 
 export const communityReportsRepository: CommunityReportsRepository = {

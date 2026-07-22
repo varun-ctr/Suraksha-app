@@ -1,7 +1,7 @@
 import { useSafety } from "@/features/sos/context/SafetyContext";
 import type { SafetyStatus } from "@/features/sos/context/SafetyContext";
 import { useI18n } from "@/features/settings/context/LanguageContext";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 import type { WeatherData } from "@/repositories/api/weatherRepository";
 
 function computeSafetyScore(

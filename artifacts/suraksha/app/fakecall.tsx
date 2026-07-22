@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BackHeader } from "@/shared/components/Headers";
 import { Icon } from "@/shared/components/Icon";
 import { useI18n } from "@/features/settings/context/LanguageContext";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 import { fmtClock } from "@/shared/utils/format";
 import { useFakeCallScreen } from "@/features/sos/hooks/useFakeCallScreen";
 

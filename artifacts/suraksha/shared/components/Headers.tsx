@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "@/shared/components/Icon";
 import { withAlpha } from "@/shared/theme/colors";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 
 /** Full-width gradient header used at the top of tab screens. */
 export function GradientHeader({

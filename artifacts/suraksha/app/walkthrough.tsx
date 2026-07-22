@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/shared/components/Icon";
 import { withAlpha } from "@/shared/theme/colors";
 import type { IconName } from "@/shared/utils/data";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 import { useWalkthroughScreen } from "@/features/profile/hooks/useWalkthroughScreen";
 
 interface Slide {

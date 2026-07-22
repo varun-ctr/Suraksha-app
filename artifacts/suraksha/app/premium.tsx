@@ -25,7 +25,7 @@ import { BackHeader } from "@/shared/components/Headers";
 import { Icon } from "@/shared/components/Icon";
 import { withAlpha } from "@/shared/theme/colors";
 import { useI18n } from "@/features/settings/context/LanguageContext";
-import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useTheme } from "@/shared/theme/ThemeContext";
 import { usePremiumScreen } from "@/features/premium/hooks/usePremiumScreen";
 import type { PurchasesPackage } from "@/features/premium/hooks/usePremiumScreen";
 
