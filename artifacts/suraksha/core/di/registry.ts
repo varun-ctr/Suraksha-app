@@ -2,11 +2,15 @@ import { contactsRepository } from "@/repositories/supabase/contactsRepository";
 import { sosEventsRepository } from "@/repositories/supabase/sosEventsRepository";
 import { liveSessionRepository } from "@/repositories/supabase/liveSessionRepository";
 import { communityReportsRepository } from "@/repositories/api/communityReportsRepository";
+import { authRepository } from "@/repositories/firebase/authRepository";
+import { emailOtpRepository } from "@/repositories/api/emailOtpRepository";
 import type {
   ContactsRepository,
   SosEventsRepository,
   LiveSessionRepository,
   CommunityReportsRepository,
+  AuthRepository,
+  EmailOtpRepository,
 } from "@/domain/repositories";
 import { Container } from "./container";
 
@@ -20,6 +24,8 @@ export interface AppRegistry {
   sosEventsRepository: SosEventsRepository;
   liveSessionRepository: LiveSessionRepository;
   communityReportsRepository: CommunityReportsRepository;
+  authRepository: AuthRepository;
+  emailOtpRepository: EmailOtpRepository;
 }
 
 /**
@@ -34,5 +40,7 @@ export function createAppContainer(overrides?: Partial<AppRegistry>): Container<
   container.register("sosEventsRepository", overrides?.sosEventsRepository ?? sosEventsRepository);
   container.register("liveSessionRepository", overrides?.liveSessionRepository ?? liveSessionRepository);
   container.register("communityReportsRepository", overrides?.communityReportsRepository ?? communityReportsRepository);
+  container.register("authRepository", overrides?.authRepository ?? authRepository);
+  container.register("emailOtpRepository", overrides?.emailOtpRepository ?? emailOtpRepository);
   return container;
 }

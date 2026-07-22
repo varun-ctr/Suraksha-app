@@ -1,8 +1,8 @@
 import { AppError } from "./AppError.ts";
 
-/** GPS/location subsystem failure that isn't a plain permission denial — no fix available, provider disabled, timed out. */
-export class LocationError extends AppError {
-  readonly code = "LOCATION" as const;
+/** The persisted session is no longer valid — revoked, expired, or undecryptable at rest. */
+export class SessionExpiredError extends AppError {
+  readonly code = "SESSION_EXPIRED" as const;
   readonly reason?: string;
 
   constructor(message: string, options?: { reason?: string; cause?: unknown }) {

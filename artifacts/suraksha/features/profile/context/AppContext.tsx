@@ -13,7 +13,7 @@ import { secureDelete, secureGet, secureSet } from "@/core/storage/secureStore";
 import { useContactsRepository } from "@/core/di/hooks";
 import { supabase } from "@/repositories/supabase/supabaseClient";
 import { firebaseAuth } from "@/repositories/firebase/firebaseClient";
-import { onFirebaseAuthStateChanged } from "@/repositories/firebase/firebaseAuth";
+import { useAuth } from "@/features/authentication/context/AuthContext";
 import { normalizePhone } from "@/shared/utils/validate";
 import { clearSakhiHistory } from "@/features/community/services/sakhiHistoryStore";
 import { logger } from "@/core/logger/logger";
@@ -91,6 +91,10 @@ function persist(next: PersistShape) {
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const contactsRepository = useContactsRepository();
+  // Derived from AuthContext's single canonical auth-state subscription
+  // rather than a second, independent onFirebaseAuthStateChanged listener
+  // — see docs/adr/0001-feature-first-architecture.md's performance notes.
+  const { user: authUser } = useAuth();
   const [state, setState] = useState<PersistShape>(DEFAULTS);
   const [ready, setReady] = useState(false);
   const stateRef = useRef(state);
@@ -173,27 +177,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    // Sync immediately if already signed in
-    if (firebaseAuth.currentUser) {
-      void doSync(firebaseAuth.currentUser.uid);
+    // Runs on mount (if already signed in) and again on every subsequent
+    // auth-state transition, since `authUser` is a dependency below.
+    if (authUser) {
+      void doSync(authUser.uid);
+    } else if (prevUidRef.current !== null) {
+      // A real sign-out transition (had a user, now don't) — clear this
+      // device's local copy so a different user signing in next can't
+      // inherit or overwrite it. Not fired on first load with no prior
+      // session (prevUidRef starts null in that case).
+      void clearLocalStorageOnly();
     }
-
-    // Re-sync on Firebase auth state changes
-    const unsub = onFirebaseAuthStateChanged((user) => {
-      if (user) {
-        void doSync(user.uid);
-      } else if (prevUidRef.current !== null) {
-        // A real sign-out transition (had a user, now don't) — clear this
-        // device's local copy so a different user signing in next can't
-        // inherit or overwrite it. Not fired on first load with no prior
-        // session (prevUidRef starts null in that case).
-        void clearLocalStorageOnly();
-      }
-      prevUidRef.current = user?.uid ?? null;
-    });
-
-    return unsub;
-  }, [ready, clearLocalStorageOnly, contactsRepository]);
+    prevUidRef.current = authUser?.uid ?? null;
+  }, [ready, authUser, clearLocalStorageOnly, contactsRepository]);
 
   // ── Helpers ───────────────────────────────────────────────────────
 

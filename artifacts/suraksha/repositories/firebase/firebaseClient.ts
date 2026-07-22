@@ -3,12 +3,12 @@ import { initializeAuth, getAuth, type Auth } from "firebase/auth";
 // `getReactNativePersistence` ships in the React-Native build of firebase/auth
 // (@firebase/auth's "react-native" entry) but is intentionally absent from the
 // package's web type definitions, so it must be imported with a type override.
-// It persists the auth session in AsyncStorage so users stay signed in across
-// app restarts. The previous hand-rolled persistence object crashed with
-// "INTERNAL ASSERTION FAILED: Expected a class definition".
+// It persists the auth session via the storage adapter passed to it. The
+// previous hand-rolled persistence object crashed with "INTERNAL ASSERTION
+// FAILED: Expected a class definition".
 // @ts-expect-error — RN-only export missing from firebase/auth web typings
 import { getReactNativePersistence } from "firebase/auth";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { encryptedAuthStorage } from "./encryptedAuthStorage";
 
 // ── Lazy singletons — populated by initFirebase() ─────────────────────────────
 let _firebaseApp: FirebaseApp | null = null;
@@ -30,7 +30,7 @@ export function initFirebase(config: {
   _firebaseApp = getApps().length === 0 ? initializeApp(config) : getApp();
   try {
     _firebaseAuth = initializeAuth(_firebaseApp, {
-      persistence: getReactNativePersistence(AsyncStorage),
+      persistence: getReactNativePersistence(encryptedAuthStorage),
     });
   } catch {
     // Already initialized (fast refresh) or persistence unavailable — fall back

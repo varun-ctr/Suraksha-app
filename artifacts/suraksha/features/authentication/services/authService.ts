@@ -3,58 +3,43 @@
  * Supabase is used ONLY for data (contacts, reports, journeys, etc.) — NOT authentication.
  *
  * These thin wrappers let legacy call-sites continue importing from "@/features/authentication/services/authService"
- * while all implementation now delegates to Firebase via lib/firebaseAuth.ts.
+ * while all implementation now delegates to the AuthRepository (repositories/firebase/authRepository.ts).
  */
 
 import { deleteUser } from "firebase/auth";
 import { firebaseAuth } from "@/repositories/firebase/firebaseClient";
-import {
-  signOutFB,
-  signInAnonymouslyFB,
-  onFirebaseAuthStateChanged,
-  getCurrentFirebaseUser,
-} from "@/repositories/firebase/firebaseAuth";
+import { getCurrentFirebaseUser } from "@/repositories/firebase/firebaseAuth";
+import { authRepository } from "@/repositories/firebase/authRepository";
+import { deregisterPushToken } from "@/core/permissions/notifications";
 import { apiFetch } from "@/core/network/apiClient";
+import { logger } from "@/core/logger/logger";
 import type { User } from "firebase/auth";
 
 export type { User };
 
 // ── Sign out ──────────────────────────────────────────────────────────────────
 
+/**
+ * The single sign-out orchestration used by every "Sign out" entry point
+ * (Profile, active-sessions screen). Deregisters this device's push token
+ * first (so a former user's device stops receiving pushes meant for their
+ * account), then signs out of Firebase, then re-establishes anonymous auth
+ * — this app always has a Firebase user, signed-in or anonymous, so
+ * background-signed-out code paths (e.g. AppContext's sync effect) don't
+ * need to separately handle a truly-unauthenticated state.
+ */
 export async function signOut(): Promise<void> {
-  await signOutFB();
+  await deregisterPushToken();
+  const result = await authRepository.signOut();
+  if (!result.ok) logger.warn("[authService] sign-out failed", result.error);
+  const anonResult = await authRepository.signInAnonymously();
+  if (!anonResult.ok) logger.warn("[authService] re-establishing anonymous auth after sign-out failed", anonResult.error);
 }
 
 // ── Current user ──────────────────────────────────────────────────────────────
 
 export async function getCurrentUser(): Promise<User | null> {
   return getCurrentFirebaseUser();
-}
-
-// ── Auth state listener ───────────────────────────────────────────────────────
-
-export type AuthChangeEvent = "SIGNED_IN" | "SIGNED_OUT";
-
-export function onAuthStateChange(
-  callback: (event: AuthChangeEvent, user: User | null) => void,
-): { unsubscribe: () => void } {
-  const unsub = onFirebaseAuthStateChanged((user) => {
-    callback(user ? "SIGNED_IN" : "SIGNED_OUT", user);
-  });
-  return { unsubscribe: unsub };
-}
-
-// ── Anonymous auth ────────────────────────────────────────────────────────────
-
-export async function signInAnonymously(): Promise<{
-  user: User | null;
-  error: string | null;
-}> {
-  return signInAnonymouslyFB();
-}
-
-export function isAnonymous(user: User | null): boolean {
-  return user?.isAnonymous ?? true;
 }
 
 // ── Account deletion ──────────────────────────────────────────────────────────
@@ -65,8 +50,20 @@ export async function deleteAccount(): Promise<{ error: string | null }> {
     if (!user) return { error: "Not signed in." };
 
     // Best-effort: notify backend so it can clean up server-side data.
-    // Failures are ignored — Firebase account deletion is authoritative.
-    await apiFetch("/auth/account", { method: "DELETE", timeoutMs: 8_000 });
+    // Failures are logged but non-fatal — Firebase account deletion below
+    // is authoritative and must proceed regardless, so a stuck backend
+    // never blocks a user's ability to delete their account. This does
+    // mean a failure here can leave orphaned Supabase rows with no
+    // automatic retry (there's no way to re-authenticate as a deleted
+    // user) — see docs/adr/0004-error-handling-strategy.md and the
+    // architecture audit's risk assessment for the recommended follow-up
+    // (a Firebase Auth user-deleted trigger for server-side reconciliation).
+    const { response } = await apiFetch("/auth/account", { method: "DELETE", timeoutMs: 8_000 });
+    if (!response || !response.ok) {
+      logger.warn("[authService] backend account-data cleanup failed; proceeding with Firebase deletion anyway", {
+        status: response?.status ?? null,
+      });
+    }
 
     await deleteUser(user);
     return { error: null };

@@ -23,9 +23,8 @@ import { LanguageProvider, useI18n } from "@/features/settings/context/LanguageC
 import { SafetyProvider } from "@/features/sos/context/SafetyContext";
 import { ThemeProvider, useTheme } from "@/shared/theme/ThemeContext";
 import { ToastProvider, useToast } from "@/features/settings/context/ToastContext";
-import { AuthProvider } from "@/features/authentication/context/AuthContext";
+import { AuthProvider, useAuth } from "@/features/authentication/context/AuthContext";
 import { initFirebase } from "@/repositories/firebase/firebaseClient";
-import { onFirebaseAuthStateChanged } from "@/repositories/firebase/firebaseAuth";
 import { registerForPushNotifications } from "@/core/permissions/notifications";
 import { initSupabase } from "@/repositories/supabase/supabaseClient";
 import { validateConfig } from "@/core/config/config";
@@ -81,31 +80,18 @@ function Gate() {
   const router = useRouter();
   const segments = useSegments();
 
-  const [authed, setAuthed] = useState(false);
-  const [authChecked, setAuthChecked] = useState(false);
+  // Derived from the single canonical auth-state subscription in
+  // AuthContext (which now also owns the "never fired" safety timeout that
+  // used to be duplicated here) rather than a second, redundant
+  // onFirebaseAuthStateChanged listener — see docs/adr/0001, performance notes.
+  const { user, loading: authLoading } = useAuth();
+  const authChecked = !authLoading;
 
   useEffect(() => {
-    // Safety timeout: if Firebase auth state never fires within 6s
-    // (e.g. cold-start network delay in Expo Go), proceed anyway so the
-    // splash screen doesn't stay forever.
-    const authTimeout = setTimeout(() => {
-      setAuthChecked(true);
-    }, 6000);
-
-    const unsub = onFirebaseAuthStateChanged((user) => {
-      clearTimeout(authTimeout);
-      setAuthed(!!user);
-      setAuthChecked(true);
-      if (user && !user.isAnonymous) {
-        void registerForPushNotifications();
-      }
-    });
-
-    return () => {
-      unsub();
-      clearTimeout(authTimeout);
-    };
-  }, []);
+    if (user && !user.isAnonymous) {
+      void registerForPushNotifications();
+    }
+  }, [user]);
 
   useEffect(() => {
     if (Platform.OS === "web") return;

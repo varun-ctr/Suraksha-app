@@ -1,4 +1,4 @@
-import { AppError } from "./AppError";
+import { AppError } from "./AppError.ts";
 
 /** The user denied (or the OS revoked) a required permission — location, notifications, contacts, camera. */
 export class PermissionError extends AppError {

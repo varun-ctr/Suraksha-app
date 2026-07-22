@@ -1,4 +1,4 @@
-import { AppError } from "./AppError";
+import { AppError } from "./AppError.ts";
 
 /** A network request failed — unreachable host, timeout, or a non-2xx response. */
 export class NetworkError extends AppError {

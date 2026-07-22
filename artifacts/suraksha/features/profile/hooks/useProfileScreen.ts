@@ -9,6 +9,8 @@ import {
   enableNotificationHandler,
   getNotificationPermissionGranted,
   registerForPushNotifications,
+  deregisterPushToken,
+  NOTIF_TOKEN_STORAGE_KEY,
 } from "@/core/permissions/notifications";
 import { useApp } from "@/features/profile/context/AppContext";
 import { useAuth } from "@/features/authentication/context/AuthContext";
@@ -16,8 +18,6 @@ import { useI18n } from "@/features/settings/context/LanguageContext";
 import { useToast } from "@/features/settings/context/ToastContext";
 import { firebaseAuth } from "@/repositories/firebase/firebaseClient";
 import { db, supabase } from "@/repositories/supabase/supabaseClient";
-
-const NOTIF_TOKEN_KEY = "suraksha.notif.token";
 
 /** All state and handlers for the profile screen: edit, avatar upload, notification toggle, account deletion. */
 export function useProfileScreen() {
@@ -127,17 +127,11 @@ export function useProfileScreen() {
         return;
       }
       if (result.ok) {
-        await AsyncStorage.setItem(NOTIF_TOKEN_KEY, result.token).catch(() => {});
+        await AsyncStorage.setItem(NOTIF_TOKEN_STORAGE_KEY, result.token).catch(() => {});
       }
     } else {
       disableNotificationHandler();
-      await AsyncStorage.removeItem(NOTIF_TOKEN_KEY).catch(() => {});
-      try {
-        const user = firebaseAuth.currentUser;
-        if (user) await db.notificationTokens.deleteForUser(user.uid);
-      } catch {
-        // Non-critical
-      }
+      await deregisterPushToken();
     }
     setSettings({ notifications: v });
   };

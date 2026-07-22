@@ -1,4 +1,4 @@
-import { AppError } from "./AppError";
+import { AppError } from "./AppError.ts";
 
 /** A data-layer operation failed for a reason not better described by NetworkError — a bad query, an unexpected row shape, a constraint violation. */
 export class RepositoryError extends AppError {
