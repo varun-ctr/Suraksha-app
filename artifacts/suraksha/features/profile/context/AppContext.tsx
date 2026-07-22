@@ -17,6 +17,7 @@ import { useAuth } from "@/features/authentication/context/AuthContext";
 import { normalizePhone } from "@/shared/utils/validate";
 import { clearSakhiHistory } from "@/features/community/services/sakhiHistoryStore";
 import { logger } from "@/core/logger/logger";
+import { shouldClearLocalCache } from "@/features/profile/context/localCacheOwnership";
 import type { Contact } from "@/domain/entities/Contact";
 import type { Profile } from "@/domain/entities/Profile";
 
@@ -75,10 +76,23 @@ interface AppContextValue extends PersistShape {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-function persist(next: PersistShape) {
+/**
+ * `ownerUid` records which Firebase uid this cached contacts/profile data
+ * belongs to. It exists specifically for crash recovery: if the app is
+ * killed mid-sign-out or mid-account-deletion — after Firebase's side has
+ * already completed, but before this device's local cache was cleared —
+ * the in-memory transition-detection below (which only catches changes
+ * that happen while the app is running) would otherwise never fire, and
+ * the next launch could sync/merge a deleted or signed-out account's
+ * stale local contacts into whatever identity (anonymous or otherwise)
+ * comes next. Persisting the owner alongside the data lets the load
+ * effect recover the correct "last known owner" across a killed process,
+ * not just across renders within one.
+ */
+function persist(next: PersistShape, ownerUid: string | null) {
   secureSet(
     SECURE_KEY,
-    JSON.stringify({ contacts: next.contacts, profile: next.profile }),
+    JSON.stringify({ contacts: next.contacts, profile: next.profile, ownerUid }),
   );
   AsyncStorage.setItem(
     PLAIN_KEY,
@@ -99,7 +113,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const stateRef = useRef(state);
   stateRef.current = state;
-  const prevUidRef = useRef<string | null>(firebaseAuth.currentUser?.uid ?? null);
+  // Always-current uid for persist() calls inside memoized callbacks below,
+  // without adding `authUser` to each callback's own dependency array.
+  const authUserUidRef = useRef<string | null>(authUser?.uid ?? null);
+  authUserUidRef.current = authUser?.uid ?? null;
+  // Seeded from the persisted `ownerUid` once the load effect below runs —
+  // starts null (not a synchronous currentUser guess) since which identity
+  // owns whatever's on disk is only knowable after actually reading it.
+  const prevUidRef = useRef<string | null>(null);
 
   /**
    * Clears this device's local copy of contacts/profile/settings/Sakhi chat —
@@ -130,11 +151,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           AsyncStorage.getItem(PLAIN_KEY),
         ]);
         const secure = secureRaw
-          ? (JSON.parse(secureRaw) as Partial<Pick<PersistShape, "contacts" | "profile">>)
+          ? (JSON.parse(secureRaw) as Partial<Pick<PersistShape, "contacts" | "profile">> & { ownerUid?: string | null })
           : {};
         const plain = plainRaw
           ? (JSON.parse(plainRaw) as Partial<Pick<PersistShape, "settings" | "onboarded">>)
           : {};
+        // Recover the last-known owner across a killed process — see the
+        // `persist()` doc comment above for why this matters.
+        prevUidRef.current = secure.ownerUid ?? null;
         setState((prev) => ({
           ...prev,
           contacts: secure.contacts ?? prev.contacts,
@@ -171,7 +195,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (changed) {
         setState((prev) => {
           const next = { ...prev, contacts: merged };
-          persist(next);
+          persist(next, userId);
           return next;
         });
       }
@@ -179,16 +203,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     // Runs on mount (if already signed in) and again on every subsequent
     // auth-state transition, since `authUser` is a dependency below.
-    if (authUser) {
-      void doSync(authUser.uid);
-    } else if (prevUidRef.current !== null) {
-      // A real sign-out transition (had a user, now don't) — clear this
-      // device's local copy so a different user signing in next can't
-      // inherit or overwrite it. Not fired on first load with no prior
-      // session (prevUidRef starts null in that case).
-      void clearLocalStorageOnly();
-    }
-    prevUidRef.current = authUser?.uid ?? null;
+    void (async () => {
+      const currentUid = authUser?.uid ?? null;
+      if (shouldClearLocalCache(prevUidRef.current, currentUid)) {
+        // The owner changed since this data was last persisted — either a
+        // normal in-session sign-out/sign-in, or (via the ownerUid
+        // recovered from disk on load) a sign-out or account deletion
+        // that completed on a previous run before the app could clear
+        // this device's local copy. Clear before syncing so stale data is
+        // never attributed to a different identity.
+        await clearLocalStorageOnly();
+      }
+      prevUidRef.current = currentUid;
+      if (currentUid) await doSync(currentUid);
+    })();
   }, [ready, authUser, clearLocalStorageOnly, contactsRepository]);
 
   // ── Helpers ───────────────────────────────────────────────────────
@@ -217,7 +245,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       };
       stateRef.current = next;
       setState(next);
-      persist(next);
+      persist(next, authUserUidRef.current);
       // Sync to Supabase in background
       getUserId().then((uid) => {
         if (!uid) return;
@@ -253,7 +281,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       added = freshContacts.length;
       if (added === 0) return prev;
       const next = { ...prev, contacts: [...prev.contacts, ...freshContacts] };
-      persist(next);
+      persist(next, authUserUidRef.current);
       return next;
     });
     // Sync batch to Supabase
@@ -300,7 +328,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       };
       stateRef.current = next;
       setState(next);
-      persist(next);
+      persist(next, authUserUidRef.current);
       // Sync to Supabase
       getUserId().then((userId) => {
         if (!userId) return;
@@ -316,7 +344,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const deleteContact = useCallback((id: string) => {
     setState((prev) => {
       const next = { ...prev, contacts: prev.contacts.filter((c) => c.id !== id) };
-      persist(next);
+      persist(next, authUserUidRef.current);
       return next;
     });
     // Delete from Supabase
@@ -331,7 +359,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setProfile = useCallback((p: Partial<Profile>) => {
     setState((prev) => {
       const next = { ...prev, profile: { ...prev.profile, ...p } };
-      persist(next);
+      persist(next, authUserUidRef.current);
       return next;
     });
   }, []);
@@ -339,7 +367,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setSettings = useCallback((s: Partial<Settings>) => {
     setState((prev) => {
       const next = { ...prev, settings: { ...prev.settings, ...s } };
-      persist(next);
+      persist(next, authUserUidRef.current);
       return next;
     });
   }, []);
@@ -347,7 +375,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const completeOnboarding = useCallback(() => {
     setState((prev) => {
       const next = { ...prev, onboarded: true };
-      persist(next);
+      persist(next, authUserUidRef.current);
       return next;
     });
   }, []);

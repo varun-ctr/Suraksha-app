@@ -122,6 +122,17 @@ const config: ExpoConfig = {
       },
     ],
     "expo-apple-authentication",
+    // Not yet invoked anywhere in the app (see core/permissions/biometrics.ts
+    // — the capability is ready but not wired into a login/unlock flow yet).
+    // Declared now so NSFaceIDUsageDescription is already in place in
+    // Info.plist for when it is, rather than needing a config change at the
+    // same time as the first feature that actually calls authenticateAsync().
+    [
+      "expo-local-authentication",
+      {
+        faceIDPermission: "Suraksha can use Face ID to quickly and securely unlock the app.",
+      },
+    ],
     ...(process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME
       ? ([
           [

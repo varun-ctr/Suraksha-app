@@ -8,11 +8,12 @@
 
 import { deleteUser } from "firebase/auth";
 import { firebaseAuth } from "@/repositories/firebase/firebaseClient";
-import { getCurrentFirebaseUser } from "@/repositories/firebase/firebaseAuth";
+import { getCurrentFirebaseUser, isReauthRequired } from "@/repositories/firebase/firebaseAuth";
 import { authRepository } from "@/repositories/firebase/authRepository";
 import { deregisterPushToken } from "@/core/permissions/notifications";
 import { apiFetch } from "@/core/network/apiClient";
 import { logger } from "@/core/logger/logger";
+import { trackAuthEvent } from "@/core/analytics/authTelemetry";
 import type { User } from "firebase/auth";
 
 export type { User };
@@ -32,6 +33,7 @@ export async function signOut(): Promise<void> {
   await deregisterPushToken();
   const result = await authRepository.signOut();
   if (!result.ok) logger.warn("[authService] sign-out failed", result.error);
+  trackAuthEvent("sign_out");
   const anonResult = await authRepository.signInAnonymously();
   if (!anonResult.ok) logger.warn("[authService] re-establishing anonymous auth after sign-out failed", anonResult.error);
 }
@@ -45,6 +47,7 @@ export async function getCurrentUser(): Promise<User | null> {
 // ── Account deletion ──────────────────────────────────────────────────────────
 
 export async function deleteAccount(): Promise<{ error: string | null }> {
+  trackAuthEvent("account_delete_attempt");
   try {
     const user = firebaseAuth.currentUser;
     if (!user) return { error: "Not signed in." };
@@ -66,12 +69,14 @@ export async function deleteAccount(): Promise<{ error: string | null }> {
     }
 
     await deleteUser(user);
+    trackAuthEvent("account_delete_success");
     return { error: null };
   } catch (e) {
-    const code = (e as { code?: string }).code;
-    if (code === "auth/requires-recent-login") {
+    if (isReauthRequired(e)) {
+      trackAuthEvent("account_delete_failure", { errorCode: "requires_recent_login" });
       return { error: "Please sign in again before deleting your account." };
     }
+    trackAuthEvent("account_delete_failure");
     return { error: "Unable to delete account. Please try again." };
   }
 }

@@ -30,6 +30,7 @@ import {
   sendPasswordReset as fbSendPasswordReset,
   resendVerificationEmail as fbResendVerificationEmail,
   reloadCurrentUser as fbReloadCurrentUser,
+  reauthenticateWithPassword as fbReauthenticateWithPassword,
 } from "@/repositories/firebase/firebaseAuth";
 
 function toUserResult(r: AuthResult): Result<AuthUser, AuthError> {
@@ -92,6 +93,9 @@ export const authRepository: AuthRepository = {
   async reloadCurrentUser() {
     await fbReloadCurrentUser();
     return ok(undefined);
+  },
+  async reauthenticateWithPassword(password) {
+    return toVoidResult(await fbReauthenticateWithPassword(password));
   },
   async isAppleSignInAvailable() {
     return fbIsAppleSignInAvailable();

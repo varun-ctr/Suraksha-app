@@ -43,5 +43,12 @@ export interface AuthRepository {
   sendPasswordReset(email: string): Promise<Result<void, AuthError>>;
   resendVerificationEmail(): Promise<Result<void, AuthError>>;
   reloadCurrentUser(): Promise<Result<void, AuthError>>;
+  /**
+   * Satisfies Firebase's "recent login" requirement for sensitive operations
+   * (account deletion, email change) without a full sign-out/sign-in cycle.
+   * Not yet called from any screen — ready for a future re-auth prompt on
+   * `auth/requires-recent-login` (see `isReauthRequired` in firebaseAuth.ts).
+   */
+  reauthenticateWithPassword(password: string): Promise<Result<void, AuthError>>;
   isAppleSignInAvailable(): Promise<boolean>;
 }
