@@ -1,5 +1,6 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Needs direct client access to read the current user and persist the
 // device's push token; not a composition-root concern, but there's no
@@ -8,6 +9,9 @@ import { Platform } from "react-native";
 import { firebaseAuth } from "@/repositories/firebase/firebaseClient";
 // eslint-disable-next-line import/no-restricted-paths
 import { db, supabase } from "@/repositories/supabase/supabaseClient";
+
+/** Local record of this device's push token, mirrored so it can be cleared without an extra permissions round-trip. */
+export const NOTIF_TOKEN_STORAGE_KEY = "suraksha.notif.token";
 
 /**
  * Suppress the system banner in the foreground — the root _layout.tsx shows
@@ -121,6 +125,29 @@ export async function registerForPushNotifications(): Promise<RegisterResult> {
   }
 
   return { ok: true, token };
+}
+
+/**
+ * Deregisters this device's push-notification token: removes the local
+ * record and the Supabase row(s) for the current user, so a former user's
+ * device stops being a valid delivery target for their pushes. Called on
+ * sign-out (authService.signOut) and when the user disables the
+ * notifications toggle — both flows previously only handled one of these
+ * (toggle-off did the Supabase+local cleanup; sign-out did neither),
+ * which is why this is now the single shared implementation.
+ */
+export async function deregisterPushToken(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(NOTIF_TOKEN_STORAGE_KEY);
+  } catch {
+    // Non-critical
+  }
+  try {
+    const user = firebaseAuth.currentUser;
+    if (user) await db.notificationTokens.deleteForUser(user.uid);
+  } catch {
+    // Non-critical
+  }
 }
 
 /**

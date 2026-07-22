@@ -12,8 +12,7 @@ import { Alert, I18nManager } from "react-native";
 
 import type { LangCode } from "@/features/settings/constants/languages";
 import { LANG_BY_CODE } from "@/features/settings/constants/languages";
-import { firebaseAuth } from "@/repositories/firebase/firebaseClient";
-import { onFirebaseAuthStateChanged } from "@/repositories/firebase/firebaseAuth";
+import { useAuth } from "@/features/authentication/context/AuthContext";
 import { db } from "@/repositories/supabase/supabaseClient";
 
 const LANG_KEY = "suraksha.lang.v1";
@@ -79,6 +78,10 @@ const LanguageContext = createContext<LanguageContextValue | null>(null);
 // Provider
 // ---------------------------------------------------------------------------
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
+  // Derived from AuthContext's single canonical auth-state subscription
+  // rather than a second, independent onFirebaseAuthStateChanged listener
+  // — see docs/adr/0001-feature-first-architecture.md's performance notes.
+  const { user } = useAuth();
   const [lang, setLangState] = useState<LangCode>(DEFAULT_LANG);
   const [locale, setLocale] = useState<Record<string, string>>({});
   const [enLocale, setEnLocale] = useState<Record<string, string>>({});
@@ -89,7 +92,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     void LOCALE_LOADERS.en().then((m) => setEnLocale(m.default));
   }, []);
 
-  // On mount: read saved language, apply it, then listen for auth changes
+  // On mount: read saved language and apply it
   useEffect(() => {
     const init = async () => {
       try {
@@ -104,18 +107,16 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       }
     };
     void init();
-
-    // Reconcile language for users who are already signed in on first mount
-    const currentUser = firebaseAuth.currentUser;
-    if (currentUser?.uid) void syncWithProfile(currentUser.uid);
-
-    const unsub = onFirebaseAuthStateChanged((user) => {
-      if (user?.uid) void syncWithProfile(user.uid);
-    });
-
-    return unsub;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Reconcile language for the signed-in user — runs immediately if already
+  // signed in when this mounts, and again on every later sign-in transition,
+  // since `user` is a dependency.
+  useEffect(() => {
+    if (user?.uid) void syncWithProfile(user.uid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const loadLocale = async (code: LangCode) => {
     const loader = LOCALE_LOADERS[code] ?? LOCALE_LOADERS.en;

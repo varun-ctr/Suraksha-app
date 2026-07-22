@@ -3,7 +3,7 @@ import { Animated, Easing } from "react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/features/authentication/context/AuthContext";
-import { requestEmailOtp, verifyEmailOtp } from "@/repositories/api/emailOtpRepository";
+import { useEmailOtpRepository } from "@/core/di/hooks";
 import { db } from "@/repositories/supabase/supabaseClient";
 import type { OAuthCredential } from "@/repositories/firebase/firebaseAuth";
 
@@ -38,6 +38,7 @@ export function useLoginScreen() {
     linkPendingCredential,
     appleAvailable,
   } = useAuth();
+  const emailOtpRepository = useEmailOtpRepository();
 
   const [mode, setMode] = useState<LoginMode>("signin");
   const [email, setEmail] = useState("");
@@ -66,6 +67,15 @@ export function useLoginScreen() {
   const [otpResending, setOtpResending] = useState(false);
   const [otpError, setOtpError] = useState<string | null>(null);
   const [otpMsg, setOtpMsg] = useState<string | null>(null);
+  /** Seconds remaining before another code can be requested — prevents
+   *  accidental resend-spamming of the backend's per-email rate limit. */
+  const [otpCooldown, setOtpCooldown] = useState(0);
+
+  useEffect(() => {
+    if (otpCooldown <= 0) return;
+    const t = setInterval(() => setOtpCooldown((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(t);
+  }, [otpCooldown]);
 
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const cardSlide = useRef(new Animated.Value(40)).current;
@@ -128,27 +138,32 @@ export function useLoginScreen() {
     setSuccess("Password reset email sent! Check your inbox.");
   }, [email, resetPassword]);
 
+  const OTP_RESEND_COOLDOWN_SECONDS = 30;
+
   const handleRequestOtp = useCallback(async () => {
     const e = otpEmail.trim().toLowerCase();
     if (!e.includes("@") || !e.includes(".")) { setOtpError("Enter a valid email address."); return; }
     setOtpError(null);
     setOtpMsg(null);
     setOtpSending(true);
-    const result = await requestEmailOtp(e);
+    const result = await emailOtpRepository.requestCode(e);
     setOtpSending(false);
-    if (!result.ok) { setOtpError(result.error); return; }
+    if (!result.ok) { setOtpError(result.error.message); return; }
     setOtpCode("");
+    setOtpCooldown(OTP_RESEND_COOLDOWN_SECONDS);
     animateMode("otp-verify");
-  }, [otpEmail, animateMode]);
+  }, [otpEmail, animateMode, emailOtpRepository]);
 
   const handleResendOtp = useCallback(async () => {
+    if (otpCooldown > 0) return;
     const e = otpEmail.trim().toLowerCase();
     setOtpResending(true);
-    const result = await requestEmailOtp(e);
+    const result = await emailOtpRepository.requestCode(e);
     setOtpResending(false);
     setOtpMsg(result.ok ? "Code sent! Check your inbox." : null);
-    if (!result.ok) setOtpError(result.error);
-  }, [otpEmail]);
+    if (!result.ok) { setOtpError(result.error.message); return; }
+    setOtpCooldown(OTP_RESEND_COOLDOWN_SECONDS);
+  }, [otpEmail, otpCooldown, emailOtpRepository]);
 
   const handleGoogleSignIn = useCallback(async () => {
     setGoogleLoading(true);
@@ -200,21 +215,22 @@ export function useLoginScreen() {
   }, [linkCredential, linkEmail, linkPass, linkPendingCredential, animateMode]);
 
   const handleVerifyOtp = useCallback(async () => {
+    if (otpVerifying) return; // guards against a double-tap firing two verify requests for the same one-time code
     const e = otpEmail.trim().toLowerCase();
     setOtpError(null);
     setOtpVerifying(true);
-    const result = await verifyEmailOtp(e, otpCode);
-    if (!result.ok || !result.customToken) {
+    const result = await emailOtpRepository.verifyCode(e, otpCode);
+    if (!result.ok) {
       setOtpVerifying(false);
-      setOtpError(result.error);
+      setOtpError(result.error.message);
       return;
     }
-    const signInResult = await signInWithCustomToken(result.customToken);
+    const signInResult = await signInWithCustomToken(result.value.customToken);
     setOtpVerifying(false);
     if (signInResult.error) { setOtpError(signInResult.error); return; }
     setEmail(e);
     animateMode("success");
-  }, [otpEmail, otpCode, signInWithCustomToken, animateMode]);
+  }, [otpEmail, otpCode, otpVerifying, signInWithCustomToken, animateMode, emailOtpRepository]);
 
   /**
    * A first-time (non-anonymous) sign-in should land on the post-login
@@ -249,7 +265,7 @@ export function useLoginScreen() {
     showPass, setShowPass, showPass2, setShowPass2,
     focusEmail, setFocusEmail, focusPass, setFocusPass, focusPass2, setFocusPass2,
     otpEmail, setOtpEmail, otpCode, setOtpCode,
-    otpSending, otpVerifying, otpResending, otpError, setOtpError, otpMsg, setOtpMsg,
+    otpSending, otpVerifying, otpResending, otpError, setOtpError, otpMsg, setOtpMsg, otpCooldown,
     cardOpacity, cardSlide,
     handleSkip, handleSignIn, handleSignUp, handleForgot,
     handleRequestOtp, handleResendOtp, handleGoogleSignIn, handleAppleSignIn,

@@ -1,4 +1,4 @@
-import { AppError } from "./AppError";
+import { AppError } from "./AppError.ts";
 
 /** Sign-in, sign-up, or session failures — expired token, bad credentials, provider errors. */
 export class AuthError extends AppError {

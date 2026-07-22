@@ -272,6 +272,7 @@ function OtpVerifyView({
   verifying,
   onResend,
   resending,
+  resendCooldown,
   onBack,
   error,
   msg,
@@ -283,6 +284,7 @@ function OtpVerifyView({
   verifying: boolean;
   onResend: () => void;
   resending: boolean;
+  resendCooldown: number;
   onBack: () => void;
   error: string | null;
   msg: string | null;
@@ -318,6 +320,9 @@ function OtpVerifyView({
           returnKeyType="done"
           onSubmitEditing={onVerify}
           maxLength={6}
+          textContentType="oneTimeCode"
+          autoComplete="one-time-code"
+          importantForAutofill="yes"
         />
       </View>
 
@@ -349,8 +354,10 @@ function OtpVerifyView({
         </LinearGradient>
       </Pressable>
 
-      <Pressable onPress={onResend} disabled={resending} style={styles.ghostBtn}>
-        <Text style={[styles.ghostBtnText, { color: c.textMuted }]}>{resending ? "Sending…" : "Resend code"}</Text>
+      <Pressable onPress={onResend} disabled={resending || resendCooldown > 0} style={styles.ghostBtn}>
+        <Text style={[styles.ghostBtnText, { color: c.textMuted }]}>
+          {resending ? "Sending…" : resendCooldown > 0 ? `Resend code (${resendCooldown}s)` : "Resend code"}
+        </Text>
       </Pressable>
       <Pressable onPress={onBack} style={styles.ghostBtn}>
         <Text style={[styles.ghostBtnText, { color: c.textMuted, fontSize: 12.5 }]}>Use a different email</Text>
@@ -371,7 +378,7 @@ export default function LoginScreen() {
     showPass, setShowPass, showPass2, setShowPass2,
     focusEmail, setFocusEmail, focusPass, setFocusPass, focusPass2, setFocusPass2,
     otpEmail, setOtpEmail, otpCode, setOtpCode,
-    otpSending, otpVerifying, otpResending, otpError, setOtpError, otpMsg, setOtpMsg,
+    otpSending, otpVerifying, otpResending, otpError, setOtpError, otpMsg, setOtpMsg, otpCooldown,
     cardOpacity, cardSlide,
     handleSkip, handleSignIn, handleSignUp, handleForgot,
     handleRequestOtp, handleResendOtp, handleGoogleSignIn, handleAppleSignIn,
@@ -531,6 +538,7 @@ export default function LoginScreen() {
                 verifying={otpVerifying}
                 onResend={handleResendOtp}
                 resending={otpResending}
+                resendCooldown={otpCooldown}
                 onBack={() => { setOtpError(null); setOtpMsg(null); animateMode("otp-request"); }}
                 error={otpError}
                 msg={otpMsg}

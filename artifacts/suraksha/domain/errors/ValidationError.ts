@@ -1,4 +1,4 @@
-import { AppError } from "./AppError";
+import { AppError } from "./AppError.ts";
 
 /** Input failed a validation rule — invalid phone number, missing required field, malformed config. */
 export class ValidationError extends AppError {
