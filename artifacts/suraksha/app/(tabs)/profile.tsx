@@ -1,9 +1,6 @@
 import { LinearGradient } from "expo-linear-gradient";
-import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { deleteAccountAndResetLocalData, signOut } from "@/lib/auth";
+import React from "react";
 import {
   ActivityIndicator,
   Image,
@@ -19,15 +16,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Icon } from "@/components/Icon";
-import { LanguagePicker } from "@/components/LanguagePicker";
-import {
-  disableNotificationHandler,
-  enableNotificationHandler,
-  getNotificationPermissionGranted,
-  registerForPushNotifications,
-} from "@/lib/notifications";
-import { Card, SectionTitle } from "@/components/ui";
+import { Icon } from "@/shared/components/Icon";
+import { LanguagePicker } from "@/features/settings/components/LanguagePicker";
+import { Card, SectionTitle } from "@/shared/components/ui";
 import {
   ACCENTS,
   isPremiumTheme,
@@ -35,17 +26,14 @@ import {
   THEME_ORDER,
   type ThemeKey,
   withAlpha,
-} from "@/constants/colors";
-import type { IconName } from "@/constants/data";
-import { LANG_BY_CODE } from "@/constants/languages";
-import type { LangCode } from "@/constants/languages";
-import { useApp } from "@/context/AppContext";
-import { useAuth } from "@/context/AuthContext";
-import { useI18n } from "@/context/LanguageContext";
-import { useTheme } from "@/context/ThemeContext";
-import { useToast } from "@/context/ToastContext";
-import { firebaseAuth } from "@/lib/firebase";
-import { db, supabase } from "@/lib/supabaseClient";
+} from "@/shared/theme/colors";
+import type { IconName } from "@/shared/utils/data";
+import { LANG_BY_CODE } from "@/features/settings/constants/languages";
+import type { LangCode } from "@/features/settings/constants/languages";
+import { useApp } from "@/features/profile/context/AppContext";
+import { useI18n } from "@/features/settings/context/LanguageContext";
+import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useProfileScreen } from "@/features/profile/hooks/useProfileScreen";
 
 function Row({
   icon,
@@ -90,142 +78,20 @@ function Row({
 export default function ProfileScreen() {
   const { c, themeKey, setThemeKey, isDark, setMode } = useTheme();
   const { t, lang, setLang, pick } = useI18n();
-  const { profile, settings, setSettings, setProfile, resetAllData } = useApp();
-  const { showToast } = useToast();
+  const { profile, settings, setSettings } = useApp();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-
-  const { user: authUser, isAnon } = useAuth();
   const displayName = profile.name.trim() || t("profile.guest");
 
-  const [editing, setEditing] = useState(false);
-  const [draftName, setDraftName] = useState(profile.name);
-  const [draftPhone, setDraftPhone] = useState(profile.phone);
-  const [draftEmail, setDraftEmail] = useState(profile.email);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
-
-  const [langModalVisible, setLangModalVisible] = useState(false);
-
-  // Account link status
-  const [userAnonymous, setUserAnonymous] = useState<boolean | null>(null);
-  const [linkedEmail, setLinkedEmail] = useState<string | null>(null);
-
-  useEffect(() => {
-    setUserAnonymous(isAnon);
-    setLinkedEmail(authUser?.email ?? null);
-  }, [authUser, isAnon]);
-
-  const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
-  const [deleteText, setDeleteText] = useState("");
-  const [deleting, setDeleting] = useState(false);
-
-  const saveProfile = () => {
-    setProfile({
-      name: draftName.trim() || profile.name,
-      phone: draftPhone.trim() || profile.phone,
-      email: draftEmail.trim(),
-    });
-    setEditing(false);
-    showToast(t("common.done"));
-  };
-
-  const uploadAvatar = async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.75,
-      });
-      if (result.canceled) return;
-      const asset = result.assets[0];
-      setUploadingPhoto(true);
-
-      // Try Supabase Storage upload if signed in
-      const user = firebaseAuth.currentUser;
-      if (user) {
-        const response = await fetch(asset.uri);
-        const blob = await response.blob();
-        const ext = (asset.uri.split(".").pop() ?? "jpg").toLowerCase();
-        const path = `${user.uid}/avatar.${ext}`;
-        const { error: uploadError } = await supabase.storage
-          .from("avatars")
-          .upload(path, blob, { upsert: true, contentType: asset.mimeType ?? "image/jpeg" });
-
-        if (!uploadError) {
-          const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
-          setProfile({ avatarUrl: publicUrl });
-          try { await db.profiles.update(user.uid, { avatar_url: publicUrl }); } catch { /* non-critical */ }
-          showToast(t("common.done"));
-          return;
-        }
-      }
-      // Fallback: save local URI (offline or not signed in)
-      setProfile({ avatarUrl: asset.uri });
-      showToast(t("common.done"));
-    } catch {
-      showToast(lang === "hi" ? "फ़ोटो अपलोड नहीं हो सकी" : "Could not update photo");
-    } finally {
-      setUploadingPhoto(false);
-    }
-  };
+  const {
+    editing, setEditing, draftName, setDraftName, draftPhone, setDraftPhone, draftEmail, setDraftEmail, uploadingPhoto,
+    langModalVisible, setLangModalVisible,
+    userAnonymous, linkedEmail,
+    deleteStep, setDeleteStep, deleteText, setDeleteText, deleting,
+    openEditProfile, saveProfile, uploadAvatar, handleNotificationsToggle, handleSignOut, handleDeleteAccount,
+  } = useProfileScreen();
 
   const currentLangMeta = LANG_BY_CODE[lang];
-
-  const NOTIF_TOKEN_KEY = "suraksha.notif.token";
-
-  // ── Sync toggle with real OS permission on mount ─────────────────
-  useEffect(() => {
-    void (async () => {
-      const granted = await getNotificationPermissionGranted();
-      if (!granted && settings.notifications) {
-        setSettings({ notifications: false });
-      }
-    })();
-    // Run once on mount — settings.notifications intentionally excluded
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleNotificationsToggle = async (v: boolean) => {
-    if (v) {
-      enableNotificationHandler();
-      const result = await registerForPushNotifications();
-      if (!result.ok && result.denied) {
-        showToast(t("profile.notificationDenied"));
-        return;
-      }
-      if (result.ok) {
-        await AsyncStorage.setItem(NOTIF_TOKEN_KEY, result.token).catch(() => {});
-      }
-    } else {
-      disableNotificationHandler();
-      await AsyncStorage.removeItem(NOTIF_TOKEN_KEY).catch(() => {});
-      try {
-        const user = firebaseAuth.currentUser;
-        if (user) await db.notificationTokens.deleteForUser(user.uid);
-      } catch {
-        // Non-critical
-      }
-    }
-    setSettings({ notifications: v });
-  };
-
-  const handleDeleteAccount = async () => {
-    setDeleting(true);
-    try {
-      const { error } = await deleteAccountAndResetLocalData(resetAllData);
-      if (error) {
-        showToast(error);
-        return;
-      }
-      setDeleteStep(0);
-      router.replace("/onboarding" as never);
-    } catch {
-      showToast(lang === "hi" ? "खाता नहीं हटा सका — पुनः प्रयास करें" : "Could not delete account — try again");
-    } finally {
-      setDeleting(false);
-    }
-  };
 
   return (
     <ScrollView
@@ -279,12 +145,7 @@ export default function ProfileScreen() {
             )}
           </View>
           <Pressable
-            onPress={() => {
-              setDraftName(profile.name);
-              setDraftPhone(profile.phone);
-              setDraftEmail(profile.email);
-              setEditing(true);
-            }}
+            onPress={openEditProfile}
             hitSlop={10}
             style={styles.editBtn}
           >
@@ -526,10 +387,7 @@ export default function ProfileScreen() {
             icon="logOut"
             color={c.danger}
             label={lang === "hi" ? "साइन आउट" : "Sign out"}
-            onPress={async () => {
-              await signOut();
-              router.replace("/login" as never);
-            }}
+            onPress={handleSignOut}
           />
         </Card>
 

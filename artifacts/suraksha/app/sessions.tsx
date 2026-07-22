@@ -1,5 +1,4 @@
-import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -10,26 +9,13 @@ import {
   View,
 } from "react-native";
 
-import { BackHeader } from "@/components/Headers";
-import { Icon } from "@/components/Icon";
-import { withAlpha } from "@/constants/colors";
-import { useI18n } from "@/context/LanguageContext";
-import { useTheme } from "@/context/ThemeContext";
-import { getCurrentUser, signOut } from "@/lib/auth";
-import { apiFetch } from "@/lib/apiClient";
-import type { User } from "firebase/auth";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-interface SessionInfo {
-  id: string | null;
-  createdAt: string | null;
-  updatedAt: string | null;
-  userAgent: string | null;
-  ip: string | null;
-  isCurrentSession: boolean;
-}
+import { BackHeader } from "@/shared/components/Headers";
+import { Icon } from "@/shared/components/Icon";
+import { withAlpha } from "@/shared/theme/colors";
+import { useI18n } from "@/features/settings/context/LanguageContext";
+import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useSessionsScreen } from "@/features/authentication/hooks/useSessionsScreen";
+import type { SessionInfo } from "@/features/authentication/hooks/useSessionsScreen";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -75,7 +61,7 @@ function parseDeviceIcon(ua: string | null): "phone" | "globe" | "user" {
 // ---------------------------------------------------------------------------
 // SessionCard
 // ---------------------------------------------------------------------------
-function SessionCard({ session, c }: { session: SessionInfo; c: ReturnType<typeof import("@/context/ThemeContext").useTheme>["c"] }) {
+function SessionCard({ session, c }: { session: SessionInfo; c: ReturnType<typeof import("@/features/settings/context/ThemeContext").useTheme>["c"] }) {
   const device = parseDeviceName(session.userAgent);
   const icon = parseDeviceIcon(session.userAgent);
   return (
@@ -115,43 +101,11 @@ function SessionCard({ session, c }: { session: SessionInfo; c: ReturnType<typeo
 export default function SessionsScreen() {
   const { c } = useTheme();
   const { t } = useI18n();
-  const router = useRouter();
 
-  const [user, setUser] = useState<User | null>(null);
-  const [sessions, setSessions] = useState<SessionInfo[]>([]);
-  const [loadingSessions, setLoadingSessions] = useState(true);
-  const [signingOut, setSigningOut] = useState(false);
+  const { user, sessions, loadingSessions, signingOut, confirmSignOut, goToProfile } = useSessionsScreen();
 
-  useEffect(() => {
-    void loadData();
-  }, []);
-
-  const loadData = async () => {
-    setLoadingSessions(true);
-    const [u, sessionList] = await Promise.all([
-      getCurrentUser(),
-      fetchSessions(),
-    ]);
-    setUser(u);
-    setSessions(sessionList);
-    setLoadingSessions(false);
-  };
-
-  const fetchSessions = async (): Promise<SessionInfo[]> => {
-    const { response } = await apiFetch("/auth/sessions", { timeoutMs: 8_000 });
-    if (!response || !response.ok) return [];
-    try {
-      const body = (await response.json()) as { sessions?: SessionInfo[] };
-      return body.sessions ?? [];
-    } catch {
-      return [];
-    }
-  };
-
-  // Firebase has no server-side "revoke every device" call available here —
-  // this ends the session on this device only, same as Profile's Sign Out.
-  // The copy below says exactly that; it used to (incorrectly) claim it
-  // signed the user out everywhere.
+  // The copy below says sign-out is this-device-only; Firebase has no
+  // server-side "revoke every device" call available here.
   const handleSignOut = () => {
     Alert.alert(
       t("account.signOutConfirm"),
@@ -161,12 +115,7 @@ export default function SessionsScreen() {
         {
           text: t("account.signOut"),
           style: "destructive",
-          onPress: async () => {
-            setSigningOut(true);
-            await signOut();
-            setSigningOut(false);
-            router.replace("/login" as never);
-          },
+          onPress: () => { void confirmSignOut(); },
         },
       ],
     );
@@ -229,7 +178,7 @@ export default function SessionsScreen() {
         {/*    so this and Profile can never drift out of sync again.     */}
         <Text style={[styles.dangerLabel, { color: c.danger, marginTop: 22 }]}>Danger zone</Text>
         <Pressable
-          onPress={() => router.push("/(tabs)/profile" as never)}
+          onPress={goToProfile}
           style={[
             styles.actionBtn,
             {

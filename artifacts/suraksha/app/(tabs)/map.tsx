@@ -1,8 +1,6 @@
-import Constants from "expo-constants";
-import React, { useState } from "react";
+import React from "react";
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,114 +9,25 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-// react-native-maps' native views are NOT bundled in Expo Go — rendering the
-// native map there crashes. Detect Expo Go and fall back to the external-maps
-// list (same as web). The embedded map works in a development/production build.
-const IS_EXPO_GO = Constants.executionEnvironment === "storeClient";
-
-import { NativeMap } from "@/components/NativeMap";
-import { Icon } from "@/components/Icon";
-import { withAlpha } from "@/constants/colors";
-import type { IconName } from "@/constants/data";
-import { useI18n } from "@/context/LanguageContext";
-import { useTheme } from "@/context/ThemeContext";
-import { useLocation } from "@/hooks/useLocation";
-import { navigateTo, searchNearby } from "@/lib/native";
-import {
-  fetchNearbyPlaces,
-  type NearbyPlace,
-  type PlaceCategory,
-} from "@/lib/nearbyPlaces";
-
-interface CategoryDef {
-  key: PlaceCategory;
-  labelKey: string;
-  query: string;
-  icon: IconName;
-  color: (c: ReturnType<typeof useTheme>["c"]) => string;
-}
-
-const CATEGORIES: CategoryDef[] = [
-  {
-    key: "police",
-    labelKey: "map.police",
-    query: "police station",
-    icon: "shield",
-    color: (c) => c.police,
-  },
-  {
-    key: "hospital",
-    labelKey: "map.hospital",
-    query: "hospital",
-    icon: "hospital",
-    color: (c) => c.hospital,
-  },
-  {
-    key: "pharmacy",
-    labelKey: "map.pharmacy",
-    query: "pharmacy",
-    icon: "store",
-    color: (c) => c.shops,
-  },
-  {
-    key: "shelter",
-    labelKey: "map.shelter",
-    query: "women shelter",
-    icon: "home",
-    color: (c) => c.shelter,
-  },
-];
+import { NativeMap } from "@/features/journey/components/NativeMap";
+import { Icon } from "@/shared/components/Icon";
+import { withAlpha } from "@/shared/theme/colors";
+import { useI18n } from "@/features/settings/context/LanguageContext";
+import { useTheme } from "@/features/settings/context/ThemeContext";
+import { navigateTo, searchNearby } from "@/shared/utils/native";
+import { CATEGORIES, useMapScreen } from "@/features/journey/hooks/useMapScreen";
 
 export default function MapScreen() {
-  const { c, isDark } = useTheme();
+  const { c } = useTheme();
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
-  const { point, status, refresh } = useLocation();
 
-  const [places, setPlaces] = useState<NearbyPlace[]>([]);
-  const [activeCategory, setActiveCategory] = useState<PlaceCategory | null>(
-    null,
-  );
-  const [loadingCategory, setLoadingCategory] = useState<PlaceCategory | null>(
-    null,
-  );
-  const [noResults, setNoResults] = useState(false);
-
-  const coords = point ? { lat: point.lat, lng: point.lng } : null;
-  // Web and Expo Go both use the external-maps fallback instead of the embedded map.
-  const useExternalMaps = Platform.OS === "web" || IS_EXPO_GO;
-
-  const handleCategoryTap = async (cat: CategoryDef) => {
-    if (!coords) {
-      if (useExternalMaps) {
-        void searchNearby(cat.query, null);
-        return;
-      }
-
-      setLoadingCategory(null);
-      setActiveCategory(null);
-      setNoResults(true);
-      setPlaces([]);
-      return;
-    }
-
-    setLoadingCategory(cat.key);
-    setNoResults(false);
-    const results = await fetchNearbyPlaces(coords.lat, coords.lng, cat.key);
-    setLoadingCategory(null);
-    setActiveCategory(cat.key);
-
-    if (results.length === 0) {
-      setNoResults(true);
-      setPlaces([]);
-    } else {
-      setNoResults(false);
-      setPlaces(results);
-    }
-  };
-
-  const activeCatDef = CATEGORIES.find((cat) => cat.key === activeCategory);
-  const noteKey = useExternalMaps ? "map.noteWeb" : "map.noteNative";
+  const {
+    isDark, point, status, refresh,
+    coords, useExternalMaps,
+    places, activeCategory, loadingCategory, noResults,
+    handleCategoryTap, activeCatDef, noteKey,
+  } = useMapScreen();
 
   // ── Web + Expo Go: scrollable category list that opens the maps app ────────
   if (useExternalMaps) {

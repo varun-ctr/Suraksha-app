@@ -1,8 +1,6 @@
 import { Image } from "expo-image";
-import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -15,25 +13,15 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Icon } from "@/components/Icon";
-import { withAlpha } from "@/constants/colors";
-import { INCIDENT_TYPES } from "@/constants/data";
-import type { IncidentTypeKey } from "@/constants/data";
-import { useI18n } from "@/context/LanguageContext";
-import { useTheme } from "@/context/ThemeContext";
-import { useToast } from "@/context/ToastContext";
-import { useLocation } from "@/hooks/useLocation";
-import { timeAgo } from "@/lib/format";
-import { reverseGeocode } from "@/lib/location";
-import { firebaseAuth } from "@/lib/firebase";
-import { supabase } from "@/lib/supabaseClient";
-import { getBackendUrl } from "@/lib/env";
-import type { CommunityReportRow } from "@/types/database";
-import { fetchWeather, type WeatherData } from "@/lib/weather";
-
-// ── Tab switcher ──────────────────────────────────────────────────────────────
-
-type ActiveTab = "new" | "mine";
+import { Icon } from "@/shared/components/Icon";
+import { withAlpha } from "@/shared/theme/colors";
+import { INCIDENT_TYPES } from "@/shared/utils/data";
+import { useI18n } from "@/features/settings/context/LanguageContext";
+import { useTheme } from "@/features/settings/context/ThemeContext";
+import { timeAgo } from "@/shared/utils/format";
+import type { CommunityReportRow } from "@/shared/types/database";
+import { useIncidentScreen } from "@/features/community/hooks/useIncidentScreen";
+import type { IncidentTab } from "@/features/community/hooks/useIncidentScreen";
 
 // ── Moderation badge ──────────────────────────────────────────────────────────
 
@@ -102,177 +90,16 @@ function ReportCard({ report, lang }: { report: CommunityReportRow; lang: string
 export default function IncidentScreen() {
   const { c } = useTheme();
   const { t, pick, lang } = useI18n();
-  const { showToast } = useToast();
   const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const { tab: initialTab } = useLocalSearchParams<{ tab?: string }>();
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>(
-    initialTab === "mine" ? "mine" : "new",
-  );
-
-  // Form state
-  const [incidentType, setIncidentType] = useState<IncidentTypeKey>("harassment");
-  const [description, setDescription] = useState("");
-  const [photoUri, setPhotoUri] = useState<string | undefined>();
-  const [isAnonymous, setIsAnonymous] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-
-  // Location & weather
-  const { point, address: locationAddress, status: locStatus } = useLocation();
-  const [address, setAddress] = useState<string | null>(null);
-  const [weather, setWeather] = useState<WeatherData | null>(null);
-
-  // My reports
-  const [myReports, setMyReports] = useState<CommunityReportRow[]>([]);
-  const [loadingReports, setLoadingReports] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-
-  // Resolve address when GPS is ready
-  useEffect(() => {
-    if (point && !address) {
-      reverseGeocode(point.lat, point.lng)
-        .then((a) => { if (a) setAddress(a); })
-        .catch(() => {});
-    }
-  }, [point, address]);
-
-  // Fetch weather when GPS ready
-  useEffect(() => {
-    if (point) {
-      fetchWeather(point.lat, point.lng)
-        .then((w) => { if (w) setWeather(w); })
-        .catch(() => {});
-    }
-  }, [point]);
-
-  const loadMyReports = useCallback(async () => {
-    const user = firebaseAuth.currentUser;
-    if (!user) return;
-    const backendUrl = getBackendUrl();
-    if (!backendUrl) return;
-    setLoadingReports(true);
-    try {
-      let headers: Record<string, string> = {};
-      try {
-        const token = await user.getIdToken();
-        if (token) headers["Authorization"] = `Bearer ${token}`;
-      } catch { /* no token */ }
-      // The backend derives the owner from the verified token; no user_id query param.
-      const res = await fetch(`${backendUrl}/community-reports/mine`, { headers });
-      if (res.ok) {
-        const data = await res.json() as CommunityReportRow[];
-        setMyReports(data);
-      }
-    } catch { /* network error — keep existing list */ }
-    finally {
-      setLoadingReports(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadMyReports();
-  }, [loadMyReports]);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await loadMyReports();
-    setRefreshing(false);
-  }, [loadMyReports]);
-
-  const pickPhoto = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (perm.status !== "granted") {
-      showToast(t("incident.addPhoto"));
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.7,
-    });
-    if (!result.canceled && result.assets[0]) {
-      setPhotoUri(result.assets[0].uri);
-    }
-  };
-
-  const submit = async () => {
-    const user = firebaseAuth.currentUser;
-    if (!user) {
-      showToast(t("incident.loginRequired"));
-      router.push("/login" as never);
-      return;
-    }
-    if (!point) {
-      showToast(t("incident.noLocation"));
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const descText = isAnonymous
-        ? `[Anonymous] ${description.trim()}`
-        : description.trim();
-
-      // Attempt photo upload to Supabase Storage (non-critical — skipped on failure)
-      let photoUrl: string | undefined;
-      if (photoUri) {
-        try {
-          const ext = (photoUri.split(".").pop() ?? "jpg").toLowerCase().replace(/[^a-z]/g, "j");
-          const path = `${user.uid}/${Date.now()}.${ext}`;
-          const response = await fetch(photoUri);
-          const blob = await response.blob();
-          const { error: uploadErr } = await supabase.storage
-            .from("community-reports")
-            .upload(path, blob, { upsert: false, contentType: `image/${ext}` });
-          if (!uploadErr) {
-            photoUrl = supabase.storage.from("community-reports").getPublicUrl(path).data.publicUrl;
-          }
-        } catch { /* non-critical — submit without photo */ }
-      }
-
-      // Route insert through API server (bypasses Supabase RLS / Firebase JWT issues)
-      const backendUrl = getBackendUrl();
-      if (!backendUrl) throw new Error("Backend not configured");
-
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      try {
-        const token = await user.getIdToken();
-        if (token) headers["Authorization"] = `Bearer ${token}`;
-      } catch { /* no token — proceed */ }
-
-      const res = await fetch(`${backendUrl}/community-reports`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          type: incidentType,
-          lat: point.lat,
-          lng: point.lng,
-          address: address ?? null,
-          description: descText || null,
-          photo_url: photoUrl ?? null,
-        }),
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(body.error ?? `HTTP ${res.status}`);
-      }
-
-      showToast(t("incident.submitted"));
-      setDescription("");
-      setPhotoUri(undefined);
-      setIncidentType("harassment");
-      setIsAnonymous(false);
-      setActiveTab("mine");
-      void loadMyReports();
-    } catch {
-      showToast(t("incident.error"));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const selectedType = INCIDENT_TYPES.find((i) => i.key === incidentType)!;
+  const {
+    activeTab, setActiveTab,
+    incidentType, setIncidentType, description, setDescription, photoUri, setPhotoUri,
+    isAnonymous, setIsAnonymous, submitting,
+    point, locStatus, address, weather,
+    myReports, loadingReports, refreshing, onRefresh,
+    pickPhoto, submit, selectedType,
+  } = useIncidentScreen();
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -289,7 +116,7 @@ export default function IncidentScreen() {
 
       {/* ── Tab bar ─────────────────────────────────────────── */}
       <View style={[styles.tabBar, { backgroundColor: c.card, borderBottomColor: c.border }]}>
-        {(["new", "mine"] as ActiveTab[]).map((tab) => {
+        {(["new", "mine"] as IncidentTab[]).map((tab) => {
           const isActive = activeTab === tab;
           const label = tab === "new" ? t("incident.newReport") : t("incident.myReports");
           return (

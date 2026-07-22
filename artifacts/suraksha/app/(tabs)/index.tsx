@@ -1,7 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import {
   Animated,
   Easing,
@@ -17,79 +17,34 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Icon } from "@/components/Icon";
-import { LanguagePicker } from "@/components/LanguagePicker";
-import { Avatar, Card } from "@/components/ui";
-import { withAlpha } from "@/constants/colors";
-import { QUICK_ACTIONS } from "@/constants/data";
-import { LANG_BY_CODE } from "@/constants/languages";
-import type { LangCode } from "@/constants/languages";
-import { useApp } from "@/context/AppContext";
-import { useI18n } from "@/context/LanguageContext";
-import { useSafety } from "@/context/SafetyContext";
-import type { SafetyStatus } from "@/context/SafetyContext";
-import { useTheme } from "@/context/ThemeContext";
-import { useToast } from "@/context/ToastContext";
-import { useLocation } from "@/hooks/useLocation";
-import { fmtClock } from "@/lib/format";
-import { formatCoords } from "@/lib/location";
-import { callNumber, shareLiveLocation } from "@/lib/native";
-import { sendJourneyAlerts } from "@/lib/sosAlert";
-import type { WeatherData } from "@/lib/weather";
-import { fetchWeather } from "@/lib/weather";
-
-// ── Safety Score helpers ──────────────────────────────────────────────────────
-
-function computeSafetyScore(
-  status: SafetyStatus,
-  weather: WeatherData | null,
-  hasContacts: boolean,
-  locationReady: boolean,
-): number {
-  let s = 20;
-  const h = new Date().getHours();
-  if (h >= 6 && h < 21) s += 20;
-  if (hasContacts) s += 20;
-  if (locationReady) s += 15;
-  if (weather) {
-    s += weather.code < 50 ? 25 : weather.code < 80 ? 12 : 0;
-  } else {
-    // Weather not yet loaded — no bonus, no penalty
-    s += 0;
-  }
-  if (status === "emergency") s = Math.min(s, 30);
-  else if (status === "caution") s = Math.min(s, 65);
-  return Math.min(100, Math.max(10, s));
-}
-
-function scoreColor(score: number, c: ReturnType<typeof useTheme>["c"]): string {
-  return score >= 70 ? c.success : score >= 40 ? c.warning : c.danger;
-}
-
-function scoreLabelKey(score: number): string {
-  return score >= 70 ? "home.statusProtected" : score >= 40 ? "home.statusModerateRisk" : "home.statusHighRisk";
-}
-
-function getSafetySuggestions(t: (key: string) => string, weather: WeatherData | null): string[] {
-  const out: string[] = [];
-  const h = new Date().getHours();
-  if (weather?.code !== undefined) {
-    if (weather.code >= 95) out.push(t("home.tipStorm"));
-    else if (weather.code >= 61) out.push(t("home.tipUmbrella"));
-    else if (weather.code >= 45) out.push(t("home.tipLowVisibility"));
-    else if (weather.code < 3) out.push(t("home.tipClearSkies"));
-  }
-  if (h >= 21 || h < 5) out.push(t("home.tipNightStreets"));
-  else if (h >= 6 && h < 10) out.push(t("home.tipMorningRush"));
-  else if (h >= 17 && h < 20) out.push(t("home.tipEveningRush"));
-  out.push(t("home.tipShareLocation"));
-  return out.slice(0, 3);
-}
+import { Icon } from "@/shared/components/Icon";
+import { LanguagePicker } from "@/features/settings/components/LanguagePicker";
+import { Avatar, Card } from "@/shared/components/ui";
+import { withAlpha } from "@/shared/theme/colors";
+import { QUICK_ACTIONS } from "@/shared/utils/data";
+import { LANG_BY_CODE } from "@/features/settings/constants/languages";
+import type { LangCode } from "@/features/settings/constants/languages";
+import { useApp } from "@/features/profile/context/AppContext";
+import { useI18n } from "@/features/settings/context/LanguageContext";
+import { useSafety } from "@/features/sos/context/SafetyContext";
+import { useSafetyScore } from "@/features/sos/hooks/useSafetyScore";
+import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useToast } from "@/features/settings/context/ToastContext";
+import { useLocation } from "@/shared/hooks/useLocation";
+import { useJourney } from "@/features/journey/hooks/useJourney";
+import { useWeather } from "@/features/journey/hooks/useWeather";
+import { fmtClock } from "@/shared/utils/format";
+import { formatCoords } from "@/core/permissions/location";
+import { callNumber, shareLiveLocation } from "@/shared/utils/native";
+import type { WeatherData } from "@/repositories/api/weatherRepository";
 
 // ── Safety Score Card ─────────────────────────────────────────────────────────
 
 function SafetyScoreCard({
   score,
+  color,
+  label,
+  emoji,
   weather,
   locLabel,
   hasContacts,
@@ -97,6 +52,9 @@ function SafetyScoreCard({
   onViewDetails,
 }: {
   score: number;
+  color: string;
+  label: string;
+  emoji: string;
   weather: WeatherData | null;
   locLabel: string;
   hasContacts: boolean;
@@ -105,9 +63,6 @@ function SafetyScoreCard({
 }) {
   const { c } = useTheme();
   const { t } = useI18n();
-  const color = scoreColor(score, c);
-  const label = t(scoreLabelKey(score));
-  const emoji = score >= 70 ? "🛡️" : score >= 40 ? "⚠️" : "🆘";
 
   return (
     <Card style={styles.scoreCard}>
@@ -252,14 +207,15 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { contacts, profile } = useApp();
-  const { triggerSOS, journey, setJourneyDuration, startJourney, endJourney, checkInJourney, safetyStatus } =
-    useSafety();
+  const { triggerSOS } = useSafety();
+  const { journey, overdue, setJourneyDuration, startJourney: handleStartJourney, endJourney, checkInJourney } =
+    useJourney();
   const { showToast } = useToast();
   const { point, address, status } = useLocation();
   const { width: screenWidth } = useWindowDimensions();
   const [showLangPicker, setShowLangPicker] = React.useState(false);
   const [showScoreDetails, setShowScoreDetails] = React.useState(false);
-  const [weather, setWeather] = useState<WeatherData | null>(null);
+  const weather = useWeather(point);
 
   const displayName = profile.name.trim() || t("home.guest");
   const locLabel =
@@ -268,7 +224,6 @@ export default function HomeScreen() {
       : status === "denied"
         ? t("home.locationOff")
         : address ?? (point ? formatCoords(point) : t("home.locating"));
-  const overdue = journey.active && journey.seconds >= journey.duration * 60;
   const locationReady = status === "ready";
 
   const hour = new Date().getHours();
@@ -281,30 +236,8 @@ export default function HomeScreen() {
           ? "home.greetingEvening"
           : "home.greetingNight";
 
-  const score = computeSafetyScore(safetyStatus, weather, contacts.length > 0, locationReady);
-
-  const handleStartJourney = useCallback(() => {
-    startJourney();
-    showToast(t("home.sharingLive"));
-    void sendJourneyAlerts(
-      contacts,
-      point ?? null,
-      journey.duration,
-      profile.name.trim() || t("home.guest"),
-      address,
-    );
-  }, [startJourney, showToast, t, contacts, point, journey.duration, profile.name, address]);
-  const suggestions = getSafetySuggestions(t, weather);
-
-  useEffect(() => {
-    if (point) {
-      fetchWeather(point.lat, point.lng)
-        .then((w) => {
-          if (w) setWeather(w);
-        })
-        .catch(() => {});
-    }
-  }, [point]);
+  const { score, color: scoreColorValue, label: scoreLabel, emoji: scoreEmoji, suggestions } =
+    useSafetyScore(weather, contacts.length > 0, locationReady);
 
   return (
     <ScrollView
@@ -408,6 +341,9 @@ export default function HomeScreen() {
       <View style={{ paddingHorizontal: 16, marginTop: -29 }}>
         <SafetyScoreCard
           score={score}
+          color={scoreColorValue}
+          label={scoreLabel}
+          emoji={scoreEmoji}
           weather={weather}
           locLabel={locLabel}
           hasContacts={contacts.length > 0}
@@ -777,7 +713,7 @@ export default function HomeScreen() {
               {t("home.safetyScore")} — {score}/100
             </Text>
             <Text style={{ fontSize: 12.5, color: c.textMuted, marginBottom: 18 }}>
-              {t(scoreLabelKey(score))}
+              {scoreLabel}
             </Text>
 
             {/* Breakdown rows */}

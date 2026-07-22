@@ -1,5 +1,4 @@
-import { useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React from "react";
 import {
   Pressable,
   ScrollView,
@@ -9,16 +8,17 @@ import {
   View,
 } from "react-native";
 
-import { GradientHeader } from "@/components/Headers";
-import { Icon } from "@/components/Icon";
-import { Card, Chip, IconBadge } from "@/components/ui";
-import { withAlpha } from "@/constants/colors";
-import { RIGHTS, RIGHTS_CATEGORIES, type RightsCategory } from "@/constants/data";
-import { useBookmarks } from "@/hooks/useBookmarks";
-import { useI18n } from "@/context/LanguageContext";
-import { useTheme } from "@/context/ThemeContext";
-import { useToast } from "@/context/ToastContext";
-import { callNumber } from "@/lib/native";
+import { GradientHeader } from "@/shared/components/Headers";
+import { Icon } from "@/shared/components/Icon";
+import { Card, Chip, IconBadge } from "@/shared/components/ui";
+import { withAlpha } from "@/shared/theme/colors";
+import { RIGHTS_CATEGORIES } from "@/shared/utils/data";
+import { useI18n } from "@/features/settings/context/LanguageContext";
+import { useTheme } from "@/features/settings/context/ThemeContext";
+import { useToast } from "@/features/settings/context/ToastContext";
+import { callNumber } from "@/shared/utils/native";
+import { useRightsScreen } from "@/features/community/hooks/useRightsScreen";
+import type { RightsTab } from "@/features/community/hooks/useRightsScreen";
 
 const QUICK_NUMBERS = [
   { label: { en: "Police", hi: "पुलिस" }, num: "100" },
@@ -26,37 +26,15 @@ const QUICK_NUMBERS = [
   { label: { en: "Childline", hi: "चाइल्डलाइन" }, num: "1098" },
 ];
 
-type Tab = "all" | "bookmarks";
-
 export default function RightsScreen() {
   const { c } = useTheme();
   const { t, pick } = useI18n();
   const { showToast } = useToast();
-  const router = useRouter();
-  const { isBookmarked, toggle } = useBookmarks();
 
-  const [tab, setTab] = useState<Tab>("all");
-  const [search, setSearch] = useState("");
-  const [activeCat, setActiveCat] = useState<"all" | RightsCategory>("all");
-
-  const visible = useMemo(() => {
-    return RIGHTS.filter((r) => {
-      if (tab === "bookmarks") return isBookmarked(r.id);
-      if (activeCat !== "all" && r.category !== activeCat) return false;
-      const q = search.trim().toLowerCase();
-      if (!q) return true;
-      return (
-        r.title.toLowerCase().includes(q) ||
-        r.subtitle.toLowerCase().includes(q) ||
-        r.en.toLowerCase().includes(q) ||
-        r.hi.toLowerCase().includes(q)
-      );
-    });
-  }, [tab, activeCat, search, isBookmarked]);
-
-  const onCardPress = (id: number) => {
-    router.push({ pathname: "/right-detail", params: { id: String(id) } } as never);
-  };
+  const {
+    tab, selectTab, search, setSearch, activeCat, setActiveCat,
+    visible, onCardPress, isBookmarked, toggle,
+  } = useRightsScreen();
 
   return (
     <ScrollView
@@ -93,14 +71,14 @@ export default function RightsScreen() {
 
         {/* ── Tab bar ── */}
         <View style={[styles.tabBar, { backgroundColor: c.cardAlt, borderColor: c.border }]}>
-          {(["all", "bookmarks"] as Tab[]).map((key) => {
+          {(["all", "bookmarks"] as RightsTab[]).map((key) => {
             const active = tab === key;
             const label = key === "all" ? t("rights.allTab") : t("rights.bookmarksTab");
             const icon: "book" | "bookmark" = key === "all" ? "book" : "bookmark";
             return (
               <Pressable
                 key={key}
-                onPress={() => { setTab(key); setSearch(""); setActiveCat("all"); }}
+                onPress={() => selectTab(key)}
                 style={[
                   styles.tabBtn,
                   active && { backgroundColor: c.card, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2 },

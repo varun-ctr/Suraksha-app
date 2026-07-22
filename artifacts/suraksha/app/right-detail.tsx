@@ -10,12 +10,12 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Icon } from "@/components/Icon";
-import { withAlpha } from "@/constants/colors";
-import { RIGHTS, RIGHTS_CATEGORIES } from "@/constants/data";
-import { useBookmarks } from "@/hooks/useBookmarks";
-import { useI18n } from "@/context/LanguageContext";
-import { useTheme } from "@/context/ThemeContext";
+import { Icon } from "@/shared/components/Icon";
+import { withAlpha } from "@/shared/theme/colors";
+import { RIGHTS, RIGHTS_CATEGORIES } from "@/shared/utils/data";
+import { useBookmarks } from "@/features/community/hooks/useBookmarks";
+import { useI18n } from "@/features/settings/context/LanguageContext";
+import { useTheme } from "@/features/settings/context/ThemeContext";
 
 export default function RightDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();

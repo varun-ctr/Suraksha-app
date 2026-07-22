@@ -1,10 +1,10 @@
 import React from "react";
 import { ScrollView, Text, View } from "react-native";
 
-import { BackHeader } from "@/components/Headers";
-import { TERMS_SECTIONS } from "@/constants/legal";
-import { useI18n } from "@/context/LanguageContext";
-import { useTheme } from "@/context/ThemeContext";
+import { BackHeader } from "@/shared/components/Headers";
+import { TERMS_SECTIONS } from "@/shared/utils/legal";
+import { useI18n } from "@/features/settings/context/LanguageContext";
+import { useTheme } from "@/features/settings/context/ThemeContext";
 
 export default function TermsScreen() {
   const { c } = useTheme();

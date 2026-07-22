@@ -1,6 +1,4 @@
-import * as ExpoLocation from "expo-location";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -16,13 +14,13 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Icon } from "@/components/Icon";
-import { withAlpha } from "@/constants/colors";
-import { useApp } from "@/context/AppContext";
-import { useI18n } from "@/context/LanguageContext";
-import { useTheme } from "@/context/ThemeContext";
+import { Icon } from "@/shared/components/Icon";
+import { withAlpha } from "@/shared/theme/colors";
+import { useI18n } from "@/features/settings/context/LanguageContext";
+import { useTheme } from "@/features/settings/context/ThemeContext";
+import { ONBOARDING_TOTAL_STEPS, useOnboardingScreen } from "@/features/profile/hooks/useOnboardingScreen";
 
-const TOTAL = 3;
+const TOTAL = ONBOARDING_TOTAL_STEPS;
 
 // ── City illustration (pure RN primitives) ───────────────────────────────────
 function CityIllustration() {
@@ -315,87 +313,16 @@ function LocationStep({ granted, onAllow, t }: { granted: boolean; onAllow: () =
 
 // ── Main screen ───────────────────────────────────────────────────────────────
 export default function Onboarding() {
-  const { t }              = useI18n();
-  const { c }              = useTheme();
-  const { completeOnboarding, setProfile, addContact } = useApp();
-  const router             = useRouter();
-  const insets             = useSafeAreaInsets();
+  const { t } = useI18n();
+  const { c } = useTheme();
+  const insets = useSafeAreaInsets();
 
-  const [step, setStep]                   = useState(0);
-  const [name, setName]                   = useState("");
-  const [contactName, setContactName]     = useState("");
-  const [contactPhone, setContactPhone]   = useState("");
-  const [locationGranted, setLocationGranted] = useState(false);
-  const [error, setError]                 = useState("");
-
-  const slideY  = useRef(new Animated.Value(0)).current;
-  const opacity = useRef(new Animated.Value(1)).current;
-
-  const animateTo = (next: number) => {
-    Animated.parallel([
-      Animated.timing(opacity, { toValue: 0, duration: 120, useNativeDriver: true }),
-      Animated.timing(slideY,  { toValue: 20, duration: 120, useNativeDriver: true }),
-    ]).start(() => {
-      setStep(next);
-      setError("");
-      slideY.setValue(-20);
-      Animated.parallel([
-        Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-        Animated.timing(slideY,  { toValue: 0, duration: 200, easing: Easing.out(Easing.back(1.2)), useNativeDriver: true }),
-      ]).start();
-    });
-  };
-
-  const handleAllowLocation = async () => {
-    if (Platform.OS === "web") { setLocationGranted(true); return; }
-    const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
-    setLocationGranted(status === "granted");
-  };
-
-  const handleSkip = () => {
-    setError("");
-    if (step < TOTAL - 1) animateTo(step + 1);
-    else finish();
-  };
-
-  const handleNext = () => {
-    setError("");
-    if (step === 0) {
-      if (!name.trim()) { setError(t("onb.nameError")); return; }
-      setProfile({ name: name.trim() });
-      animateTo(1);
-      return;
-    }
-    if (step === 1) {
-      const hasName  = contactName.trim().length > 0;
-      const hasPhone = contactPhone.trim().length > 0;
-      if (hasName || hasPhone) {
-        const result = addContact(contactName.trim(), contactPhone.trim());
-        if (!result.ok) {
-          if (result.error === "invalid")   { setError(t("onb.invalidPhone"));   return; }
-          if (result.error === "duplicate") { setError(t("onb.duplicatePhone")); return; }
-        }
-      }
-      animateTo(2);
-      return;
-    }
-    if (step === 2) finish();
-  };
-
-  const finish = () => {
-    completeOnboarding();
-    router.replace("/(tabs)" as never);
-  };
-
-  const primaryLabel =
-    step === 0 ? t("onb.continue")
-    : step === 1 ? (contactName.trim() || contactPhone.trim() ? t("onb.contactAddContinue") : t("onb.continue"))
-    : t("onb.getStarted");
-
-  const skipLabel =
-    step === 0 ? ""
-    : step === 1 ? t("onb.skipForNow")
-    : t("onb.skip");
+  const {
+    step, name, setName, contactName, setContactName, contactPhone, setContactPhone,
+    locationGranted, error, slideY, opacity,
+    handleAllowLocation, handleSkip, handleNext,
+    primaryLabel, skipLabel,
+  } = useOnboardingScreen();
 
   return (
     <KeyboardAvoidingView
