@@ -178,7 +178,7 @@ async function seedRevenueCat() {
     };
 
     if (isTestStore) {
-      if (duration) body.subscription = { duration: { duration } };
+      if (duration) body.subscription = { duration };
       body.title = title;
     }
 
