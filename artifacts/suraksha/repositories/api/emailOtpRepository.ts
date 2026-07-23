@@ -5,6 +5,7 @@ import type { AppError } from "@/domain/errors";
 import { NetworkError, AuthError } from "@/domain/errors";
 import type { EmailOtpRepository, EmailOtpVerified } from "@/domain/repositories/EmailOtpRepository";
 import { toAppError } from "@/repositories/api/emailOtpErrorMapper";
+import { trackAuthEvent } from "@/core/analytics/authTelemetry";
 
 const UNREACHABLE_MESSAGE = "Couldn't reach the server. Please check your connection and try again.";
 
@@ -23,9 +24,17 @@ async function requestCode(email: string): Promise<Result<void, AppError>> {
     method: "POST",
     body: JSON.stringify({ email }),
   });
-  if (!response) return err(new NetworkError(UNREACHABLE_MESSAGE));
-  if (response.ok) return ok(undefined);
-  return err(await parseErrorBody(response));
+  if (!response) {
+    trackAuthEvent("otp_request_failed", { errorCode: "NETWORK" });
+    return err(new NetworkError(UNREACHABLE_MESSAGE));
+  }
+  if (response.ok) {
+    trackAuthEvent("otp_requested");
+    return ok(undefined);
+  }
+  const error = await parseErrorBody(response);
+  trackAuthEvent("otp_request_failed", { errorCode: error.code });
+  return err(error);
 }
 
 /** Verifies a 6-digit code and, on success, returns a Firebase custom token to complete sign-in with. */
@@ -34,13 +43,22 @@ async function verifyCode(email: string, code: string): Promise<Result<EmailOtpV
     method: "POST",
     body: JSON.stringify({ email, code }),
   });
-  if (!response) return err(new NetworkError(UNREACHABLE_MESSAGE));
+  if (!response) {
+    trackAuthEvent("otp_verify_failed", { errorCode: "NETWORK" });
+    return err(new NetworkError(UNREACHABLE_MESSAGE));
+  }
 
   try {
     const body = (await response.json()) as { customToken?: string; error?: string; message?: string };
-    if (response.ok && body.customToken) return ok({ customToken: body.customToken });
-    return err(toAppError(body.error, body.message ?? "That code is invalid or has expired."));
+    if (response.ok && body.customToken) {
+      trackAuthEvent("otp_verified");
+      return ok({ customToken: body.customToken });
+    }
+    const error = toAppError(body.error, body.message ?? "That code is invalid or has expired.");
+    trackAuthEvent("otp_verify_failed", { errorCode: error.code });
+    return err(error);
   } catch {
+    trackAuthEvent("otp_verify_failed", { errorCode: "AUTH" });
     return err(new AuthError("Something went wrong. Please try again."));
   }
 }

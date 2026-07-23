@@ -9,7 +9,7 @@
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
-    "test": "node --test --experimental-strip-types \"shared/utils/__tests__/**/*.test.ts\" \"features/sos/utils/__tests__/**/*.test.ts\" \"features/community/utils/__tests__/**/*.test.ts\" \"core/storage/__tests__/**/*.test.ts\" \"domain/**/__tests__/**/*.test.ts\" \"repositories/**/__tests__/**/*.test.ts\"",
+    "test": "node --test --experimental-strip-types \"shared/utils/__tests__/**/*.test.ts\" \"features/sos/utils/__tests__/**/*.test.ts\" \"features/community/utils/__tests__/**/*.test.ts\" \"features/profile/context/__tests__/**/*.test.ts\" \"core/storage/__tests__/**/*.test.ts\" \"domain/**/__tests__/**/*.test.ts\" \"repositories/**/__tests__/**/*.test.ts\"",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "prebuild:android": "expo prebuild --platform android --clean"
@@ -76,6 +76,7 @@
     "expo": "~54.0.36",
     "expo-apple-authentication": "~8.0.8",
     "expo-crypto": "~15.0.9",
+    "expo-local-authentication": "~17.0.8",
     "expo-notifications": "~0.32.17",
     "expo-secure-store": "~15.0.8",
     "expo-updates": "~29.0.19",

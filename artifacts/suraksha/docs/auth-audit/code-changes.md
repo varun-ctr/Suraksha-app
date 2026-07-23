@@ -2,6 +2,8 @@
 
 Grouped by theme; every change preserves existing user-visible behavior except where explicitly noted as a security/reliability fix (per the brief's acceptance criteria).
 
+> This document covers the initial audit pass. A second, final hardening pass added: Apple Sign In nonce (replay protection), active-SOS teardown on account deletion, `reauthenticateWithPassword` + centralized `isReauthRequired`, `core/permissions/biometrics.ts` (unwired), a persisted-owner-uid crash-recovery fix in `AppContext.tsx`, and `core/analytics/authTelemetry.ts`. Full detail in [final-hardening-report.md](./final-hardening-report.md).
+
 ## A. Repository pattern + DI for auth (Section 1, 2)
 
 **New:**

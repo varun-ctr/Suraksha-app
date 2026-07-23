@@ -5,6 +5,7 @@ import {
   signInWithCustomToken,
   signInWithCredential,
   linkWithCredential,
+  reauthenticateWithCredential,
   EmailAuthProvider,
   GoogleAuthProvider,
   OAuthProvider,
@@ -19,12 +20,15 @@ import {
 } from "firebase/auth";
 import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
 import * as AppleAuthentication from "expo-apple-authentication";
+import * as Crypto from "expo-crypto";
 import { Platform } from "react-native";
 import { firebaseAuth } from "./firebaseClient";
 import { optionalPublicEnv } from "@/core/config/env";
+import { isReauthRequired } from "./reauthCheck";
 
 export type FirebaseUser = User;
 export type { OAuthCredential };
+export { isReauthRequired };
 
 export type AuthResult = {
   user: User | null;
@@ -90,18 +94,30 @@ export async function isAppleSignInAvailable(): Promise<boolean> {
 
 export async function signInWithApple(): Promise<AuthResult> {
   try {
+    // Replay protection: a random raw nonce is hashed (SHA-256) and sent to
+    // Apple, which embeds the hash in the returned identityToken's `nonce`
+    // claim. The RAW nonce is then given to Firebase alongside that token,
+    // and Firebase's backend verifies SHA-256(rawNonce) matches the token's
+    // claim before accepting it — without this, a captured identityToken
+    // could be replayed by an attacker to sign in as the victim, since
+    // nothing would otherwise tie the token to *this specific* sign-in
+    // attempt. Invisible to the user — no UX change.
+    const rawNonce = Crypto.randomUUID();
+    const hashedNonce = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, rawNonce);
+
     const appleCredential = await AppleAuthentication.signInAsync({
       requestedScopes: [
         AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
         AppleAuthentication.AppleAuthenticationScope.EMAIL,
       ],
+      nonce: hashedNonce,
     });
 
     const { identityToken } = appleCredential;
     if (!identityToken) throw new Error("No identity token returned from Apple Sign-In.");
 
     const provider = new OAuthProvider("apple.com");
-    const firebaseCredential = provider.credential({ idToken: identityToken }) as OAuthCredential;
+    const firebaseCredential = provider.credential({ idToken: identityToken, rawNonce }) as OAuthCredential;
     return await _applyCredential(firebaseCredential, () => OAuthProvider.credentialFromResult({ user: null } as never) ?? firebaseCredential);
   } catch (e: unknown) {
     const code = (e as { code?: string }).code;
@@ -249,6 +265,25 @@ export async function signUpWithEmail(email: string, password: string): Promise<
     return { user: cred.user, error: null };
   } catch (e) {
     return { user: null, error: firebaseErrMsg(e) };
+  }
+}
+
+/**
+ * Re-authenticates the current user with their email/password credential —
+ * satisfies Firebase's "recent login" requirement for sensitive operations
+ * (e.g. account deletion) without forcing a full sign-out/sign-in cycle.
+ * Not yet wired into any screen (no UI change this pass) — ready for a
+ * future re-auth prompt on `auth/requires-recent-login`.
+ */
+export async function reauthenticateWithPassword(password: string): Promise<{ error: string | null }> {
+  const user = firebaseAuth.currentUser;
+  if (!user?.email) return { error: "Not signed in." };
+  try {
+    const credential = EmailAuthProvider.credential(user.email, password);
+    await reauthenticateWithCredential(user, credential);
+    return { error: null };
+  } catch (e) {
+    return { error: firebaseErrMsg(e) };
   }
 }
 

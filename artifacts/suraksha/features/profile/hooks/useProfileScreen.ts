@@ -14,6 +14,7 @@ import {
 } from "@/core/permissions/notifications";
 import { useApp } from "@/features/profile/context/AppContext";
 import { useAuth } from "@/features/authentication/context/AuthContext";
+import { useSafety } from "@/features/sos/context/SafetyContext";
 import { useI18n } from "@/features/settings/context/LanguageContext";
 import { useToast } from "@/features/settings/context/ToastContext";
 import { firebaseAuth } from "@/repositories/firebase/firebaseClient";
@@ -26,6 +27,7 @@ export function useProfileScreen() {
   const { profile, settings, setProfile, setSettings, resetAllData } = useApp();
   const { showToast } = useToast();
   const { user: authUser, isAnon } = useAuth();
+  const { sos, cancelSOS, journey, endJourney } = useSafety();
 
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(profile.name);
@@ -144,6 +146,19 @@ export function useProfileScreen() {
   const handleDeleteAccount = async () => {
     setDeleting(true);
     try {
+      // Tear down any active safety session before deleting the account —
+      // its backend rows (sos_events, live_sessions) are about to be wiped
+      // by deleteAccountAndResetLocalData below, so the in-memory tracking
+      // state (location watch, live-session share) must not keep running
+      // against data that no longer exists. Deliberately explicit here
+      // rather than tied to auth-state changes in general: SafetyContext's
+      // tracking must never stop on its own just because of an unrelated
+      // sign-out/session hiccup (a dangerous behavior for a safety app) —
+      // this is scoped to the one case where the user has explicitly chosen
+      // to delete their account.
+      if (sos.phase !== "idle") cancelSOS();
+      if (journey.active) endJourney();
+
       const { error } = await deleteAccountAndResetLocalData(resetAllData);
       if (error) {
         showToast(error);

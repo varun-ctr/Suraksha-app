@@ -15,6 +15,7 @@ import { initPurchases } from "@/features/premium/services/purchasesService";
 import { toAuthUser } from "@/repositories/firebase/mappers/authUserMapper";
 import type { AuthUser } from "@/domain/entities/AuthUser";
 import { logger } from "@/core/logger/logger";
+import { trackAuthEvent } from "@/core/analytics/authTelemetry";
 
 /**
  * If Firebase's auth-state listener never fires (cold-start network delay,
@@ -91,12 +92,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [authRepository]);
 
   const signIn = useCallback(async (email: string, password: string) => {
+    trackAuthEvent("sign_in_attempt", { method: "email" });
     const r = await authRepository.signInWithEmail(email, password);
+    trackAuthEvent(r.ok ? "sign_in_success" : "sign_in_failure", { method: "email", errorCode: r.ok ? undefined : r.error.code });
     return { error: r.ok ? null : r.error.message };
   }, [authRepository]);
 
   const signUp = useCallback(async (email: string, password: string) => {
+    trackAuthEvent("sign_up_attempt", { method: "email" });
     const r = await authRepository.signUpWithEmail(email, password);
+    trackAuthEvent(r.ok ? "sign_up_success" : "sign_up_failure", { method: "email", errorCode: r.ok ? undefined : r.error.code });
     return { error: r.ok ? null : r.error.message };
   }, [authRepository]);
 
@@ -106,28 +111,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [authRepository]);
 
   const signInWithGoogle = useCallback(async () => {
+    trackAuthEvent("social_sign_in_attempt", { method: "google" });
     const r = await authRepository.signInWithGoogle();
-    if (!r.ok) return { error: r.error.message };
-    if (r.value.kind === "cancelled") return { error: null, cancelled: true };
+    if (!r.ok) {
+      trackAuthEvent("social_sign_in_failure", { method: "google", errorCode: r.error.code });
+      return { error: r.error.message };
+    }
+    if (r.value.kind === "cancelled") {
+      trackAuthEvent("social_sign_in_cancelled", { method: "google" });
+      return { error: null, cancelled: true };
+    }
     if (r.value.kind === "needsLink") {
+      trackAuthEvent("social_sign_in_needs_link", { method: "google" });
       return {
         error: null,
         needsLink: { email: r.value.email, pendingCredential: r.value.pendingCredential as OAuthCredential },
       };
     }
+    trackAuthEvent("social_sign_in_success", { method: "google" });
     return { error: null };
   }, [authRepository]);
 
   const signInWithApple = useCallback(async () => {
+    trackAuthEvent("social_sign_in_attempt", { method: "apple" });
     const r = await authRepository.signInWithApple();
-    if (!r.ok) return { error: r.error.message };
-    if (r.value.kind === "cancelled") return { error: null, cancelled: true };
+    if (!r.ok) {
+      trackAuthEvent("social_sign_in_failure", { method: "apple", errorCode: r.error.code });
+      return { error: r.error.message };
+    }
+    if (r.value.kind === "cancelled") {
+      trackAuthEvent("social_sign_in_cancelled", { method: "apple" });
+      return { error: null, cancelled: true };
+    }
     if (r.value.kind === "needsLink") {
+      trackAuthEvent("social_sign_in_needs_link", { method: "apple" });
       return {
         error: null,
         needsLink: { email: r.value.email, pendingCredential: r.value.pendingCredential as OAuthCredential },
       };
     }
+    trackAuthEvent("social_sign_in_success", { method: "apple" });
     return { error: null };
   }, [authRepository]);
 
