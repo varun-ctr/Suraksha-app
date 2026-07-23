@@ -35,9 +35,16 @@ import { initSupabase } from "@/repositories/supabase/supabaseClient";
 import { validateConfig } from "@/core/config/config";
 import { initCrashReporting, reportError } from "@/core/analytics/crashReporting";
 
+// TEMP-DEBUG(startup-audit): step markers to pinpoint exactly where boot
+// stalls/crashes. Safe to strip once the white-screen issue is confirmed
+// fixed — grep "[TEMP-DEBUG]" to find every line added for this audit.
+console.log("[TEMP-DEBUG][STARTUP] 1/10 module evaluation start (app/_layout.tsx)");
+
 const APP_CONFIG = validateConfig();
+console.log("[TEMP-DEBUG][STARTUP] 7/10 config validation done", { ok: APP_CONFIG.ok, missing: APP_CONFIG.missing });
 
 initCrashReporting();
+console.log("[TEMP-DEBUG][STARTUP] crash reporting initialized");
 
 if (APP_CONFIG.ok) {
   initFirebase({
@@ -53,7 +60,12 @@ if (APP_CONFIG.ok) {
     process.env.EXPO_PUBLIC_SUPABASE_URL!,
     process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
   );
+  console.log("[TEMP-DEBUG][STARTUP] firebase + supabase initialized");
+} else {
+  console.log("[TEMP-DEBUG][STARTUP] config invalid — Firebase/Supabase NOT initialized, ConfigErrorScreen will render");
 }
+
+console.log("[TEMP-DEBUG][STARTUP] 2/10 module evaluation reached end of app/_layout.tsx top-level (backgroundLocation task-registration import at line 33 already ran without throwing)");
 
 SplashScreen.preventAutoHideAsync();
 
@@ -136,14 +148,22 @@ function Gate() {
 
   const allReady = appReady && themeReady && langReady && authChecked;
 
+  // TEMP-DEBUG(startup-audit): fires on every render so you can see exactly
+  // which readiness flag is still false if the splash never hides.
+  console.log("[TEMP-DEBUG][STARTUP] Gate render", { appReady, themeReady, langReady, authChecked, allReady });
+
   useEffect(() => {
-    if (allReady) SplashScreen.hideAsync();
+    if (allReady) {
+      console.log("[TEMP-DEBUG][STARTUP] 9/10 all providers ready — hiding splash screen");
+      SplashScreen.hideAsync();
+    }
   }, [allReady]);
 
   useEffect(() => {
     if (!allReady) return;
     const seg0 = segments[0] as string;
     const inOnboarding = seg0 === "onboarding";
+    console.log("[TEMP-DEBUG][STARTUP] 10/10 navigation decision", { segments, seg0, onboarded, inOnboarding });
 
     if (!onboarded && !inOnboarding) {
       router.replace("/onboarding");

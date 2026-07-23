@@ -60,8 +60,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // underlying event; they now derive from this context instead (see
   // docs/adr/0001-feature-first-architecture.md's performance notes).
   useEffect(() => {
-    const timeout = setTimeout(() => setLoading(false), AUTH_STATE_TIMEOUT_MS);
+    // TEMP-DEBUG(startup-audit): 5/10 — if this line never appears, the
+    // subscribe call itself (onFirebaseAuthStateChanged) hung or threw
+    // before returning; if it appears but "auth state resolved" never
+    // follows within AUTH_STATE_TIMEOUT_MS, the 6s fallback below is what
+    // eventually unblocks the Gate.
+    console.log("[TEMP-DEBUG][STARTUP] 5/10 AuthProvider: subscribing to onAuthStateChanged");
+    const timeout = setTimeout(() => {
+      console.log("[TEMP-DEBUG][STARTUP] AuthProvider: 6s timeout fired — auth state never resolved, forcing loading=false");
+      setLoading(false);
+    }, AUTH_STATE_TIMEOUT_MS);
     const unsub = onFirebaseAuthStateChanged((u) => {
+      console.log("[TEMP-DEBUG][STARTUP] AuthProvider: auth state resolved", { hasUser: !!u, isAnon: u?.isAnonymous });
       clearTimeout(timeout);
       setUser(u);
       setLoading(false);

@@ -367,8 +367,13 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
   // Runs once, on mount. ──────────────────────────────────────────────
 
   useEffect(() => {
+    // TEMP-DEBUG(startup-audit): 6/10 — SafetyProvider mounted and started
+    // its crash-recovery check. On a normal fresh launch with no in-flight
+    // SOS, "no pending activation" should log immediately after.
+    console.log("[TEMP-DEBUG][STARTUP] 6/10 SafetyProvider: mounted, checking for a pending SOS activation");
     void (async () => {
       const pending = await getPendingActivation();
+      console.log("[TEMP-DEBUG][STARTUP] SafetyProvider: pending activation check done", { found: !!pending });
       if (!pending) return;
 
       const stale = isPendingActivationStale(pending.triggeredAtMs, Date.now());

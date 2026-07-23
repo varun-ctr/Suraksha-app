@@ -41,10 +41,16 @@ async function getOrCreateKey(storageKey: string): Promise<string> {
 }
 
 async function loadOrCreateKeys(): Promise<Keys> {
+  // TEMP-DEBUG(startup-audit): 8/9 — this runs the first time the encrypted
+  // Firebase-session storage adapter is touched (on app boot, when Firebase
+  // Auth reads its persisted session). If "keys ready" never logs, SecureStore
+  // itself is hanging — see core/storage/secureStore.ts's getItemAsync call.
+  console.log("[TEMP-DEBUG][STARTUP] 8/10 cryptoBox: loading/creating SecureStore-backed encryption keys");
   const [encKey, macKey] = await Promise.all([
     getOrCreateKey(ENC_KEY_STORAGE_KEY),
     getOrCreateKey(MAC_KEY_STORAGE_KEY),
   ]);
+  console.log("[TEMP-DEBUG][STARTUP] cryptoBox: keys ready");
   return { encKey, macKey };
 }
 
