@@ -32,7 +32,23 @@ async function resolveSosEvent(eventId: string): Promise<Result<void, AppError>>
   }
 }
 
+async function findRecentUnresolvedEvent(
+  userId: string,
+  sinceIso: string,
+): Promise<Result<SosEvent | null, AppError>> {
+  try {
+    const { data, error } = await db.sosEvents.findRecentUnresolved(userId, sinceIso);
+    if (error) {
+      return err(new RepositoryError("Failed to check for an existing SOS event", { operation: "findRecentUnresolvedEvent", cause: error }));
+    }
+    return ok(data ? toSosEvent(data) : null);
+  } catch (cause) {
+    return err(new RepositoryError("Failed to check for an existing SOS event", { operation: "findRecentUnresolvedEvent", cause }));
+  }
+}
+
 export const sosEventsRepository: SosEventsRepository = {
   insertSosEvent,
   resolveSosEvent,
+  findRecentUnresolvedEvent,
 };

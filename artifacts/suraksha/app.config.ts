@@ -89,6 +89,7 @@ const config: ExpoConfig = {
     "expo-font",
     "expo-web-browser",
     "expo-secure-store",
+    "expo-task-manager",
     [
       "expo-notifications",
       {
@@ -102,6 +103,19 @@ const config: ExpoConfig = {
       {
         locationWhenInUsePermission:
           "Suraksha uses your location to share it with your trusted contacts during an SOS alert, show nearby police stations, hospitals, and shelters on the map, and include it in your incident reports.",
+        // "Always" is only ever requested while an active SOS needs it (see
+        // core/permissions/backgroundLocation.ts) — it keeps live location
+        // updates reaching your trusted contacts if you switch apps or the
+        // screen locks during an emergency, which is exactly when that's
+        // most likely to happen. UIBackgroundModes:["location"] and the
+        // Android background-location/foreground-service permissions are
+        // added by this plugin from the two isXBackgroundLocationEnabled
+        // flags below, rather than declared by hand, so they can't drift
+        // out of sync with each other.
+        locationAlwaysAndWhenInUsePermission:
+          "Suraksha uses your location in the background only while an SOS is active, so your live location keeps reaching your trusted contacts if you switch apps or your screen locks during an emergency.",
+        isIosBackgroundLocationEnabled: true,
+        isAndroidBackgroundLocationEnabled: true,
       },
     ],
     [

@@ -101,6 +101,18 @@ export const db = {
         .select<"*", SosEventRow>("*")
         .eq("user_id", userId)
         .order("triggered_at", { ascending: false }),
+
+    /** Most recent unresolved event at/after `sinceIso` — used to detect a prior insert that actually succeeded before retrying it. */
+    findRecentUnresolved: (userId: string, sinceIso: string) =>
+      supabase
+        .from("sos_events")
+        .select<"*", SosEventRow>("*")
+        .eq("user_id", userId)
+        .is("resolved_at", null)
+        .gte("triggered_at", sinceIso)
+        .order("triggered_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
   },
 
   journeys: {
@@ -216,5 +228,13 @@ export const db = {
         .rpc("get_live_session", { p_share_id: shareId })
         .returns<LiveSessionPublic[]>()
         .single(),
+
+    /** Marks any other still-active sessions for this user inactive — closes zombie sessions a prior crash/kill left behind before a new one starts. */
+    endAllActiveForUser: (userId: string) =>
+      supabase
+        .from("live_sessions")
+        .update({ is_active: false })
+        .eq("user_id", userId)
+        .eq("is_active", true),
   },
 };
