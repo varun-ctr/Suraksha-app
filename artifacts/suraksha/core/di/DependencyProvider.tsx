@@ -19,14 +19,7 @@ export function DependencyProvider({
   overrides?: Partial<AppRegistry>;
 }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- overrides is only meaningful for tests, which pass a stable object once
-  const container = useMemo(() => {
-    // TEMP-DEBUG(startup-audit): confirms the DI container itself is built
-    // synchronously and doesn't throw during repository registration.
-    console.log("[TEMP-DEBUG][STARTUP] 3/10 DependencyProvider: creating container");
-    const c = createAppContainer(overrides);
-    console.log("[TEMP-DEBUG][STARTUP] 4/10 DependencyProvider: container created");
-    return c;
-  }, []);
+  const container = useMemo(() => createAppContainer(overrides), []);
   return <DiContext.Provider value={container}>{children}</DiContext.Provider>;
 }
 

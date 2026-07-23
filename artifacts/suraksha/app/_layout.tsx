@@ -8,7 +8,7 @@ import {
 import * as Notifications from "expo-notifications";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -34,17 +34,19 @@ import "@/core/permissions/backgroundLocation";
 import { initSupabase } from "@/repositories/supabase/supabaseClient";
 import { validateConfig } from "@/core/config/config";
 import { initCrashReporting, reportError } from "@/core/analytics/crashReporting";
+import {
+  installCrashBeforeRenderHandler,
+  markRenderConfirmed,
+  trackStartupEvent,
+  getElapsedSinceStart,
+} from "@/core/analytics/startupTelemetry";
 
-// TEMP-DEBUG(startup-audit): step markers to pinpoint exactly where boot
-// stalls/crashes. Safe to strip once the white-screen issue is confirmed
-// fixed — grep "[TEMP-DEBUG]" to find every line added for this audit.
-console.log("[TEMP-DEBUG][STARTUP] 1/10 module evaluation start (app/_layout.tsx)");
+installCrashBeforeRenderHandler();
+trackStartupEvent("app_launch");
 
 const APP_CONFIG = validateConfig();
-console.log("[TEMP-DEBUG][STARTUP] 7/10 config validation done", { ok: APP_CONFIG.ok, missing: APP_CONFIG.missing });
 
 initCrashReporting();
-console.log("[TEMP-DEBUG][STARTUP] crash reporting initialized");
 
 if (APP_CONFIG.ok) {
   initFirebase({
@@ -60,12 +62,9 @@ if (APP_CONFIG.ok) {
     process.env.EXPO_PUBLIC_SUPABASE_URL!,
     process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
   );
-  console.log("[TEMP-DEBUG][STARTUP] firebase + supabase initialized");
 } else {
-  console.log("[TEMP-DEBUG][STARTUP] config invalid — Firebase/Supabase NOT initialized, ConfigErrorScreen will render");
+  trackStartupEvent("startup_failure", { reason: "missing_config", durationMs: getElapsedSinceStart() });
 }
-
-console.log("[TEMP-DEBUG][STARTUP] 2/10 module evaluation reached end of app/_layout.tsx top-level (backgroundLocation task-registration import at line 33 already ran without throwing)");
 
 SplashScreen.preventAutoHideAsync();
 
@@ -148,22 +147,28 @@ function Gate() {
 
   const allReady = appReady && themeReady && langReady && authChecked;
 
-  // TEMP-DEBUG(startup-audit): fires on every render so you can see exactly
-  // which readiness flag is still false if the splash never hides.
-  console.log("[TEMP-DEBUG][STARTUP] Gate render", { appReady, themeReady, langReady, authChecked, allReady });
+  // Guards each event below to fire exactly once per app launch, no matter
+  // how many times Gate re-renders while readiness flags settle.
+  const splashHiddenRef = useRef(false);
+  const navigationReadyRef = useRef(false);
 
   useEffect(() => {
-    if (allReady) {
-      console.log("[TEMP-DEBUG][STARTUP] 9/10 all providers ready — hiding splash screen");
+    if (allReady && !splashHiddenRef.current) {
+      splashHiddenRef.current = true;
+      trackStartupEvent("startup_complete", { durationMs: getElapsedSinceStart() });
+      markRenderConfirmed();
       SplashScreen.hideAsync();
     }
   }, [allReady]);
 
   useEffect(() => {
     if (!allReady) return;
+    if (!navigationReadyRef.current) {
+      navigationReadyRef.current = true;
+      trackStartupEvent("navigation_ready", { durationMs: getElapsedSinceStart() });
+    }
     const seg0 = segments[0] as string;
     const inOnboarding = seg0 === "onboarding";
-    console.log("[TEMP-DEBUG][STARTUP] 10/10 navigation decision", { segments, seg0, onboarded, inOnboarding });
 
     if (!onboarded && !inOnboarding) {
       router.replace("/onboarding");
@@ -193,9 +198,20 @@ export default function RootLayout() {
   const [fontsTimedOut, setFontsTimedOut] = useState(false);
   useEffect(() => {
     if (fontsLoaded || fontError) return;
-    const t = setTimeout(() => setFontsTimedOut(true), 4000);
+    const t = setTimeout(() => {
+      trackStartupEvent("startup_failure", { reason: "fonts_timed_out", durationMs: getElapsedSinceStart() });
+      setFontsTimedOut(true);
+    }, 4000);
     return () => clearTimeout(t);
   }, [fontsLoaded, fontError]);
+
+  // Gate never mounts on this path (it's the only place that otherwise calls
+  // SplashScreen.hideAsync()), so without this the native splash would stay
+  // on top of ConfigErrorScreen forever on a misconfigured build — found
+  // during the startup audit, see docs/startup-audit/technical-debt-report.md.
+  useEffect(() => {
+    if (!APP_CONFIG.ok) SplashScreen.hideAsync();
+  }, []);
 
   if (!APP_CONFIG.ok) {
     return (

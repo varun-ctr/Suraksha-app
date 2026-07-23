@@ -36,6 +36,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 // eslint-disable-next-line import/no-restricted-paths
 import { liveSessionRepository } from "@/repositories/supabase/liveSessionRepository";
 import { logger } from "@/core/logger/logger";
+import { getTaskManager } from "@/core/capabilities/nativeCapabilities";
 import type { GeoPoint } from "@/core/permissions/location";
 
 export const BACKGROUND_LOCATION_TASK = "suraksha-sos-background-location";
@@ -68,17 +69,12 @@ export function setLocationUpdateListener(cb: LocationUpdateListener | null): vo
 // before React ever mounted and before the root ErrorBoundary or Sentry
 // (core/analytics/crashReporting.ts) initialized — so it crashed the entire
 // bundle with no visible error, just a blank screen after the splash was
-// torn down. Requiring it lazily and guarding every use keeps app boot safe
-// in Expo Go; background tracking itself simply doesn't run there, which is
-// an already-documented, accepted limitation (see
+// torn down. getTaskManager() (core/capabilities/nativeCapabilities.ts)
+// requires it lazily and caches a null on failure instead, keeping app boot
+// safe in Expo Go; background tracking itself simply doesn't run there,
+// which is an already-documented, accepted limitation (see
 // docs/sos-audit/reliability-audit.md).
-type TaskManagerModule = typeof import("expo-task-manager");
-let TaskManager: TaskManagerModule | null = null;
-try {
-  TaskManager = require("expo-task-manager") as TaskManagerModule;
-} catch (e) {
-  logger.warn("[backgroundLocation] expo-task-manager native module unavailable (expected in Expo Go) — background tracking disabled for this run", e);
-}
+const TaskManager = getTaskManager();
 
 if (TaskManager) {
   TaskManager.defineTask<{ locations: Location.LocationObject[] }>(
