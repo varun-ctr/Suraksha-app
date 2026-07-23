@@ -1,7 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import {
   Animated,
   Easing,
@@ -25,11 +25,13 @@ import { formatCoords } from "@/core/permissions/location";
 import { callNumber, locationLink, openWhatsApp, sendSms, shareLiveLocation } from "@/shared/utils/native";
 import { buildEmergencyMessage } from "@/features/sos/utils/emergencyMessage";
 import type { AlertStatus } from "@/features/sos/services/sosAlertService";
-import { sendSosAlerts } from "@/features/sos/services/sosAlertService";
 
 interface Props {
   sos: SosState;
   cancelSOS: () => void;
+  /** Owned by SafetyContext — see its "Alert dispatch" section for why. */
+  alertStatuses: AlertStatus[];
+  alertSending: boolean;
 }
 
 // ── Status badge helpers ──────────────────────────────────────────────────────
@@ -58,7 +60,7 @@ const badge = StyleSheet.create({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function SosBottomSheet({ sos, cancelSOS }: Props) {
+export function SosBottomSheet({ sos, cancelSOS, alertStatuses, alertSending }: Props) {
   const { c } = useTheme();
   const { t } = useI18n();
   const { contacts, profile } = useApp();
@@ -68,11 +70,6 @@ export function SosBottomSheet({ sos, cancelSOS }: Props) {
   const slideAnim  = useRef(new Animated.Value(600)).current;
   const bounceAnim = useRef(new Animated.Value(1)).current;
   const pulseAnim  = useRef(new Animated.Value(0)).current;
-
-  // Auto-blast tracking
-  const alertSentRef                    = useRef(false);
-  const [alertStatuses, setAlertStatuses] = useState<AlertStatus[]>([]);
-  const [alertSending, setAlertSending]   = useState(false);
 
   useEffect(() => {
     Animated.spring(slideAnim, { toValue: 0, friction: 8, tension: 60, useNativeDriver: true }).start();
@@ -92,27 +89,6 @@ export function SosBottomSheet({ sos, cancelSOS }: Props) {
     loop.start();
     return () => loop.stop();
   }, [sos.phase, pulseAnim]);
-
-  // ── Auto-blast contacts when SOS becomes active ───────────────────
-  useEffect(() => {
-    if (sos.phase === "active" && !alertSentRef.current && contacts.length > 0) {
-      alertSentRef.current = true;
-      setAlertSending(true);
-      sendSosAlerts(t, contacts, sos.coords, sos.shareUrl, profile.name)
-        .then((statuses) => {
-          setAlertStatuses(statuses);
-          setAlertSending(false);
-        })
-        .catch(() => {
-          setAlertSending(false);
-        });
-    }
-    if (sos.phase === "idle") {
-      alertSentRef.current = false;
-      setAlertStatuses([]);
-      setAlertSending(false);
-    }
-  }, [sos.phase, contacts, sos.coords, sos.shareUrl, profile.name, t]);
 
   const link        = sos.shareUrl ?? (sos.coords ? locationLink(sos.coords.lat, sos.coords.lng) : null);
   const messageBody = buildEmergencyMessage(t, profile.name, sos.coords, sos.shareUrl);

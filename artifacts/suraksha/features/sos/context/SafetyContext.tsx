@@ -1,5 +1,4 @@
 import * as Haptics from "expo-haptics";
-import * as Location from "expo-location";
 import React, {
   createContext,
   useCallback,
@@ -12,8 +11,14 @@ import React, {
 
 import { SosBottomSheet } from "@/features/sos/components/SosBottomSheet";
 import { useApp } from "@/features/profile/context/AppContext";
+import { useI18n } from "@/features/settings/context/LanguageContext";
 import { useShakeDetector } from "@/features/sos/hooks/useShakeDetector";
 import { getCurrentLocation, reverseGeocode } from "@/core/permissions/location";
+import {
+  startBackgroundLocationTracking,
+  stopBackgroundLocationTracking,
+  setLocationUpdateListener,
+} from "@/core/permissions/backgroundLocation";
 import { useLiveSessionRepository, useSosEventsRepository } from "@/core/di/hooks";
 import {
   cancelAllScheduledNotifications,
@@ -21,6 +26,16 @@ import {
 } from "@/core/permissions/notifications";
 import { firebaseAuth } from "@/repositories/firebase/firebaseClient";
 import { logger } from "@/core/logger/logger";
+import { trackSosEvent } from "@/core/analytics/sosTelemetry";
+import { sendSosAlerts, type AlertStatus } from "@/features/sos/services/sosAlertService";
+import {
+  savePendingActivation,
+  updatePendingActivation,
+  getPendingActivation,
+  clearPendingActivation,
+  type PendingSosActivation,
+} from "@/features/sos/services/sosOfflineQueue";
+import { isPendingActivationStale } from "@/features/sos/services/sosRecoveryPolicy";
 import type { Coords } from "@/domain/entities/Coords";
 import type { SosPhase, SafetyStatus, SosState, JourneyState } from "@/features/sos/types";
 
@@ -36,6 +51,9 @@ interface SafetyContextValue {
   safetyStatus: SafetyStatus;
   triggerSOS: () => void;
   cancelSOS: () => void;
+  /** Per-contact alert delivery status for the active SOS — owned here (not by the presentational SosBottomSheet) so it survives that component remounting and is available to crash-recovery. */
+  alertStatuses: AlertStatus[];
+  alertSending: boolean;
   journey: JourneyState;
   setJourneyDuration: (d: number) => void;
   startJourney: () => void;
@@ -46,6 +64,8 @@ interface SafetyContextValue {
 
 const COUNTDOWN_START   = 3;
 const OVERDUE_GRACE_SEC = 60; // seconds before auto-SOS fires after journey expires
+const DB_RETRY_INTERVAL_MS = 15_000;
+const DEDUP_LOOKBACK_MS = 5 * 60 * 1000;
 
 const SOS_DEFAULTS: SosState = {
   phase: "idle",
@@ -66,28 +86,44 @@ const JOURNEY_DEFAULTS: JourneyState = {
   overdueSeconds: OVERDUE_GRACE_SEC,
 };
 
+function newIdempotencyKey(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 const SafetyContext = createContext<SafetyContextValue | null>(null);
 
 export function SafetyProvider({ children }: { children: React.ReactNode }) {
-  const { settings } = useApp();
+  const { settings, contacts, profile } = useApp();
+  const { t } = useI18n();
   const liveSessionRepository = useLiveSessionRepository();
   const sosEventsRepository = useSosEventsRepository();
   const [sos, setSos]         = useState<SosState>(SOS_DEFAULTS);
   const [journey, setJourney] = useState<JourneyState>(JOURNEY_DEFAULTS);
+  const [alertStatuses, setAlertStatuses] = useState<AlertStatus[]>([]);
+  const [alertSending, setAlertSending]   = useState(false);
 
   const countdownTimer  = useRef<ReturnType<typeof setInterval> | null>(null);
   const sosTimer        = useRef<ReturnType<typeof setInterval> | null>(null);
   const journeyTimer    = useRef<ReturnType<typeof setInterval> | null>(null);
   const overdueTimer    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const dbRetryTimer    = useRef<ReturnType<typeof setInterval> | null>(null);
   const shareIdRef      = useRef<string | null>(null);
-  const watchRef        = useRef<Location.LocationSubscription | null>(null);
   const sosRunIdRef     = useRef(0);
   const insertingRef    = useRef(false);
+  const alertDispatchedRef = useRef(false);
+  const idempotencyKeyRef  = useRef<string | null>(null);
+  // Always-current refs for use inside the module-level location listener
+  // and the mount-time recovery effect, both of which run outside the
+  // normal render/callback closures below.
+  const contactsRef = useRef(contacts);
+  contactsRef.current = contacts;
+  const profileNameRef = useRef(profile.name);
+  profileNameRef.current = profile.name;
 
   // ── Live-tracking helpers ─────────────────────────────────────────
 
   const stopLiveTracking = useCallback(async () => {
-    if (watchRef.current) { watchRef.current.remove(); watchRef.current = null; }
+    await stopBackgroundLocationTracking();
     if (shareIdRef.current) {
       const result = await liveSessionRepository.endLiveSession(shareIdRef.current);
       if (!result.ok) logger.warn("[SafetyContext] failed to end live session", result.error);
@@ -120,37 +156,42 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
       shareIdRef.current = session.shareId;
       setSos((s) => s.phase !== "idle" ? { ...s, shareUrl: session.shareUrl } : s);
 
-      try {
-        const sub = await Location.watchPositionAsync(
-          { accuracy: Location.Accuracy.High, timeInterval: 10000, distanceInterval: 10 },
-          (loc) => {
-            if (sosRunIdRef.current !== runId) return;
-            if (shareIdRef.current) {
-              liveSessionRepository.updateLiveSession(
-                shareIdRef.current,
-                loc.coords.latitude,
-                loc.coords.longitude,
-                loc.coords.accuracy ?? null,
-              ).then((r) => {
-                if (!r.ok) logger.warn("[SafetyContext] failed to update live session", r.error);
-              });
-              setSos((s) =>
-                s.phase !== "idle"
-                  ? { ...s, coords: { lat: loc.coords.latitude, lng: loc.coords.longitude, accuracy: loc.coords.accuracy ?? null } }
-                  : s,
-              );
-            }
-          },
-        );
-        if (sosRunIdRef.current !== runId) { sub.remove(); return; }
-        watchRef.current = sub;
-      } catch {
-        // Location watch unavailable — SOS still works without continuous updates
+      // Drives sos.coords for the UI regardless of foreground/background —
+      // see core/permissions/backgroundLocation.ts for why this replaced a
+      // plain watchPositionAsync subscription (foreground-only; stops
+      // within seconds of the app being backgrounded, which is exactly
+      // when it matters most during a real emergency).
+      setLocationUpdateListener((loc) => {
+        if (sosRunIdRef.current !== runId) return;
+        setSos((s) => s.phase !== "idle" ? { ...s, coords: loc } : s);
+      });
+      const started = await startBackgroundLocationTracking(session.shareId);
+      if (!started) {
+        logger.warn("[SafetyContext] background location unavailable — live tracking limited to foreground");
       }
     }
   }, [liveSessionRepository]);
 
-  // ── Supabase sos_events record ────────────────────────────────────
+  // ── Supabase sos_events record (with offline-queue-backed retry) ──
+
+  const insertOrAdopt = useCallback(
+    async (userId: string, lat: number, lng: number, address: string | null, isRetry: boolean) => {
+      if (isRetry) {
+        // A previous attempt's outcome is unknown — it may have already
+        // succeeded server-side with the response never reaching the
+        // client. Check before inserting again rather than risk a
+        // duplicate sos_events row (sos_events has no idempotency-key
+        // column to enforce this server-side — see
+        // docs/sos-audit/technical-debt-report.md).
+        const since = new Date(Date.now() - DEDUP_LOOKBACK_MS).toISOString();
+        const existing = await sosEventsRepository.findRecentUnresolvedEvent(userId, since);
+        if (existing.ok && existing.value) return existing.value;
+      }
+      const result = await sosEventsRepository.insertSosEvent(userId, lat, lng, address);
+      return result.ok ? result.value : null;
+    },
+    [sosEventsRepository],
+  );
 
   const activateSosDb = useCallback(
     (runId: number, coords: Coords | null, address: string | null) => {
@@ -160,12 +201,28 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
         const user = firebaseAuth.currentUser;
         if (sosRunIdRef.current !== runId || !user) return;
 
-        const result = await sosEventsRepository.insertSosEvent(user.uid, coords.lat, coords.lng, address);
-        if (!result.ok) {
-          logger.warn("[SafetyContext] failed to record SOS event", result.error);
-          return;
+        const idempotencyKey = idempotencyKeyRef.current ?? newIdempotencyKey();
+        idempotencyKeyRef.current = idempotencyKey;
+        await savePendingActivation({
+          idempotencyKey,
+          userId: user.uid,
+          lat: coords.lat,
+          lng: coords.lng,
+          address,
+          triggeredAtMs: Date.now(),
+          dbEventId: null,
+          alertsDispatched: false,
+        });
+
+        const event = await insertOrAdopt(user.uid, coords.lat, coords.lng, address, false);
+        if (!event) {
+          trackSosEvent("sos_db_write_failed");
+          logger.warn("[SafetyContext] failed to record SOS event — will retry automatically");
+          return; // dbRetryTimer effect below picks this up
         }
-        const id = result.value.id;
+
+        await updatePendingActivation({ dbEventId: event.id });
+        trackSosEvent("sos_db_write_success");
 
         setSos((s) => {
           // Re-check runId here too: this run may have been cancelled and a
@@ -173,15 +230,77 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
           // flight — s.phase would then be "active" again for the *new*
           // run, so checking phase alone isn't enough to detect staleness.
           if (sosRunIdRef.current !== runId || s.phase === "idle") {
-            void sosEventsRepository.resolveSosEvent(id);
+            void sosEventsRepository.resolveSosEvent(event.id);
             return s;
           }
-          return { ...s, eventId: id };
+          return { ...s, eventId: event.id };
         });
       })();
     },
-    [sosEventsRepository],
+    [sosEventsRepository, insertOrAdopt],
   );
+
+  // Automatic retry for a still-unconfirmed SOS event write — network
+  // blips, backend timeouts, and Supabase hiccups must never permanently
+  // drop the record of a real emergency.
+  useEffect(() => {
+    if (sos.phase !== "active" || sos.eventId !== null) {
+      if (dbRetryTimer.current) { clearInterval(dbRetryTimer.current); dbRetryTimer.current = null; }
+      return;
+    }
+    dbRetryTimer.current = setInterval(() => {
+      const runId = sosRunIdRef.current;
+      const user = firebaseAuth.currentUser;
+      if (!user || !sos.coords) return;
+      trackSosEvent("sos_db_retry");
+      void insertOrAdopt(user.uid, sos.coords.lat, sos.coords.lng, sos.address, true).then((event) => {
+        if (!event || sosRunIdRef.current !== runId) return;
+        void updatePendingActivation({ dbEventId: event.id });
+        setSos((s) => (sosRunIdRef.current === runId && s.phase !== "idle") ? { ...s, eventId: event.id } : s);
+      });
+    }, DB_RETRY_INTERVAL_MS);
+    return () => {
+      if (dbRetryTimer.current) { clearInterval(dbRetryTimer.current); dbRetryTimer.current = null; }
+    };
+  }, [sos.phase, sos.eventId, sos.coords, sos.address, insertOrAdopt]);
+
+  // ── Alert dispatch (moved from SosBottomSheet — a presentational
+  // component must not own the actual emergency-delivery side effect;
+  // owning it here also means it survives SosBottomSheet remounting and
+  // can be re-run by crash recovery below) ──────────────────────────
+
+  const dispatchAlerts = useCallback(
+    (coords: Coords | null, shareUrl: string | null) => {
+      if (alertDispatchedRef.current || contactsRef.current.length === 0) return;
+      alertDispatchedRef.current = true;
+      setAlertSending(true);
+      trackSosEvent("sos_alert_dispatch_start");
+      sendSosAlerts(t, contactsRef.current, coords, shareUrl, profileNameRef.current)
+        .then((statuses) => {
+          setAlertStatuses(statuses);
+          setAlertSending(false);
+          void updatePendingActivation({ alertsDispatched: true });
+          const anySent = statuses.some((s) => s.sms === "sent" || s.sms === "opening");
+          trackSosEvent(anySent ? "sos_alert_dispatch_success" : "sos_alert_dispatch_failed");
+        })
+        .catch(() => {
+          setAlertSending(false);
+          trackSosEvent("sos_alert_dispatch_failed");
+        });
+    },
+    [t],
+  );
+
+  useEffect(() => {
+    if (sos.phase === "active") {
+      dispatchAlerts(sos.coords, sos.shareUrl);
+    }
+    if (sos.phase === "idle") {
+      alertDispatchedRef.current = false;
+      setAlertStatuses([]);
+      setAlertSending(false);
+    }
+  }, [sos.phase, sos.coords, sos.shareUrl, dispatchAlerts]);
 
   // ── Countdown timer ───────────────────────────────────────────────
 
@@ -243,6 +362,59 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => () => { void stopLiveTracking(); }, [stopLiveTracking]);
 
+  // ── Crash recovery: resume (or reconcile) a pending activation left
+  // over from a previous process — app killed or crashed mid-emergency.
+  // Runs once, on mount. ──────────────────────────────────────────────
+
+  useEffect(() => {
+    void (async () => {
+      const pending = await getPendingActivation();
+      if (!pending) return;
+
+      const stale = isPendingActivationStale(pending.triggeredAtMs, Date.now());
+      trackSosEvent(stale ? "sos_recovery_stale" : "sos_recovery_resumed");
+
+      if (stale) {
+        // Too old to safely auto-resume the full-screen active-SOS UI —
+        // the emergency context has almost certainly already resolved one
+        // way or another. Still reconcile the record in the background so
+        // it isn't permanently lost, without surprising the user with a
+        // stale SOS screen.
+        if (!pending.dbEventId) {
+          const since = new Date(pending.triggeredAtMs - DEDUP_LOOKBACK_MS).toISOString();
+          const existing = await sosEventsRepository.findRecentUnresolvedEvent(pending.userId, since);
+          let event = existing.ok ? existing.value : null;
+          if (!event) {
+            const inserted = await sosEventsRepository.insertSosEvent(pending.userId, pending.lat, pending.lng, pending.address);
+            event = inserted.ok ? inserted.value : null;
+          }
+          if (event) await updatePendingActivation({ dbEventId: event.id });
+        }
+        return;
+      }
+
+      // Resume: a real emergency may still be in progress. Idempotency key
+      // is reused so any further retry still dedupes against this same
+      // activation rather than starting a fresh one.
+      idempotencyKeyRef.current = pending.idempotencyKey;
+      alertDispatchedRef.current = pending.alertsDispatched;
+      const runId = ++sosRunIdRef.current;
+      setSos({
+        ...SOS_DEFAULTS,
+        phase: "active",
+        loading: false,
+        coords: { lat: pending.lat, lng: pending.lng, accuracy: null },
+        address: pending.address,
+        eventId: pending.dbEventId,
+      });
+      // Re-establish live tracking (a fresh session — the prior process's
+      // in-memory share id isn't recoverable) and location watch.
+      void fetchLocationAndStartTracking(runId);
+    })();
+    // Mount-only — deliberately not re-run on dependency changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Public SOS API ────────────────────────────────────────────────
 
   const triggerSOS = useCallback(() => {
@@ -252,6 +424,8 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
     // watch, live-tracking session, and DB event.
     if (sos.phase !== "idle") return;
     const runId = ++sosRunIdRef.current;
+    idempotencyKeyRef.current = null;
+    trackSosEvent("sos_triggered");
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setSos({ ...SOS_DEFAULTS, phase: "countdown", countdown: COUNTDOWN_START, loading: true });
     void fetchLocationAndStartTracking(runId);
@@ -261,7 +435,9 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
   useShakeDetector(triggerSOS, settings.shakeToSos);
 
   const cancelSOS = useCallback(() => {
+    const wasCountdown = sos.phase === "countdown";
     sosRunIdRef.current++;
+    trackSosEvent(wasCountdown ? "sos_cancelled_countdown" : "sos_cancelled_active");
     setSos((s) => {
       if (s.eventId) {
         sosEventsRepository.resolveSosEvent(s.eventId).then((r) => {
@@ -270,9 +446,10 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
       }
       return { ...SOS_DEFAULTS };
     });
+    void clearPendingActivation();
     void stopLiveTracking();
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [stopLiveTracking, sosEventsRepository]);
+  }, [sos.phase, stopLiveTracking, sosEventsRepository]);
 
   // ── Journey timer ─────────────────────────────────────────────────
 
@@ -386,19 +563,28 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
       safetyStatus,
       triggerSOS,
       cancelSOS,
+      alertStatuses,
+      alertSending,
       journey,
       setJourneyDuration,
       startJourney,
       endJourney,
       checkInJourney,
     }),
-    [sos, safetyStatus, triggerSOS, cancelSOS, journey, setJourneyDuration, startJourney, endJourney, checkInJourney],
+    [sos, safetyStatus, triggerSOS, cancelSOS, alertStatuses, alertSending, journey, setJourneyDuration, startJourney, endJourney, checkInJourney],
   );
 
   return (
     <SafetyContext.Provider value={value}>
       {children}
-      {sos.phase !== "idle" && <SosBottomSheet sos={sos} cancelSOS={cancelSOS} />}
+      {sos.phase !== "idle" && (
+        <SosBottomSheet
+          sos={sos}
+          cancelSOS={cancelSOS}
+          alertStatuses={alertStatuses}
+          alertSending={alertSending}
+        />
+      )}
     </SafetyContext.Provider>
   );
 }

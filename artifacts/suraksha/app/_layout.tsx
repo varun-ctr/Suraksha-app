@@ -26,6 +26,11 @@ import { ToastProvider, useToast } from "@/features/settings/context/ToastContex
 import { AuthProvider, useAuth } from "@/features/authentication/context/AuthContext";
 import { initFirebase } from "@/repositories/firebase/firebaseClient";
 import { registerForPushNotifications } from "@/core/permissions/notifications";
+// Side-effect only: registers the background location TaskManager task at
+// module load time, so it survives a background app relaunch. Must be
+// imported somewhere that always loads on app start, not lazily from a
+// component — see core/permissions/backgroundLocation.ts.
+import "@/core/permissions/backgroundLocation";
 import { initSupabase } from "@/repositories/supabase/supabaseClient";
 import { validateConfig } from "@/core/config/config";
 import { initCrashReporting, reportError } from "@/core/analytics/crashReporting";
