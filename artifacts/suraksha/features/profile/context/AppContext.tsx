@@ -37,6 +37,8 @@ interface Settings {
   notifications: boolean;
   bgLocation: boolean;
   shakeToSos: boolean;
+  /** Opt-in, off by default — requires a biometric (Face ID/Touch ID/Android biometrics) unlock on cold start and after the app returns from background past a short grace window. See features/security/hooks/useAppLock.ts. */
+  appLockEnabled: boolean;
 }
 
 interface PersistShape {
@@ -49,7 +51,7 @@ interface PersistShape {
 const DEFAULTS: PersistShape = {
   contacts: [],
   profile: { name: "", phone: "", email: "", premium: false },
-  settings: { notifications: true, bgLocation: false, shakeToSos: false },
+  settings: { notifications: true, bgLocation: false, shakeToSos: false, appLockEnabled: false },
   onboarded: false,
 };
 

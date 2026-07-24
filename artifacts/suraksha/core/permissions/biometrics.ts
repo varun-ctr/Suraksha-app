@@ -1,17 +1,16 @@
 /**
- * Face ID / Touch ID (biometric unlock) capability — architecture only.
+ * Face ID / Touch ID / Android biometrics capability.
  *
- * Not called from any screen yet: there is no biometric-gated login/unlock
- * flow in the app today, and this module intentionally doesn't add one
- * (out of scope for a hardening pass with "no UI regressions" as an
- * acceptance criterion — gating app access behind biometrics is a product
- * decision, not something to introduce silently). This exists so that
- * decision, when made, is a call site + a settings toggle away rather than
- * a new native-module integration from scratch.
+ * Wired into the opt-in App Lock feature (default off) — see
+ * features/security/hooks/useAppLock.ts, features/security/components/
+ * AppLockScreen.tsx, and AppContext's settings.appLockEnabled. This module
+ * itself stays a thin, screen-agnostic wrapper around expo-local-authentication
+ * so it can also back any future biometric-gated flow without a new
+ * native-module integration.
  *
- * NSFaceIDUsageDescription is already declared in app.config.ts's
+ * NSFaceIDUsageDescription is declared in app.config.ts's
  * expo-local-authentication plugin config, so calling authenticateAsync()
- * on iOS won't crash for a missing Info.plist key whenever this is wired up.
+ * on iOS doesn't crash for a missing Info.plist key.
  *
  * Accessed via core/capabilities/nativeCapabilities.ts's getLocalAuthentication()
  * rather than a static top-level import — expo-task-manager's Expo Go crash

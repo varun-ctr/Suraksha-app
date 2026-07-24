@@ -10,11 +10,19 @@
  * only allows one active SOS run (`sos.phase !== "idle"` guards
  * triggerSOS), so a single persisted record (not a general queue) is
  * enough and much simpler to reason about.
+ *
+ * Encrypted at rest (AES-256-CBC + HMAC-SHA256, the same envelope
+ * protecting the Firebase session — see core/storage/cryptoBox.ts) since
+ * this record carries plaintext GPS coordinates and an address for a user
+ * in active distress, arguably the single most sensitive data this app
+ * persists locally. See core/storage/secureAsyncStorage.ts for the
+ * encrypt/decrypt wrapper and its lazy-migration behavior for
+ * already-persisted plaintext records.
  */
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { logger } from "@/core/logger/logger";
+import { secureAsyncGet, secureAsyncSet, secureAsyncRemove } from "@/core/storage/secureAsyncStorage";
 
-const PENDING_ACTIVATION_KEY = "suraksha.sos.pendingActivation.v1";
+export const PENDING_ACTIVATION_KEY = "suraksha.sos.pendingActivation.v1";
 
 export interface PendingSosActivation {
   /** Client-generated, stable for the lifetime of this activation — used to detect a retry of the same trigger. */
@@ -32,7 +40,7 @@ export interface PendingSosActivation {
 
 export async function savePendingActivation(activation: PendingSosActivation): Promise<void> {
   try {
-    await AsyncStorage.setItem(PENDING_ACTIVATION_KEY, JSON.stringify(activation));
+    await secureAsyncSet(PENDING_ACTIVATION_KEY, JSON.stringify(activation));
   } catch (e) {
     logger.warn("[sosOfflineQueue] failed to persist pending activation", e);
   }
@@ -40,7 +48,7 @@ export async function savePendingActivation(activation: PendingSosActivation): P
 
 export async function getPendingActivation(): Promise<PendingSosActivation | null> {
   try {
-    const raw = await AsyncStorage.getItem(PENDING_ACTIVATION_KEY);
+    const raw = await secureAsyncGet(PENDING_ACTIVATION_KEY);
     return raw ? (JSON.parse(raw) as PendingSosActivation) : null;
   } catch (e) {
     logger.warn("[sosOfflineQueue] failed to read pending activation", e);
@@ -57,7 +65,7 @@ export async function updatePendingActivation(patch: Partial<PendingSosActivatio
 
 export async function clearPendingActivation(): Promise<void> {
   try {
-    await AsyncStorage.removeItem(PENDING_ACTIVATION_KEY);
+    await secureAsyncRemove(PENDING_ACTIVATION_KEY);
   } catch (e) {
     logger.warn("[sosOfflineQueue] failed to clear pending activation", e);
   }

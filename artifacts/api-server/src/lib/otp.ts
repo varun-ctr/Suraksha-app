@@ -24,6 +24,21 @@ export function isValidEmail(email: string): boolean {
   return EMAIL_RE.test(email);
 }
 
+/**
+ * Masks an email for logging (e.g. "jo***@example.com") — keeps enough of
+ * the local part to correlate repeated log lines/support tickets without
+ * writing the full address to log storage. Never throws on malformed input;
+ * falls back to a fully-masked placeholder instead.
+ */
+export function maskEmail(email: string): string {
+  const at = email.indexOf("@");
+  if (at <= 0) return "***";
+  const local = email.slice(0, at);
+  const domain = email.slice(at);
+  const visible = local.slice(0, Math.min(2, local.length));
+  return `${visible}***${domain}`;
+}
+
 export function isValidCodeFormat(code: string): boolean {
   return CODE_RE.test(code);
 }

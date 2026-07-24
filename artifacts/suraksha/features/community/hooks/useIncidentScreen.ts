@@ -12,6 +12,7 @@ import { firebaseAuth } from "@/repositories/firebase/firebaseClient";
 import { supabase } from "@/repositories/supabase/supabaseClient";
 import { useCommunityReportsRepository } from "@/core/di/hooks";
 import { logger } from "@/core/logger/logger";
+import { trackCommunityReportEvent } from "@/core/analytics/communityTelemetry";
 import type { CommunityReport } from "@/domain/entities/CommunityReport";
 import { fetchWeather, type WeatherData } from "@/repositories/api/weatherRepository";
 
@@ -147,8 +148,20 @@ export function useIncidentScreen() {
         description: descText || null,
         photoUrl: photoUrl ?? null,
       });
-      if (!result.ok) throw result.error;
+      if (!result.ok) {
+        // Distinguish rate-limiting (a real abuse/spam signal worth tracking
+        // in aggregate) from any other failure — no PII in either case, see
+        // core/analytics/communityTelemetry.ts.
+        const status = result.error.code === "NETWORK" ? (result.error as { status?: number }).status : undefined;
+        trackCommunityReportEvent(status === 429 ? "community_report_rate_limited" : "community_report_failed");
+        if (status === 429) {
+          showToast(t("incident.rateLimited"));
+          return;
+        }
+        throw result.error;
+      }
 
+      trackCommunityReportEvent("community_report_submitted");
       showToast(t("incident.submitted"));
       setDescription("");
       setPhotoUri(undefined);
@@ -157,6 +170,7 @@ export function useIncidentScreen() {
       setActiveTab("mine");
       void loadMyReports();
     } catch {
+      trackCommunityReportEvent("community_report_failed");
       showToast(t("incident.error"));
     } finally {
       setSubmitting(false);

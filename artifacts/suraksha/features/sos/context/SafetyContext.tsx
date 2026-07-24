@@ -1,4 +1,5 @@
 import * as Haptics from "expo-haptics";
+import * as Crypto from "expo-crypto";
 import React, {
   createContext,
   useCallback,
@@ -45,6 +46,7 @@ import {
 } from "@/features/journey/services/journeyPersistence";
 import { computeJourneyStatus } from "@/domain/policies/journeyRecoveryPolicy";
 import type { Coords } from "@/domain/entities/Coords";
+import type { JourneyEscalationReason } from "@/domain/entities/JourneyOutcome";
 import type { SosPhase, SafetyStatus, SosState, JourneyState } from "@/features/sos/types";
 
 // Re-exported for backward compatibility — these types' canonical home is
@@ -126,7 +128,9 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
   // counter, which silently stops advancing the moment the app is
   // backgrounded or killed (the core reliability gap this audit found).
   const journeyStartedAtMsRef = useRef<number | null>(null);
-  const journeyDbIdRef         = useRef<string | null>(null);
+  // Client-generated UUID (see startJourney), stable for the lifetime of
+  // the journey — also the backend journeys-table row's primary key.
+  const journeyIdRef           = useRef<string | null>(null);
   const journeyAutoSosFiredRef = useRef(false);
   const journeyWasOverdueRef   = useRef(false);
   // Always-current refs for use inside the module-level location listener
@@ -136,6 +140,15 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
   contactsRef.current = contacts;
   const profileNameRef = useRef(profile.name);
   profileNameRef.current = profile.name;
+  // Lets the journey tick/recovery effects know, at the exact moment the
+  // grace period expires, whether triggerSOS() is actually going to fire
+  // (sos.phase === "idle") or will no-op because an unrelated SOS is
+  // already active — used only to label journey_expired/journey_escalated
+  // telemetry and the persisted outcome accurately, not to gate any actual
+  // safety behavior (triggerSOS()'s own internal guard is what's
+  // authoritative there, regardless of what this ref says).
+  const sosPhaseRef = useRef(sos.phase);
+  sosPhaseRef.current = sos.phase;
 
   // ── Live-tracking helpers ─────────────────────────────────────────
 
@@ -162,7 +175,8 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
     if (sosRunIdRef.current !== runId) return;
     setSos((s) => s.phase !== "idle" ? { ...s, address: addr } : s);
 
-    const sessionResult = await liveSessionRepository.startLiveSession(point.lat, point.lng, point.accuracy);
+    const shareId = Crypto.randomUUID();
+    const sessionResult = await liveSessionRepository.startLiveSession(shareId, point.lat, point.lng, point.accuracy);
     if (sosRunIdRef.current !== runId) {
       if (sessionResult.ok) await liveSessionRepository.endLiveSession(sessionResult.value.shareId);
       return;
@@ -192,19 +206,19 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
   // ── Supabase sos_events record (with offline-queue-backed retry) ──
 
   const insertOrAdopt = useCallback(
-    async (userId: string, lat: number, lng: number, address: string | null, isRetry: boolean) => {
+    async (userId: string, lat: number, lng: number, address: string | null, idempotencyKey: string, isRetry: boolean) => {
       if (isRetry) {
         // A previous attempt's outcome is unknown — it may have already
         // succeeded server-side with the response never reaching the
-        // client. Check before inserting again rather than risk a
-        // duplicate sos_events row (sos_events has no idempotency-key
-        // column to enforce this server-side — see
-        // docs/sos-audit/technical-debt-report.md).
+        // client. Check before inserting again as a defense-in-depth
+        // secondary layer — the DB-level upsert on (user_id,
+        // idempotency_key) below is now the authoritative dedup mechanism
+        // (see api-server/migrations/005_emergency_data_idempotency.sql).
         const since = new Date(Date.now() - DEDUP_LOOKBACK_MS).toISOString();
         const existing = await sosEventsRepository.findRecentUnresolvedEvent(userId, since);
         if (existing.ok && existing.value) return existing.value;
       }
-      const result = await sosEventsRepository.insertSosEvent(userId, lat, lng, address);
+      const result = await sosEventsRepository.insertSosEvent(userId, lat, lng, address, idempotencyKey);
       return result.ok ? result.value : null;
     },
     [sosEventsRepository],
@@ -231,7 +245,7 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
           alertsDispatched: false,
         });
 
-        const event = await insertOrAdopt(user.uid, coords.lat, coords.lng, address, false);
+        const event = await insertOrAdopt(user.uid, coords.lat, coords.lng, address, idempotencyKey, false);
         if (!event) {
           trackSosEvent("sos_db_write_failed");
           logger.warn("[SafetyContext] failed to record SOS event — will retry automatically");
@@ -268,9 +282,9 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
     dbRetryTimer.current = setInterval(() => {
       const runId = sosRunIdRef.current;
       const user = firebaseAuth.currentUser;
-      if (!user || !sos.coords) return;
+      if (!user || !sos.coords || !idempotencyKeyRef.current) return;
       trackSosEvent("sos_db_retry");
-      void insertOrAdopt(user.uid, sos.coords.lat, sos.coords.lng, sos.address, true).then((event) => {
+      void insertOrAdopt(user.uid, sos.coords.lat, sos.coords.lng, sos.address, idempotencyKeyRef.current, true).then((event) => {
         if (!event || sosRunIdRef.current !== runId) return;
         void updatePendingActivation({ dbEventId: event.id });
         setSos((s) => (sosRunIdRef.current === runId && s.phase !== "idle") ? { ...s, eventId: event.id } : s);
@@ -402,7 +416,7 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
           const existing = await sosEventsRepository.findRecentUnresolvedEvent(pending.userId, since);
           let event = existing.ok ? existing.value : null;
           if (!event) {
-            const inserted = await sosEventsRepository.insertSosEvent(pending.userId, pending.lat, pending.lng, pending.address);
+            const inserted = await sosEventsRepository.insertSosEvent(pending.userId, pending.lat, pending.lng, pending.address, pending.idempotencyKey);
             event = inserted.ok ? inserted.value : null;
           }
           if (event) await updatePendingActivation({ dbEventId: event.id });
@@ -485,60 +499,99 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
 
   const startJourney = useCallback(() => {
     const startedAtMs = Date.now();
+    const durationSec = journey.duration * 60;
+    const journeyId = Crypto.randomUUID();
     journeyStartedAtMsRef.current = startedAtMs;
+    journeyIdRef.current = journeyId;
     journeyAutoSosFiredRef.current = false;
     journeyWasOverdueRef.current = false;
-    journeyDbIdRef.current = null;
     trackJourneyEvent("journey_started");
     setJourney((j) => ({ ...JOURNEY_DEFAULTS, active: true, duration: j.duration }));
 
     void saveActiveJourney({
+      journeyId,
       startedAtMs,
-      durationSec: journey.duration * 60,
+      deadlineAtMs: startedAtMs + durationSec * 1000,
+      durationSec,
       overdueGraceSec: OVERDUE_GRACE_SEC,
-      dbJourneyId: null,
+      completedAtMs: null,
+      cancelledAtMs: null,
+      escalationReason: null,
+      outcome: null,
       autoSosTriggered: false,
+      wasRecoveredFromBackground: false,
     });
     // Best-effort backend record — never blocks the local timer, which is
     // the actual safety mechanism regardless of whether this write
-    // succeeds (mirrors the "never let a backend hiccup block safety"
+    // succeeds. The repository itself retries transient failures with
+    // backoff and is idempotent on `journeyId` (see journeyRepository.ts),
+    // so this call either succeeds, adopts an existing row from a prior
+    // attempt, or gives up after bounded retries — it never blocks here
+    // either way (mirrors the "never let a backend hiccup block safety"
     // ethos already established for SOS).
-    journeyRepository.startJourney(journey.duration).then((r) => {
-      if (r.ok) {
-        journeyDbIdRef.current = r.value.id;
-        void updateActiveJourney({ dbJourneyId: r.value.id });
-      } else {
+    journeyRepository.startJourney(journeyId, journey.duration).then((r) => {
+      if (!r.ok) {
         trackJourneyEvent("journey_db_write_failed");
         logger.warn("[SafetyContext] failed to persist journey start", r.error);
       }
     });
   }, [journey.duration, journeyRepository]);
 
-  const endJourneyRecord = useCallback(() => {
-    const dbId = journeyDbIdRef.current;
-    if (dbId) {
-      journeyRepository.endJourney(dbId).then((r) => {
+  /**
+   * Shared teardown for every way a journey can end. `outcome` and
+   * `escalationReason` are written to the persisted record for
+   * observability (see domain/entities/JourneyOutcome.ts) immediately
+   * before it's cleared, and telemetry carries the journey's actual
+   * elapsed duration — "Journey Duration" telemetry is a field on these
+   * terminal events, not a separate occurrence.
+   */
+  const endJourneyRecord = useCallback((
+    outcome: "completed" | "cancelled" | "escalated" | "expired",
+    escalationReason: JourneyEscalationReason | null,
+    durationSec: number,
+  ) => {
+    const journeyId = journeyIdRef.current;
+    if (journeyId) {
+      // endJourney() is a naturally-idempotent update-by-id — safe to call
+      // even if the original insert never actually reached the backend
+      // (it simply updates zero rows in that case, not an error).
+      journeyRepository.endJourney(journeyId).then((r) => {
         if (!r.ok) logger.warn("[SafetyContext] failed to end journey record", r.error);
       });
     }
-    void clearActiveJourney();
+    const now = Date.now();
+    void updateActiveJourney({
+      outcome,
+      escalationReason,
+      completedAtMs: outcome === "completed" ? now : null,
+      cancelledAtMs: outcome === "cancelled" ? now : null,
+    }).then(() => clearActiveJourney());
+    trackJourneyEvent(
+      outcome === "completed" ? "journey_completed"
+      : outcome === "cancelled" ? "journey_cancelled"
+      : outcome === "escalated" ? "journey_escalated"
+      : "journey_expired",
+      { durationSec },
+    );
     journeyStartedAtMsRef.current = null;
-    journeyDbIdRef.current = null;
+    journeyIdRef.current = null;
     journeyAutoSosFiredRef.current = false;
     journeyWasOverdueRef.current = false;
   }, [journeyRepository]);
 
   const endJourney = useCallback(() => {
-    trackJourneyEvent("journey_ended_manually");
-    endJourneyRecord();
+    const startedAtMs = journeyStartedAtMsRef.current;
+    const elapsedSec = startedAtMs !== null ? Math.floor((Date.now() - startedAtMs) / 1000) : 0;
+    endJourneyRecord("cancelled", null, elapsedSec);
     setJourney((j) => ({ ...JOURNEY_DEFAULTS, duration: j.duration }));
   }, [endJourneyRecord]);
 
   /** User taps "I'm Safe" during an overdue journey. Clears overdue + ends journey. */
   const checkInJourney = useCallback(() => {
-    trackJourneyEvent("journey_checked_in");
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    endJourneyRecord();
+    const startedAtMs = journeyStartedAtMsRef.current;
+    const elapsedSec = startedAtMs !== null ? Math.floor((Date.now() - startedAtMs) / 1000) : 0;
+    endJourneyRecord("completed", null, elapsedSec);
     setJourney((j) => ({ ...JOURNEY_DEFAULTS, duration: j.duration }));
   }, [endJourneyRecord]);
 
@@ -573,7 +626,6 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
       if (!journeyWasOverdueRef.current) {
         journeyWasOverdueRef.current = true;
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        trackJourneyEvent("journey_overdue");
       }
 
       if (status.phase === "overdue") {
@@ -585,8 +637,15 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
       setJourney((j) => ({ ...j, overdue: true, overdueSeconds: 0 }));
       if (!journeyAutoSosFiredRef.current) {
         journeyAutoSosFiredRef.current = true;
-        trackJourneyEvent("journey_auto_sos_triggered");
-        void updateActiveJourney({ autoSosTriggered: true });
+        // Read *before* calling triggerSOS(): its own internal guard
+        // (sos.phase !== "idle") is what actually decides whether it
+        // fires — this is only to label the outcome/telemetry accurately,
+        // never to gate the trigger itself.
+        const canEscalate = sosPhaseRef.current === "idle";
+        const escalationReason: JourneyEscalationReason = canEscalate
+          ? "grace_period_elapsed"
+          : "sos_blocked_by_existing_emergency";
+        endJourneyRecord(canEscalate ? "escalated" : "expired", escalationReason, journey.duration * 60 + status.overdueElapsedSec);
         // Trigger SOS on next tick to avoid setState-during-render.
         setTimeout(() => triggerSOS(), 0);
       }
@@ -612,7 +671,7 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
       const persisted = await getActiveJourney();
       if (!persisted) return;
 
-      journeyDbIdRef.current = persisted.dbJourneyId;
+      journeyIdRef.current = persisted.journeyId;
       journeyStartedAtMsRef.current = persisted.startedAtMs;
       const status = computeJourneyStatus(
         {
@@ -627,18 +686,23 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
         // The grace period fully elapsed while the app was away — exactly
         // the scenario this fix exists for. Escalate immediately rather
         // than silently doing nothing.
-        trackJourneyEvent("journey_recovery_expired_during_background");
         journeyWasOverdueRef.current = true;
+        const elapsedSec = persisted.durationSec + status.overdueElapsedSec;
         setJourney({
           active: true,
           duration: persisted.durationSec / 60,
-          seconds: persisted.durationSec + status.overdueElapsedSec,
+          seconds: elapsedSec,
           overdue: true,
           overdueSeconds: 0,
         });
+        trackJourneyEvent("journey_recovery", { recoveryOutcome: "expired", durationSec: elapsedSec });
         if (!persisted.autoSosTriggered) {
           journeyAutoSosFiredRef.current = true;
-          void updateActiveJourney({ autoSosTriggered: true });
+          const canEscalate = sosPhaseRef.current === "idle";
+          const escalationReason: JourneyEscalationReason = canEscalate
+            ? "grace_period_elapsed"
+            : "sos_blocked_by_existing_emergency";
+          endJourneyRecord(canEscalate ? "escalated" : "expired", escalationReason, elapsedSec);
           setTimeout(() => triggerSOS(), 0);
         }
         return;
@@ -646,12 +710,14 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
 
       // Still within the timer or the grace period — resume normally; the
       // tick effect above picks it up the instant `active` is true.
-      trackJourneyEvent("journey_recovery_resumed");
       journeyWasOverdueRef.current = status.phase === "overdue";
+      const elapsedSec = status.phase === "active" ? status.elapsedSec : persisted.durationSec + status.overdueElapsedSec;
+      trackJourneyEvent("journey_recovery", { recoveryOutcome: "resumed", durationSec: elapsedSec });
+      void updateActiveJourney({ wasRecoveredFromBackground: true });
       setJourney({
         active: true,
         duration: persisted.durationSec / 60,
-        seconds: status.phase === "active" ? status.elapsedSec : persisted.durationSec + status.overdueElapsedSec,
+        seconds: elapsedSec,
         overdue: status.phase === "overdue",
         overdueSeconds: status.phase === "overdue" ? status.graceSecondsRemaining : OVERDUE_GRACE_SEC,
       });

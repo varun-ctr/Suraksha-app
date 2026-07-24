@@ -24,15 +24,22 @@ import { SafetyProvider } from "@/features/sos/context/SafetyContext";
 import { ThemeProvider, useTheme } from "@/shared/theme/ThemeContext";
 import { ToastProvider, useToast } from "@/features/settings/context/ToastContext";
 import { AuthProvider, useAuth } from "@/features/authentication/context/AuthContext";
+import { useAppLock } from "@/features/security/hooks/useAppLock";
+import { AppLockScreen } from "@/features/security/components/AppLockScreen";
 import { initFirebase } from "@/repositories/firebase/firebaseClient";
 import { registerForPushNotifications } from "@/core/permissions/notifications";
-// Side-effect only: registers the background location TaskManager task at
-// module load time, so it survives a background app relaunch. Must be
-// imported somewhere that always loads on app start, not lazily from a
-// component — see core/permissions/backgroundLocation.ts.
-import "@/core/permissions/backgroundLocation";
+// Importing ACTIVE_SHARE_ID_KEY below still triggers this module's
+// side-effect-registered TaskManager task at load time (module-level code
+// always runs on first import, regardless of which export is named) — see
+// core/permissions/backgroundLocation.ts. Must be imported somewhere that
+// always loads on app start, not lazily from a component, so the task
+// survives a background app relaunch.
+import { ACTIVE_SHARE_ID_KEY } from "@/core/permissions/backgroundLocation";
 import { initSupabase } from "@/repositories/supabase/supabaseClient";
 import { validateConfig } from "@/core/config/config";
+import { migrateLegacyPlaintextKeys } from "@/core/storage/secureStorageMigration";
+import { PENDING_ACTIVATION_KEY } from "@/features/sos/services/sosOfflineQueue";
+import { ACTIVE_JOURNEY_KEY } from "@/features/journey/services/journeyPersistence";
 import { initCrashReporting, reportError } from "@/core/analytics/crashReporting";
 import {
   installCrashBeforeRenderHandler,
@@ -66,6 +73,13 @@ if (APP_CONFIG.ok) {
   trackStartupEvent("startup_failure", { reason: "missing_config", durationMs: getElapsedSinceStart() });
 }
 
+// One-time, best-effort encryption of any safety-sensitive records still
+// sitting in plaintext from before this pass — see
+// core/storage/secureStorageMigration.ts. Fire-and-forget: never blocks
+// startup, and each key's own lazy migration (encrypt-on-next-write) is
+// still a safety net if this hasn't finished before that key is read/written.
+void migrateLegacyPlaintextKeys([PENDING_ACTIVATION_KEY, ACTIVE_JOURNEY_KEY, ACTIVE_SHARE_ID_KEY]);
+
 SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
@@ -89,7 +103,7 @@ function RootLayoutNav() {
 }
 
 function Gate() {
-  const { ready: appReady, onboarded } = useApp();
+  const { ready: appReady, onboarded, settings } = useApp();
   const { ready: themeReady } = useTheme();
   const { ready: langReady } = useI18n();
   const { showToast } = useToast();
@@ -102,6 +116,13 @@ function Gate() {
   // onFirebaseAuthStateChanged listener — see docs/adr/0001, performance notes.
   const { user, loading: authLoading } = useAuth();
   const authChecked = !authLoading;
+
+  // Opt-in app lock (default off — see AppContext's Settings.appLockEnabled),
+  // wiring the existing core/permissions/biometrics.ts capability into a
+  // real cold-start/resume gate. Called unconditionally (hook rules) even
+  // before `allReady`; it has no observable effect until settings finish
+  // loading and `appLockEnabled` is true — see features/security/hooks/useAppLock.ts.
+  const { locked, biometricsAvailable, biometricType, unlock } = useAppLock(settings.appLockEnabled, appReady);
 
   useEffect(() => {
     if (user && !user.isAnonymous) {
@@ -178,6 +199,10 @@ function Gate() {
   }, [allReady, onboarded, segments, router]);
 
   if (!allReady) return null;
+
+  if (locked) {
+    return <AppLockScreen biometricType={biometricType} biometricsAvailable={biometricsAvailable} onUnlock={unlock} />;
+  }
 
   return <RootLayoutNav />;
 }

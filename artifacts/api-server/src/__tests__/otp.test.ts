@@ -8,6 +8,7 @@ import {
   isValidEmail,
   isValidCodeFormat,
   isExpired,
+  maskEmail,
 } from "../lib/otp.ts";
 
 test("hashCode is deterministic, hex, and not the plaintext", () => {
@@ -51,4 +52,17 @@ test("isExpired compares the ISO expiry against now", () => {
   assert.equal(isExpired(past, now), true);
   // Boundary: strictly-less-than, so exactly-now is not yet expired
   assert.equal(isExpired(new Date(now).toISOString(), now), false);
+});
+
+test("maskEmail keeps the domain and up to 2 local-part characters, never the full address", () => {
+  assert.equal(maskEmail("jo@example.com"), "jo***@example.com");
+  assert.equal(maskEmail("johndoe@example.com"), "jo***@example.com");
+  assert.equal(maskEmail("j@example.com"), "j***@example.com");
+  assert.notEqual(maskEmail("johndoe@example.com"), "johndoe@example.com");
+});
+
+test("maskEmail never throws on malformed input", () => {
+  assert.equal(maskEmail("no-at-sign"), "***");
+  assert.equal(maskEmail(""), "***");
+  assert.equal(maskEmail("@example.com"), "***");
 });

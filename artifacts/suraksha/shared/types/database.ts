@@ -35,6 +35,16 @@ export interface SosEventRow {
   triggered_at: string;
   resolved_at: string | null;
   contacts_notified: ContactNotifiedEntry[];
+  /**
+   * Client-generated key (see SafetyContext.tsx's idempotencyKeyRef), stable
+   * for the lifetime of one SOS activation. Nullable for backward
+   * compatibility with rows written before this column existed — see
+   * api-server/migrations/005_emergency_data_idempotency.sql. Enforced
+   * unique per user via a partial unique index, making a retried insert
+   * with the same key an idempotent no-op (UPSERT) rather than a possible
+   * duplicate emergency record.
+   */
+  idempotency_key: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -47,7 +57,7 @@ export interface ContactNotifiedEntry {
 }
 
 export type SosEventInsert = Pick<SosEventRow, "lat" | "lng"> &
-  Partial<Pick<SosEventRow, "address" | "contacts_notified" | "triggered_at">>;
+  Partial<Pick<SosEventRow, "address" | "contacts_notified" | "triggered_at" | "idempotency_key">>;
 
 export type SosEventUpdate = Partial<Pick<SosEventRow, "resolved_at" | "contacts_notified">>;
 
@@ -71,7 +81,13 @@ export interface RoutePoint {
   recorded_at: string;
 }
 
-export type JourneyInsert = Partial<Pick<JourneyRow, "started_at" | "duration_minutes" | "route_json">>;
+// `id` is optional and client-suppliable (not server-only/identity) so a
+// caller can generate a stable UUID up front and retry the same insert
+// idempotently — see repositories/supabase/journeyRepository.ts. The
+// column itself is unchanged (still `DEFAULT gen_random_uuid()`); this
+// just lets the client override that default with its own value, same as
+// any Postgres UUID PK without an IDENTITY constraint already allows.
+export type JourneyInsert = Partial<Pick<JourneyRow, "id" | "started_at" | "duration_minutes" | "route_json">>;
 
 export type JourneyUpdate = Partial<Pick<JourneyRow, "ended_at" | "duration_minutes" | "route_json">>;
 
@@ -173,8 +189,14 @@ export interface LiveSessionRow {
   updated_at: string;
 }
 
+// `share_id` is optional and client-suppliable (not server-only/identity) so a
+// caller can generate a stable UUID up front and retry the same insert
+// idempotently — see repositories/supabase/liveSessionRepository.ts, mirroring
+// the same pattern already used for journeys.id. The column itself is
+// unchanged (still `DEFAULT gen_random_uuid()`); this just lets the client
+// override that default with its own value.
 export type LiveSessionInsert = Pick<LiveSessionRow, "lat" | "lng"> &
-  Partial<Pick<LiveSessionRow, "accuracy" | "expires_at">>;
+  Partial<Pick<LiveSessionRow, "accuracy" | "expires_at" | "share_id">>;
 
 export type LiveSessionUpdate = Partial<
   Pick<LiveSessionRow, "lat" | "lng" | "accuracy" | "is_active" | "expires_at">

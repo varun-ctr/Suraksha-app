@@ -88,7 +88,7 @@ export default function ProfileScreen() {
     langModalVisible, setLangModalVisible,
     userAnonymous, linkedEmail,
     deleteStep, setDeleteStep, deleteText, setDeleteText, deleting,
-    openEditProfile, saveProfile, uploadAvatar, handleNotificationsToggle, handleSignOut, handleDeleteAccount,
+    openEditProfile, saveProfile, uploadAvatar, handleNotificationsToggle, handleAppLockToggle, handleSignOut, handleDeleteAccount,
   } = useProfileScreen();
 
   const currentLangMeta = LANG_BY_CODE[lang];
@@ -257,6 +257,20 @@ export default function ProfileScreen() {
               <Switch
                 value={settings.shakeToSos}
                 onValueChange={(v) => setSettings({ shakeToSos: v })}
+                trackColor={{ true: c.primary, false: c.border }}
+                thumbColor="#fff"
+              />
+            }
+          />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+          <Row
+            icon="lock"
+            color={c.primary}
+            label={t("profile.appLock")}
+            right={
+              <Switch
+                value={settings.appLockEnabled}
+                onValueChange={(v) => void handleAppLockToggle(v)}
                 trackColor={{ true: c.primary, false: c.border }}
                 thumbColor="#fff"
               />

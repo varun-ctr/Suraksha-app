@@ -19,6 +19,7 @@ import { useI18n } from "@/features/settings/context/LanguageContext";
 import { useToast } from "@/features/settings/context/ToastContext";
 import { firebaseAuth } from "@/repositories/firebase/firebaseClient";
 import { db, supabase } from "@/repositories/supabase/supabaseClient";
+import { isBiometricUnlockAvailable } from "@/core/permissions/biometrics";
 
 /** All state and handlers for the profile screen: edit, avatar upload, notification toggle, account deletion. */
 export function useProfileScreen() {
@@ -138,6 +139,17 @@ export function useProfileScreen() {
     setSettings({ notifications: v });
   };
 
+  const handleAppLockToggle = async (v: boolean) => {
+    if (v) {
+      const available = await isBiometricUnlockAvailable();
+      if (!available) {
+        showToast(t("profile.appLockUnavailable"));
+        return;
+      }
+    }
+    setSettings({ appLockEnabled: v });
+  };
+
   const handleSignOut = async () => {
     await signOut();
     router.replace("/login" as never);
@@ -178,6 +190,6 @@ export function useProfileScreen() {
     langModalVisible, setLangModalVisible,
     userAnonymous, linkedEmail,
     deleteStep, setDeleteStep, deleteText, setDeleteText, deleting,
-    openEditProfile, saveProfile, uploadAvatar, handleNotificationsToggle, handleSignOut, handleDeleteAccount,
+    openEditProfile, saveProfile, uploadAvatar, handleNotificationsToggle, handleAppLockToggle, handleSignOut, handleDeleteAccount,
   };
 }

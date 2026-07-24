@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/node";
 import { logger } from "./logger";
+import { scrubSentryEvent } from "./sentryScrubber";
 
 /**
  * Backend error tracking + operational alerting.
@@ -23,6 +24,13 @@ export function initErrorReporting(): void {
       dsn,
       environment: process.env.NODE_ENV ?? "development",
       tracesSampleRate: 0,
+      sendDefaultPii: false,
+      // Defense-in-depth on top of pino's own header redaction and the
+      // email-masking already applied at log call sites — see
+      // lib/sentryScrubber.ts's header doc for what this does and doesn't
+      // reliably catch.
+      beforeSend: (event) => scrubSentryEvent(event as unknown as Record<string, unknown>) as never,
+      beforeBreadcrumb: (breadcrumb) => scrubSentryEvent(breadcrumb as unknown as Record<string, unknown>) as never,
     });
     sentryOn = true;
     logger.info("Sentry error reporting enabled");
