@@ -16,6 +16,7 @@ import { toAuthUser } from "@/repositories/firebase/mappers/authUserMapper";
 import type { AuthUser } from "@/domain/entities/AuthUser";
 import { logger } from "@/core/logger/logger";
 import { trackAuthEvent } from "@/core/analytics/authTelemetry";
+import { trackStartupEvent, getElapsedSinceStart } from "@/core/analytics/startupTelemetry";
 
 /**
  * If Firebase's auth-state listener never fires (cold-start network delay,
@@ -60,8 +61,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // underlying event; they now derive from this context instead (see
   // docs/adr/0001-feature-first-architecture.md's performance notes).
   useEffect(() => {
-    const timeout = setTimeout(() => setLoading(false), AUTH_STATE_TIMEOUT_MS);
+    const timeout = setTimeout(() => {
+      trackStartupEvent("auth_restore_complete", { durationMs: getElapsedSinceStart() });
+      setLoading(false);
+    }, AUTH_STATE_TIMEOUT_MS);
     const unsub = onFirebaseAuthStateChanged((u) => {
+      trackStartupEvent("auth_restore_complete", { durationMs: getElapsedSinceStart() });
       clearTimeout(timeout);
       setUser(u);
       setLoading(false);

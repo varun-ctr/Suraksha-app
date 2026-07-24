@@ -26,7 +26,6 @@
  * SafetyContext's in-memory `shareIdRef` isn't reachable from here.
  */
 import * as Location from "expo-location";
-import * as TaskManager from "expo-task-manager";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Needs direct repository access: the background task can run in a headless
@@ -37,6 +36,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 // eslint-disable-next-line import/no-restricted-paths
 import { liveSessionRepository } from "@/repositories/supabase/liveSessionRepository";
 import { logger } from "@/core/logger/logger";
+import { getTaskManager } from "@/core/capabilities/nativeCapabilities";
 import type { GeoPoint } from "@/core/permissions/location";
 
 export const BACKGROUND_LOCATION_TASK = "suraksha-sos-background-location";
@@ -55,40 +55,63 @@ export function setLocationUpdateListener(cb: LocationUpdateListener | null): vo
   listener = cb;
 }
 
-TaskManager.defineTask<{ locations: Location.LocationObject[] }>(
-  BACKGROUND_LOCATION_TASK,
-  async ({ data, error }) => {
-    if (error) {
-      logger.warn("[backgroundLocation] task error", error);
-      return;
-    }
-    const latest = data?.locations?.at(-1);
-    if (!latest) return;
+// ROOT CAUSE FIX (startup white-screen in Expo Go): this used to be a plain
+// `import * as TaskManager from "expo-task-manager"`. expo-task-manager's
+// own module (TaskManager.js) imports ExpoTaskManager via
+// expo-modules-core's `requireNativeModule('ExpoTaskManager')`, which
+// *throws synchronously* ("Cannot find native module 'ExpoTaskManager'")
+// when that native module isn't present — see
+// node_modules/expo-modules-core/src/requireNativeModule.ts. expo-task-manager's
+// own docs state background TaskManager is not fully available in Expo Go.
+// Because this file is imported unconditionally at module-load time from
+// app/_layout.tsx (so the task survives a background relaunch — see file
+// header), that throw happened during the app's synchronous import phase,
+// before React ever mounted and before the root ErrorBoundary or Sentry
+// (core/analytics/crashReporting.ts) initialized — so it crashed the entire
+// bundle with no visible error, just a blank screen after the splash was
+// torn down. getTaskManager() (core/capabilities/nativeCapabilities.ts)
+// requires it lazily and caches a null on failure instead, keeping app boot
+// safe in Expo Go; background tracking itself simply doesn't run there,
+// which is an already-documented, accepted limitation (see
+// docs/sos-audit/reliability-audit.md).
+const TaskManager = getTaskManager();
 
-    const point: GeoPoint = {
-      lat: latest.coords.latitude,
-      lng: latest.coords.longitude,
-      accuracy: latest.coords.accuracy ?? null,
-    };
+if (TaskManager) {
+  TaskManager.defineTask<{ locations: Location.LocationObject[] }>(
+    BACKGROUND_LOCATION_TASK,
+    async ({ data, error }) => {
+      if (error) {
+        logger.warn("[backgroundLocation] task error", error);
+        return;
+      }
+      const latest = data?.locations?.at(-1);
+      if (!latest) return;
 
-    listener?.(point);
+      const point: GeoPoint = {
+        lat: latest.coords.latitude,
+        lng: latest.coords.longitude,
+        accuracy: latest.coords.accuracy ?? null,
+      };
 
-    let shareId: string | null = null;
-    try {
-      shareId = await AsyncStorage.getItem(ACTIVE_SHARE_ID_KEY);
-    } catch (e) {
-      logger.warn("[backgroundLocation] failed to read active share id", e);
-      return;
-    }
-    // No active SOS right now — the task keeps running (cheap to leave
-    // registered) but has nothing to push until startBackgroundLocationTracking
-    // records a share id again.
-    if (!shareId) return;
+      listener?.(point);
 
-    const result = await liveSessionRepository.updateLiveSession(shareId, point.lat, point.lng, point.accuracy);
-    if (!result.ok) logger.warn("[backgroundLocation] failed to push location update", result.error);
-  },
-);
+      let shareId: string | null = null;
+      try {
+        shareId = await AsyncStorage.getItem(ACTIVE_SHARE_ID_KEY);
+      } catch (e) {
+        logger.warn("[backgroundLocation] failed to read active share id", e);
+        return;
+      }
+      // No active SOS right now — the task keeps running (cheap to leave
+      // registered) but has nothing to push until startBackgroundLocationTracking
+      // records a share id again.
+      if (!shareId) return;
+
+      const result = await liveSessionRepository.updateLiveSession(shareId, point.lat, point.lng, point.accuracy);
+      if (!result.ok) logger.warn("[backgroundLocation] failed to push location update", result.error);
+    },
+  );
+}
 
 /** True if the OS currently grants continuous background delivery (iOS: "Always"). Does not prompt — see requestBackgroundLocationPermission. */
 export async function hasBackgroundLocationPermission(): Promise<boolean> {
@@ -124,6 +147,8 @@ export async function requestBackgroundLocationPermission(): Promise<boolean> {
  * must never fail outright over a missing "Always" grant.
  */
 export async function startBackgroundLocationTracking(shareId: string): Promise<boolean> {
+  if (!TaskManager) return false; // native module unavailable (Expo Go) — see the guard above
+
   try {
     await AsyncStorage.setItem(ACTIVE_SHARE_ID_KEY, shareId);
   } catch (e) {

@@ -8,7 +8,7 @@ import {
 import * as Notifications from "expo-notifications";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -34,6 +34,15 @@ import "@/core/permissions/backgroundLocation";
 import { initSupabase } from "@/repositories/supabase/supabaseClient";
 import { validateConfig } from "@/core/config/config";
 import { initCrashReporting, reportError } from "@/core/analytics/crashReporting";
+import {
+  installCrashBeforeRenderHandler,
+  markRenderConfirmed,
+  trackStartupEvent,
+  getElapsedSinceStart,
+} from "@/core/analytics/startupTelemetry";
+
+installCrashBeforeRenderHandler();
+trackStartupEvent("app_launch");
 
 const APP_CONFIG = validateConfig();
 
@@ -53,6 +62,8 @@ if (APP_CONFIG.ok) {
     process.env.EXPO_PUBLIC_SUPABASE_URL!,
     process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
   );
+} else {
+  trackStartupEvent("startup_failure", { reason: "missing_config", durationMs: getElapsedSinceStart() });
 }
 
 SplashScreen.preventAutoHideAsync();
@@ -136,12 +147,26 @@ function Gate() {
 
   const allReady = appReady && themeReady && langReady && authChecked;
 
+  // Guards each event below to fire exactly once per app launch, no matter
+  // how many times Gate re-renders while readiness flags settle.
+  const splashHiddenRef = useRef(false);
+  const navigationReadyRef = useRef(false);
+
   useEffect(() => {
-    if (allReady) SplashScreen.hideAsync();
+    if (allReady && !splashHiddenRef.current) {
+      splashHiddenRef.current = true;
+      trackStartupEvent("startup_complete", { durationMs: getElapsedSinceStart() });
+      markRenderConfirmed();
+      SplashScreen.hideAsync();
+    }
   }, [allReady]);
 
   useEffect(() => {
     if (!allReady) return;
+    if (!navigationReadyRef.current) {
+      navigationReadyRef.current = true;
+      trackStartupEvent("navigation_ready", { durationMs: getElapsedSinceStart() });
+    }
     const seg0 = segments[0] as string;
     const inOnboarding = seg0 === "onboarding";
 
@@ -173,9 +198,20 @@ export default function RootLayout() {
   const [fontsTimedOut, setFontsTimedOut] = useState(false);
   useEffect(() => {
     if (fontsLoaded || fontError) return;
-    const t = setTimeout(() => setFontsTimedOut(true), 4000);
+    const t = setTimeout(() => {
+      trackStartupEvent("startup_failure", { reason: "fonts_timed_out", durationMs: getElapsedSinceStart() });
+      setFontsTimedOut(true);
+    }, 4000);
     return () => clearTimeout(t);
   }, [fontsLoaded, fontError]);
+
+  // Gate never mounts on this path (it's the only place that otherwise calls
+  // SplashScreen.hideAsync()), so without this the native splash would stay
+  // on top of ConfigErrorScreen forever on a misconfigured build — found
+  // during the startup audit, see docs/startup-audit/technical-debt-report.md.
+  useEffect(() => {
+    if (!APP_CONFIG.ok) SplashScreen.hideAsync();
+  }, []);
 
   if (!APP_CONFIG.ok) {
     return (
