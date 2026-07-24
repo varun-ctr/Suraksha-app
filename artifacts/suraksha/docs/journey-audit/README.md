@@ -8,7 +8,7 @@ Scope: `features/journey/`, the journey slice of `features/sos/context/SafetyCon
 ## Documents
 
 1. [Journey architecture diagram](./architecture-diagram.md)
-2. [Journey state machine](./state-machine.md)
+2. [Journey state machine](./state-machine.md) (updated in v2 with explicit outcome states)
 3. [Background execution diagram](./background-execution-diagram.md)
 4. [Offline sync diagram](./offline-sync-diagram.md)
 5. [Battery optimisation report](./battery-optimization-report.md)
@@ -17,11 +17,14 @@ Scope: `features/journey/`, the journey slice of `features/sos/context/SafetyCon
 8. [Performance report](./performance-report.md)
 9. [Test report](./test-report.md)
 10. [Technical debt report](./technical-debt-report.md)
-11. [Production readiness report](./production-readiness-report.md) (score, P0–P3, certification verdict)
+11. [Production readiness report](./production-readiness-report.md) (original certification — score, P0–P3, verdict)
+12. **[Hardening pass v2 — final report](./hardening-v2-report.md)** — journey UUIDs, duration validation, idempotent retry logic, explicit completion states, telemetry v2, repository review. **Read this for the current state** — scores below are superseded by v2's.
+13. [Backend contract (review only, not implemented)](./backend-contract.md) — the future server-side deadline-monitor specification
 
 ## Summary
 
-**Journey Tracking Score: 8/10. Battery Efficiency: 10/10. Reliability: 8.5/10. Estimated production readiness: 88%.**
+**Original certification: Journey Tracking Score 8/10, Battery Efficiency 10/10, Reliability 8.5/10, estimated production readiness 88%.**
+**After the v2 hardening pass (see `hardening-v2-report.md`): Journey Tracking Score 9/10, estimated production readiness 90%.**
 
 **The core finding**: before this pass, a journey's entire safety mechanism — the timer that detects "overdue" and auto-escalates to a real SOS — was driven by a plain `setInterval` counter. This silently and completely stops working the moment the app is backgrounded (a user locking their phone during a normal check-in journey — the overwhelmingly common real case) or killed, with zero indication to the user that their protection had lapsed. This is fixed: `domain/policies/journeyRecoveryPolicy.ts` derives elapsed/overdue/expired status from wall-clock time (`Date.now() - startedAtMs`) rather than an incrementing counter, and a new crash/background recovery effect in `SafetyContext.tsx` re-derives the correct status the instant the app runs again — on foreground resume, on relaunch after a kill, or after a device reboot — and immediately escalates to SOS if the deadline already fully passed while the app was away.
 
@@ -35,10 +38,10 @@ None outstanding — the one found was fixed in this pass.
 
 1. No server-side monitor exists for journeys whose deadline has passed with no check-in. This is the one gap the mobile client genuinely cannot close alone: if the app is never reopened after the deadline passes, no client-side code can run to escalate. The `journeys` table now has everything a backend job would need (`started_at`, `duration_minutes`, `ended_at`) — building that job is out of mobile-client scope for this pass.
 
-### Medium issues (P2)
+### Medium issues (P2) — both resolved in the v2 hardening pass
 
-1. A failed journey-start backend insert is never retried (non-safety-critical — affects only the historical record, not the local timer).
-2. No `durationMinutes` range validation at the repository layer (not reachable through the current fixed-preset UI).
+1. ~~A failed journey-start backend insert is never retried~~ — **fixed**: `journeyRepository.startJourney()` now retries with exponential backoff and is genuinely idempotent via a client-generated UUID. See `hardening-v2-report.md`.
+2. ~~No `durationMinutes` range validation at the repository layer~~ — **fixed**: `domain/policies/journeyValidation.ts`, enforced before any write.
 
 ### Nice-to-haves (P3)
 

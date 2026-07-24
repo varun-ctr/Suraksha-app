@@ -71,7 +71,13 @@ export interface RoutePoint {
   recorded_at: string;
 }
 
-export type JourneyInsert = Partial<Pick<JourneyRow, "started_at" | "duration_minutes" | "route_json">>;
+// `id` is optional and client-suppliable (not server-only/identity) so a
+// caller can generate a stable UUID up front and retry the same insert
+// idempotently — see repositories/supabase/journeyRepository.ts. The
+// column itself is unchanged (still `DEFAULT gen_random_uuid()`); this
+// just lets the client override that default with its own value, same as
+// any Postgres UUID PK without an IDENTITY constraint already allows.
+export type JourneyInsert = Partial<Pick<JourneyRow, "id" | "started_at" | "duration_minutes" | "route_json">>;
 
 export type JourneyUpdate = Partial<Pick<JourneyRow, "ended_at" | "duration_minutes" | "route_json">>;
 

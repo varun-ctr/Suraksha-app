@@ -132,6 +132,14 @@ export const db = {
         .select<"*", JourneyRow>("*")
         .eq("user_id", userId)
         .order("started_at", { ascending: false }),
+
+    /** Used by journeyRepository's retry loop to check whether a previous, client-generated-id insert actually succeeded before assuming it failed and retrying. */
+    getById: (id: string) =>
+      supabase
+        .from("journeys")
+        .select<"*", JourneyRow>("*")
+        .eq("id", id)
+        .maybeSingle(),
   },
 
   communityReports: {

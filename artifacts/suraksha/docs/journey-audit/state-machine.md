@@ -52,3 +52,16 @@ stateDiagram-v2
 ## No invalid transitions possible
 
 There is no code path that can produce, for example, `overdue:true` while `active:false`, or a negative `overdueSeconds`/`seconds` — every value is derived in one place (`computeJourneyStatus`) from a `Math.max(0, ...)`-clamped elapsed calculation, then mapped into the `JourneyState` shape at the two call sites (the live tick and the recovery effect), both reviewed in this pass.
+
+## v2 hardening pass: explicit terminal outcomes (`domain/entities/JourneyOutcome.ts`)
+
+The diagram above still shows `Expired --> [*]` as a single transition, but as of the v2 pass this is now one of two distinct, explicitly-recorded outcomes rather than an implicit "it ended somehow":
+
+- **"escalated"** — the grace period expired *and* `triggerSOS()` actually fired (`sos.phase` was `"idle"` at that instant).
+- **"expired"** — the grace period fully elapsed but `triggerSOS()`'s own internal guard blocked it (an unrelated SOS was already active) — a real, distinct, non-silent outcome now, not merged into "escalated."
+
+Both `"completed"` (via `checkInJourney()`) and `"cancelled"` (via `endJourney()`) are recorded the same explicit way, replacing the previous implicit model where "ended" meant only "state was cleared, no record of why." Every outcome, plus `escalationReason` (`"grace_period_elapsed"` | `"sos_blocked_by_existing_emergency"`) where applicable, is written to the persisted journey record (`journeyPersistence.ts`) immediately before it's cleared, and to telemetry via `core/analytics/journeyTelemetry.ts`'s corresponding event (`journey_completed`/`journey_cancelled`/`journey_escalated`/`journey_expired`).
+
+"Recovered" is deliberately **not** a 5th outcome value — see `JourneyOutcome.ts`'s file header for why forcing it into the same field as "why did it end" would be self-contradictory. It's tracked as a separate dimension instead: `wasRecoveredFromBackground` on the persisted record, and a distinct `journey_recovery` telemetry event (with a `recoveryOutcome: "resumed" | "expired"` field) — answering "was this determined by the crash/background recovery path, or live?" independently of which of the four real outcomes it turned out to be.
+
+Every journey also now carries a client-generated, stable `journeyId` (UUID, via `expo-crypto`'s `Crypto.randomUUID()`) — set once in `startJourney()`, persisted locally, and used as the backend `journeys` row's primary key. See `docs/journey-audit/hardening-v2-report.md` for the full rationale and `repositories/supabase/journeyRepository.ts` for how this makes journey creation genuinely idempotent under retry.
