@@ -1,0 +1,62 @@
+# ⚠️  DANGEROUS — NOT FOR CI. NOT FOR UNATTENDED RUNS. ⚠️
+#
+# SOS trigger → let the countdown COMPLETE → active phase → "I'm Safe".
+#
+# Reaching the active phase causes SafetyContext to write a real `sos_events`
+# row, open a live-tracking session, AND dispatch SMS / call / WhatsApp to
+# every configured trusted contact. On a production build with a real contact
+# list, running this flow sends real emergency messages to real people.
+#
+# PRECONDITIONS — ALL of these, every time, no exceptions:
+#   1. Staging/test backend only. Never production.
+#   2. The signed-in account's trusted contacts are numbers the tester
+#      personally owns (see 04-emergency-contacts.yaml, which seeds
+#      +91 90000 00001 for exactly this purpose).
+#   3. A human is watching the run.
+#
+# Excluded from the default `--include-tags safe` filter. Promoting this into
+# an automated suite is a deliberate, reviewed decision — never a default.
+appId: com.sakhisuraksha.app
+tags:
+  - emergency
+  - sos
+---
+- launchApp:
+    permissions:
+      location: allow
+      notifications: allow
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 20000
+
+- tapOn:
+    text: "Tap once to activate SOS"
+
+# Let the 3-second countdown elapse without intervening.
+- extendedWaitUntil:
+    visible: "SOS Activated"
+    timeout: 15000
+- takeScreenshot: artifacts/07-sos-active
+
+# The record-status indicator added in the UX certification phase must resolve
+# from "saving" to "saved". If it stays on "Saving emergency record…"
+# indefinitely, the DB write is failing and the retry loop is not converging —
+# that is a launch blocker, not a flaky test.
+- extendedWaitUntil:
+    visible: "Emergency record saved"
+    timeout: 30000
+- takeScreenshot: artifacts/07-sos-record-saved
+
+# Cancel from the active phase.
+- scrollUntilVisible:
+    element:
+      text: "I'm Safe.*"
+    direction: DOWN
+- tapOn:
+    text: "I'm Safe.*"
+
+- extendedWaitUntil:
+    visible: "Tap once to activate SOS"
+    timeout: 10000
+- assertNotVisible: "SOS Activated"
+- takeScreenshot: artifacts/07-sos-resolved

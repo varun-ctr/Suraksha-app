@@ -2,6 +2,8 @@ import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import { trackNotificationEvent } from "@/core/analytics/notificationTelemetry";
+
 // Needs direct client access to read the current user and persist the
 // device's push token; not a composition-root concern, but there's no
 // domain-level indirection for this device-registration side effect yet.
@@ -86,10 +88,12 @@ export async function registerForPushNotifications(): Promise<RegisterResult> {
     };
     granted = result.granted;
   } catch {
+    trackNotificationEvent("notification_permission_request_failed");
     return { ok: false, denied: false, error: "Permission request failed" };
   }
 
   if (!granted) {
+    trackNotificationEvent("notification_permission_denied");
     return { ok: false, denied: true };
   }
 
@@ -100,6 +104,7 @@ export async function registerForPushNotifications(): Promise<RegisterResult> {
   } catch {
     // Token fetch fails in simulator / physical device without FCM config.
     // Return a non-denied error so callers can still enable the toggle.
+    trackNotificationEvent("notification_token_unavailable");
     return { ok: false, denied: false, error: "Token unavailable (dev build)" };
   }
 
@@ -121,7 +126,10 @@ export async function registerForPushNotifications(): Promise<RegisterResult> {
       await db.notificationTokens.upsert(user.uid, { token, platform });
     }
   } catch {
-    // Non-critical — the app works without remote push.
+    // Non-critical — the app works without remote push. Breadcrumb only:
+    // a user whose token never syncs silently stops being a reachable
+    // push target, which is otherwise invisible in production.
+    trackNotificationEvent("notification_token_sync_failed");
   }
 
   return { ok: true, token };
@@ -146,7 +154,9 @@ export async function deregisterPushToken(): Promise<void> {
     const user = firebaseAuth.currentUser;
     if (user) await db.notificationTokens.deleteForUser(user.uid);
   } catch {
-    // Non-critical
+    // Non-critical to this device, but a token that fails to clear means a
+    // former user's device stays a valid delivery target — worth a signal.
+    trackNotificationEvent("notification_deregister_failed");
   }
 }
 
@@ -170,6 +180,9 @@ export async function scheduleLocalNotification(
     });
     return id;
   } catch {
+    // The journey-overdue backstop rides on this. If scheduling fails, that
+    // durability guarantee is gone and nothing else would have reported it.
+    trackNotificationEvent("notification_schedule_failed");
     return null;
   }
 }

@@ -1,0 +1,24 @@
+# Maestro workspace configuration.
+#
+# Run all flows:      maestro test .maestro/flows
+# Run one flow:       maestro test .maestro/flows/01-smoke-launch.yaml
+# Run only safe tags: maestro test .maestro/flows --include-tags safe
+#
+# TAGS
+#   safe        Never dispatches a real alert, never spends money, never
+#               deletes an account. Sound to run on any build, any account.
+#   destructive Mutates or destroys account state (account deletion).
+#               Requires a disposable test account.
+#   emergency   Can reach a live SOS dispatch. MUST only run against a
+#               staging backend with tester-controlled contact numbers.
+#               See .maestro/README.md before enabling.
+#   manual-only Documented here but NOT automatable — see
+#               docs/testflight/02-E2E-Plan.md for why.
+#
+# By default CI should run `--include-tags safe` only. Promoting anything
+# else into an automated run is a deliberate, reviewed decision.
+flows:
+  - flows/*.yaml
+
+# Fail a flow rather than hang forever if an element never appears.
+appId: com.sakhisuraksha.app

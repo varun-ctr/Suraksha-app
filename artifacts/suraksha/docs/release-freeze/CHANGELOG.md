@@ -77,6 +77,31 @@ final-report format.
 
 Entries below this line, newest first.
 
+## 2026-07-24 — Location & notification failure telemetry (closes both QA-phase monitoring gaps)
+
+- **Category**: Observability improvement
+- **Launch Blocker**: No — queued for next release
+- **Classification**: Medium
+- **Reason**: `docs/qa-certification/11-Production-Monitoring.md` identified exactly two production-failure categories with no detection mechanism: notification failures and location failures. Both subsystems fail silently by design — `getCurrentLocation()` returns `null` on permission denial and on fetch error, and every failure path in `notifications.ts` is non-fatal. That behavior is correct (a location failure must never block an SOS) but it meant production could not distinguish "user has location off" from "the OS geocoder is failing" during a live emergency. The highest-consequence case is `scheduleLocalNotification` returning `null`: that call schedules the journey-overdue notification, which is the durability backstop that fires even when the OS never wakes the JS engine — if it silently failed, that guarantee was gone and nothing reported it.
+- **Risk**: Low. Two new files following the existing telemetry pattern exactly (Sentry breadcrumb, no-op without a DSN, wrapped in try/catch), plus nine call sites all placed inside existing `catch` or denial branches. Event name only — no coordinates, addresses, push tokens, or user identifiers, preserving the closed-enum payload guarantee the privacy audit relies on.
+- **Files changed**: `core/analytics/locationTelemetry.ts` (new), `core/analytics/notificationTelemetry.ts` (new), `core/permissions/location.ts`, `core/permissions/notifications.ts`
+- **Regression risk**: None. No control flow, return value, or branch condition changed — every path returns exactly what it returned before.
+- **Rollback strategy**: Delete the two new files; revert the added lines in the two permission modules.
+- **Expected benefit**: The two remaining blind spots in production monitoring are closed. A location failure during an active SOS, and a failure to schedule the journey-overdue backstop, are both detectable for the first time.
+
+## 2026-07-24 — Maestro E2E infrastructure (authored, not yet executed)
+
+- **Category**: Test improvement
+- **Launch Blocker**: No — queued for next release
+- **Classification**: Low
+- **Reason**: No E2E, integration, or contract test tooling existed anywhere in the codebase (verified). Flagged P1 in the QA certification.
+- **Risk**: None to production. Twelve YAML/Markdown files under `.maestro/`. Maestro installs as a standalone CLI, so **no npm dependency is added** — `package.json`, `pnpm-lock.yaml`, and the production bundle are untouched. Nothing in the app imports these files.
+- **Files changed**: `.maestro/config.yaml`, `.maestro/README.md`, `.maestro/flows/01`–`10` (new)
+- **Regression risk**: None — structurally incapable of affecting runtime behavior.
+- **Rollback strategy**: Delete `.maestro/`.
+- **Expected benefit**: A safety-gated E2E skeleton grounded in real on-screen selectors. SOS coverage is deliberately split so the CI-runnable flow cancels during the countdown and therefore never dispatches a real alert to anyone; the full-activation flow is tagged `emergency` and excluded from the default filter.
+- **Honest status**: These flows have **never been executed** — no device or Maestro CLI existed in the authoring environment. They are a working skeleton, not a passing suite, and `09-Regression-Gate.md` records the E2E gate as advisory rather than passing until the suite first goes green on a real device.
+
 ## 2026-07-24 — UX/HIG/Accessibility certification: emergency-UX transparency + SOS accessibility
 
 - **Category**: Accessibility improvement / Data-loss scenario fix

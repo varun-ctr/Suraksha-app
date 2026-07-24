@@ -1,0 +1,50 @@
+# Email/password sign-in against a disposable test account.
+#
+# Run with:
+#   maestro test .maestro/flows/03-login.yaml -e APP_EMAIL=... -e APP_PASSWORD=...
+#
+# NOTE ON SELECTORS: app/login.tsx is not wired to the i18n system — its
+# strings are hardcoded English (a known, documented gap, see
+# docs/ux-audit/10-Localization.md). That makes this flow's selectors stable
+# across locales today, but it will need updating if/when that screen is
+# localized in a future release. Flagged here so the breakage is expected
+# rather than mysterious.
+appId: com.sakhisuraksha.app
+tags:
+  - safe
+  - auth
+---
+- clearState
+- launchApp:
+    permissions:
+      location: allow
+      notifications: allow
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 20000
+
+# Reach the login screen via Profile rather than assuming a deep link — this
+# also proves the entry point a real user would actually take still works.
+- tapOn: "Profile"
+- scrollUntilVisible:
+    element: "Sign In"
+    direction: DOWN
+- tapOn: "Sign In"
+
+- assertVisible: "Welcome back"
+- tapOn: "you@example.com"
+- inputText: ${APP_EMAIL}
+- tapOn: "6+ characters"
+- inputText: ${APP_PASSWORD}
+- hideKeyboard
+- tapOn: "Sign In"
+
+# Success routes through a transient success state, then either the
+# walkthrough (first sign-in) or back into the tabs. Accept either — asserting
+# only one makes the flow fail on an account's second run, which is a false
+# negative, not a real defect.
+- extendedWaitUntil:
+    visible:
+      text: "Home|Continue|Get Started"
+    timeout: 25000
+- takeScreenshot: artifacts/03-post-login

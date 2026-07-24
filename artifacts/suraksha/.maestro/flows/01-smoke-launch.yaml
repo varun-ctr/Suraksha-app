@@ -1,0 +1,38 @@
+# Cold-start smoke test: the app launches, clears the splash/font gate, and
+# renders the tab bar. This is the single flow most worth running first — if
+# it fails, every other flow's failure is noise.
+#
+# Guards the exact regression the startup certification phase existed to
+# prevent: a module-scope native-module throw producing a blank white screen
+# with no error (see core/capabilities/nativeCapabilities.ts's header).
+appId: com.sakhisuraksha.app
+tags:
+  - safe
+  - smoke
+---
+- clearState
+- launchApp:
+    permissions:
+      location: allow
+      notifications: allow
+
+# The startup sequence has documented 4s/6s font-loading safety-net timeouts
+# (docs/startup-audit/), so allow generous headroom before declaring failure.
+- extendedWaitUntil:
+    visible:
+      id: "Home"
+    timeout: 20000
+
+# Tab bar renders with all five standard tabs. Asserting each individually
+# catches a partial-render failure that a single assertion would miss.
+- assertVisible: "Home"
+- assertVisible: "Map"
+- assertVisible: "Report"
+- assertVisible: "Rights"
+- assertVisible: "Profile"
+
+# The SOS control is the app's reason to exist — if it is not on screen after
+# launch, the build is not shippable regardless of what else works.
+- assertVisible: "Tap once to activate SOS"
+
+- takeScreenshot: artifacts/01-launch-home

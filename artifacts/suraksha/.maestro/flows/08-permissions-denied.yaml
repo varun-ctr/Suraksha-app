@@ -1,0 +1,49 @@
+# Launch with location DENIED and verify the app degrades safely rather than
+# breaking. This is the single highest-value negative-path flow in the suite:
+# a safety app that becomes unusable without GPS is worse than one that
+# degrades honestly.
+#
+# Also exercises the "Open Settings" affordance added in the UX certification
+# phase — before it, a permanently-denied user had no in-app recovery path.
+appId: com.sakhisuraksha.app
+tags:
+  - safe
+  - permissions
+---
+- clearState
+- launchApp:
+    permissions:
+      location: deny
+      notifications: deny
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 20000
+
+# The app must still render and the SOS control must still be present and
+# usable. SOS activation does not depend on a location fix
+# (core/permissions/location.ts returns null rather than throwing, and
+# SafetyContext does not gate the countdown on coords).
+- assertVisible: "Tap once to activate SOS"
+- assertVisible: "Location off"
+- takeScreenshot: artifacts/08-location-denied-home
+
+# The map screen surfaces the denied state with a recovery affordance rather
+# than an empty or broken screen.
+- tapOn: "Map"
+- assertVisible: "Safety Map"
+- extendedWaitUntil:
+    visible: "Open Settings"
+    timeout: 10000
+- takeScreenshot: artifacts/08-location-denied-map
+
+# SOS remains triggerable and cancellable with no location permission at all.
+- tapOn: "Home"
+- tapOn:
+    text: "Tap once to activate SOS"
+- extendedWaitUntil:
+    visible: "Cancel"
+    timeout: 2000
+- tapOn: "Cancel"
+- extendedWaitUntil:
+    visible: "Tap once to activate SOS"
+    timeout: 5000

@@ -1,0 +1,34 @@
+# Every tab renders without crashing, and back-navigation returns cleanly.
+# Cheap, fast, and catches the largest class of "one screen broke" regressions
+# before any deeper flow is attempted.
+appId: com.sakhisuraksha.app
+tags:
+  - safe
+  - smoke
+---
+- launchApp:
+    permissions:
+      location: allow
+      notifications: allow
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 20000
+
+- tapOn: "Map"
+- assertVisible: "Safety Map"
+- takeScreenshot: artifacts/02-map
+
+- tapOn: "Report"
+- assertVisible: "Report Incident"
+- takeScreenshot: artifacts/02-incident
+
+- tapOn: "Rights"
+- takeScreenshot: artifacts/02-rights
+
+- tapOn: "Profile"
+- takeScreenshot: artifacts/02-profile
+
+# Return to Home and confirm the SOS control is still mounted and reachable —
+# the tab bar surviving navigation is not the same as Home surviving it.
+- tapOn: "Home"
+- assertVisible: "Tap once to activate SOS"

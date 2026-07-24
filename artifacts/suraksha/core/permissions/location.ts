@@ -9,6 +9,8 @@
 import * as Location from "expo-location";
 import { Platform } from "react-native";
 
+import { trackLocationEvent } from "@/core/analytics/locationTelemetry";
+
 export interface GeoPoint {
   lat: number;
   lng: number;
@@ -21,7 +23,10 @@ export type LocationStatus = "idle" | "loading" | "ready" | "denied" | "error";
 export async function getCurrentLocation(): Promise<GeoPoint | null> {
   try {
     const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== "granted") return null;
+    if (status !== "granted") {
+      trackLocationEvent("location_permission_denied");
+      return null;
+    }
     const pos = await Location.getCurrentPositionAsync({
       accuracy: Location.Accuracy.High,
     });
@@ -31,6 +36,10 @@ export async function getCurrentLocation(): Promise<GeoPoint | null> {
       accuracy: pos.coords.accuracy ?? null,
     };
   } catch {
+    // Returning null (rather than throwing) is deliberate — a location
+    // failure must never block an SOS. The breadcrumb is the only reason
+    // production can tell this happened at all.
+    trackLocationEvent("location_fetch_failed");
     return null;
   }
 }
@@ -48,6 +57,7 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string |
         .filter((v, i, arr) => arr.indexOf(v) === i);
       return parts.join(", ") || null;
     } catch {
+      trackLocationEvent("location_reverse_geocode_failed");
       return null;
     }
   }
@@ -78,6 +88,7 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string |
     const parts = [area, city].filter(Boolean).filter((v, i, arr) => arr.indexOf(v) === i);
     return parts.join(", ") || data.display_name?.split(",").slice(0, 2).join(", ") || null;
   } catch {
+    trackLocationEvent("location_reverse_geocode_failed");
     return null;
   }
 }

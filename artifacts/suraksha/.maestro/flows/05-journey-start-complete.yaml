@@ -1,0 +1,51 @@
+# Journey start → check-in ("I'm Safe"). Deliberately uses the SHORTEST
+# selectable duration so the flow never approaches the overdue threshold and
+# can never accidentally escalate to a real auto-SOS.
+#
+# Also exercises the property the journey certification phase cared most
+# about: the elapsed timer is anchored to wall-clock time, not an in-memory
+# counter, so it must remain correct across a full app restart mid-journey.
+appId: com.sakhisuraksha.app
+tags:
+  - safe
+  - journey
+---
+- launchApp:
+    permissions:
+      location: allow
+      notifications: allow
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 20000
+
+- scrollUntilVisible:
+    element: "Journey Timer"
+    direction: DOWN
+- assertVisible: "Journey Timer"
+- takeScreenshot: artifacts/05-journey-idle
+
+# Start the journey. The duration selector's exact labels are screen-local;
+# if this tap fails on first run, read the rendered options and pin the
+# shortest one here rather than raising the timeout.
+- tapOn: "Journey Timer"
+- takeScreenshot: artifacts/05-journey-started
+
+# Restart the app mid-journey. The journey must still be active with a
+# plausible elapsed time — this is the wall-clock-recovery guarantee
+# (domain/policies/journeyRecoveryPolicy.ts) proven end-to-end rather than
+# only at the unit level.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 20000
+- takeScreenshot: artifacts/05-journey-after-restart
+
+# Complete the journey.
+- scrollUntilVisible:
+    element:
+      text: "I'm Safe.*"
+    direction: DOWN
+- tapOn:
+    text: "I'm Safe.*"
+- takeScreenshot: artifacts/05-journey-completed

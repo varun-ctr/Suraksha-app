@@ -1,0 +1,64 @@
+# SOS trigger → cancel DURING the 3-second countdown.
+#
+# THIS IS THE SOS FLOW THAT IS SAFE TO AUTOMATE. Cancelling during the
+# countdown means SafetyContext never transitions to the `active` phase, so:
+#   - no `sos_events` row is written
+#   - no SMS / call / WhatsApp is dispatched to anyone
+#   - no live-tracking session is opened
+# Verified against features/sos/context/SafetyContext.tsx's phase machine —
+# dispatch is gated on the active phase, not on the trigger.
+#
+# It still covers the single most important user-facing guarantee in the app:
+# a false alarm can always be stopped, and stopping it is never harder than
+# starting it.
+appId: com.sakhisuraksha.app
+tags:
+  - safe
+  - sos
+---
+- launchApp:
+    permissions:
+      location: allow
+      notifications: allow
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 20000
+
+- assertVisible: "Tap once to activate SOS"
+- assertVisible: "3-second cancel window"
+
+# Trigger. The accessibility label added in the UX certification phase is what
+# makes this control addressable at all — before that it was an unlabelled
+# icon-only Pressable.
+- tapOn:
+    text: "Tap once to activate SOS"
+
+# Countdown sheet appears. Cancel must be visible immediately, not after a
+# delay — a cancel button that appears late is a real defect in an emergency
+# UI, so the timeout here is deliberately tight.
+- extendedWaitUntil:
+    visible: "Cancel"
+    timeout: 2000
+- takeScreenshot: artifacts/06-sos-countdown
+
+# Cancel well inside the 3-second window.
+- tapOn: "Cancel"
+
+# Back to idle. Asserting the trigger label is visible again proves a full
+# return to the pre-SOS state, not merely that the sheet dismissed.
+- extendedWaitUntil:
+    visible: "Tap once to activate SOS"
+    timeout: 5000
+- assertNotVisible: "SOS Activated"
+- takeScreenshot: artifacts/06-sos-cancelled
+
+# The cancellation must survive a restart — a countdown-cancelled SOS must
+# never be resurrected by the crash-recovery effect
+# (features/sos/services/sosRecoveryPolicy.ts). This assertion is the
+# end-to-end proof of that policy.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Tap once to activate SOS"
+    timeout: 20000
+- assertNotVisible: "SOS Activated"

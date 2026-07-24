@@ -1,0 +1,47 @@
+# Background → foreground resume, and cold-restart state restoration.
+#
+# Covers what docs/qa-certification/06-Background-Testing.md identifies as
+# needing real-device validation: that recovery effects re-derive state from
+# persisted timestamps rather than assuming continuity.
+#
+# Maestro can background/foreground and kill/relaunch, but it CANNOT hold the
+# app backgrounded for hours or simulate an OS memory-pressure kill. The
+# multi-hour soak test stays manual (06-Tester-Checklist.md).
+appId: com.sakhisuraksha.app
+tags:
+  - safe
+  - background
+---
+- launchApp:
+    permissions:
+      location: allow
+      notifications: allow
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 20000
+
+# Navigate somewhere non-default so resume has something to get wrong.
+- tapOn: "Map"
+- assertVisible: "Safety Map"
+
+# Background, pause, foreground. The app must resume without a white screen,
+# a crash, or a forced re-login.
+- pressKey: Home
+- waitForAnimationToEnd:
+    timeout: 5000
+- launchApp
+- extendedWaitUntil:
+    visible:
+      text: "Safety Map|Home"
+    timeout: 15000
+- takeScreenshot: artifacts/09-resumed
+
+# Full cold restart. Auth session must persist (no re-login prompt) and the
+# app must land on a usable screen.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 20000
+- assertVisible: "Tap once to activate SOS"
+- takeScreenshot: artifacts/09-cold-restart

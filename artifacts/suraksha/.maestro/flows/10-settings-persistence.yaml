@@ -1,0 +1,49 @@
+# Settings toggles persist across a full app restart.
+#
+# Targets shake-to-SOS specifically: it is off by default, it changes whether
+# a physical gesture can trigger a real emergency, and its persistence is
+# therefore safety-relevant rather than cosmetic. A toggle that silently
+# reverts is a defect a user would never notice until it mattered.
+appId: com.sakhisuraksha.app
+tags:
+  - safe
+  - settings
+---
+- launchApp:
+    permissions:
+      location: allow
+      notifications: allow
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 20000
+
+- tapOn: "Profile"
+- scrollUntilVisible:
+    element:
+      text: "Shake.*"
+    direction: DOWN
+- takeScreenshot: artifacts/10-settings-before
+
+- tapOn:
+    text: "Shake.*"
+- takeScreenshot: artifacts/10-settings-toggled
+
+# Restart and confirm the setting survived. Screenshot comparison is the
+# verification step here — Maestro cannot read a Switch's boolean state
+# directly, so the pre/post images are the evidence a reviewer checks.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 20000
+- tapOn: "Profile"
+- scrollUntilVisible:
+    element:
+      text: "Shake.*"
+    direction: DOWN
+- takeScreenshot: artifacts/10-settings-after-restart
+
+# Restore the default so the flow is idempotent and leaves no armed gesture
+# trigger behind on the test device.
+- tapOn:
+    text: "Shake.*"

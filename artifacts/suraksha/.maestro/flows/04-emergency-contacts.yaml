@@ -1,0 +1,52 @@
+# Emergency-contact add + verify. Contacts are the precondition for a
+# meaningful SOS, so a silent regression here degrades the core feature
+# without breaking it visibly — exactly the kind of failure worth automating.
+#
+# Uses a clearly-fake number (+91 90000 00001) so that if an SOS flow is ever
+# accidentally run on this account, no real person is contacted.
+appId: com.sakhisuraksha.app
+tags:
+  - safe
+  - contacts
+---
+- launchApp:
+    permissions:
+      location: allow
+      notifications: allow
+      contacts: allow
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 20000
+
+- tapOn: "Profile"
+- scrollUntilVisible:
+    element: "Trusted Contacts"
+    direction: DOWN
+- tapOn: "Trusted Contacts"
+- assertVisible: "Trusted Contacts"
+
+- tapOn: "Full name"
+- inputText: "Maestro Test Contact"
+- tapOn: "Phone number"
+- inputText: "9000000001"
+- hideKeyboard
+- tapOn: "Add Contact"
+
+# The contact appears in the list. Asserting the name (not a toast) means the
+# assertion survives the toast's 2.2s auto-dismiss and proves persistence
+# rather than just acknowledgement.
+- extendedWaitUntil:
+    visible: "Maestro Test Contact"
+    timeout: 10000
+- takeScreenshot: artifacts/04-contact-added
+
+# Survives a full app restart — proves the write reached storage, not just
+# React state.
+- stopApp
+- launchApp
+- tapOn: "Profile"
+- scrollUntilVisible:
+    element: "Trusted Contacts"
+    direction: DOWN
+- tapOn: "Trusted Contacts"
+- assertVisible: "Maestro Test Contact"
