@@ -5,3 +5,4 @@ export type { LiveSession } from "./LiveSession";
 export type { CommunityReport, CommunityReportType, ModerationStatus } from "./CommunityReport";
 export type { AuthUser } from "./AuthUser";
 export type { Coords } from "./Coords";
+export type { Journey } from "./Journey";
