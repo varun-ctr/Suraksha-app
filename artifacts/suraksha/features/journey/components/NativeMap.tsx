@@ -47,7 +47,13 @@ const INDIA: Region = {
 
 const ZOOM_DELTA = 0.012;
 
-export function NativeMap({
+// Memoized: this wraps the native Google Maps view and re-renders it (and
+// re-diffs every Marker/Callout) on every prop change. Its only caller
+// (app/(tabs)/map.tsx) now passes a memoized `markers` array, so with this
+// wrapper a re-render of the parent screen for an unrelated reason (e.g.
+// toggling a category filter's loading state) no longer forces the whole
+// map to re-render — only an actual change to lat/lng/markers/isDark does.
+export const NativeMap = React.memo(function NativeMap({
   lat,
   lng,
   markers = [],
@@ -151,7 +157,7 @@ export function NativeMap({
       ))}
     </MapView>
   );
-}
+});
 
 const styles = StyleSheet.create({
   callout: {

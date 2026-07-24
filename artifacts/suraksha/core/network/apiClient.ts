@@ -15,6 +15,7 @@
 // eslint-disable-next-line import/no-restricted-paths
 import { firebaseAuth } from "@/repositories/firebase/firebaseClient";
 import { getBackendUrl } from "@/core/config/env";
+import { dedupeInFlight } from "@/core/network/inFlightDedup";
 
 /** Used by every backend call in the app unless a route needs a longer one. */
 export const DEFAULT_TIMEOUT_MS = 10_000;
@@ -38,16 +39,7 @@ export interface ApiFetchResult {
   response: Response | null;
 }
 
-/**
- * fetch() against the app's backend with a Firebase bearer token attached
- * when available (best-effort — proceeds unauthenticated otherwise, letting
- * the server's own auth check reject if one is required) and a bounded
- * timeout. Returns `{ response: null }` instead of throwing on network
- * error/timeout/unconfigured backend — every existing call site already
- * treated those as one case via try/catch, so this just makes that the
- * return contract instead of repeating the try/catch at each site.
- */
-export async function apiFetch(path: string, options: ApiFetchOptions = {}): Promise<ApiFetchResult> {
+async function performFetch(path: string, options: ApiFetchOptions): Promise<ApiFetchResult> {
   const { timeoutMs = DEFAULT_TIMEOUT_MS, headers, ...rest } = options;
   const backendUrl = getBackendUrl();
   if (!backendUrl) return { response: null };
@@ -66,4 +58,34 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}): Pro
   } catch {
     return { response: null };
   }
+}
+
+// In-flight de-duplication for concurrent identical GET requests (e.g. a
+// fast double-tap on the map screen's category chips firing two
+// simultaneous /nearby-places calls) — a second caller for the same path
+// while one is already outstanding awaits the first one's result instead
+// of firing its own network request. Scoped to GET only: a GET has no side
+// effects to duplicate, whereas POST/DELETE call sites (SOS alerts, OTP,
+// account deletion) already carry their own call-site-specific
+// idempotency-key/retry semantics that must not be silently intercepted
+// here. Each waiter gets `response.clone()` (never the shared original),
+// since a Response body can only be consumed once — cloning is what lets
+// multiple callers each safely call their own `.json()`/`.text()`.
+const inFlightGetRequests = new Map<string, Promise<ApiFetchResult>>();
+
+/**
+ * fetch() against the app's backend with a Firebase bearer token attached
+ * when available (best-effort — proceeds unauthenticated otherwise, letting
+ * the server's own auth check reject if one is required) and a bounded
+ * timeout. Returns `{ response: null }` instead of throwing on network
+ * error/timeout/unconfigured backend — every existing call site already
+ * treated those as one case via try/catch, so this just makes that the
+ * return contract instead of repeating the try/catch at each site.
+ */
+export async function apiFetch(path: string, options: ApiFetchOptions = {}): Promise<ApiFetchResult> {
+  const method = (options.method ?? "GET").toUpperCase();
+  if (method !== "GET") return performFetch(path, options);
+
+  const result = await dedupeInFlight(inFlightGetRequests, path, () => performFetch(path, options));
+  return result.response ? { response: result.response.clone() } : result;
 }

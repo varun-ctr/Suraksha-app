@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import "react-native-url-polyfill/auto";
 
 import { firebaseAuth } from "@/repositories/firebase/firebaseClient";
+import { dedupeInFlight } from "@/core/network/inFlightDedup";
 
 import type {
   ProfileRow,
@@ -87,13 +88,27 @@ function timeoutSignal(): AbortSignal {
   return AbortSignal.timeout(SUPABASE_TIMEOUT_MS);
 }
 
+function fetchProfileById(id: string) {
+  return Promise.resolve(supabase.from("profiles").select<"*", ProfileRow>("*").eq("id", id).single());
+}
+
+// In-flight de-duplication for db.profiles.getById — two independent call
+// sites (LanguageContext's post-sign-in language sync and
+// useLoginScreen's post-sign-in walkthrough check) both fetch the same
+// profile row within moments of each other on every sign-in. Rather than
+// coordinate two unrelated modules, dedup at the query itself: a second
+// call for the same id while the first is still in flight awaits that same
+// promise instead of firing a second, identical SELECT. No TTL/staleness
+// window — this only collapses genuinely concurrent calls, never serves a
+// result older than the request that's actually in flight.
+const inFlightProfileGetById = new Map<string, ReturnType<typeof fetchProfileById>>();
+
 export const db = {
   profiles: {
     select: () =>
       supabase.from("profiles").select<"*", ProfileRow>("*"),
 
-    getById: (id: string) =>
-      supabase.from("profiles").select<"*", ProfileRow>("*").eq("id", id).single(),
+    getById: (id: string) => dedupeInFlight(inFlightProfileGetById, id, () => fetchProfileById(id)),
 
     upsert: (row: ProfileInsert) =>
       supabase.from("profiles").upsert(row),
