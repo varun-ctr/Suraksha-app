@@ -19,36 +19,46 @@ CREATE TABLE IF NOT EXISTS community_reports (
 
 ALTER TABLE community_reports ENABLE ROW LEVEL SECURITY;
 
--- The API server uses the anon key to insert (no Firebase JWT needed on server side).
--- This policy allows server-side inserts via the anon role.
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE tablename = 'community_reports' AND policyname = 'anon_server_insert'
-  ) THEN
-    CREATE POLICY anon_server_insert
-      ON community_reports FOR INSERT TO anon
-      WITH CHECK (true);
-  END IF;
-END $$;
+-- NOTE: the API server (api-server/src/routes/community-reports.ts) writes
+-- and reads this table using SUPABASE_SERVICE_ROLE_KEY, which bypasses RLS
+-- entirely — it does NOT need, and must NEVER be granted, access via the
+-- `anon` role. A previous version of this file granted `anon` unauthenticated
+-- SELECT/INSERT (`USING (true)` / `WITH CHECK (true)`) to support that same
+-- server-side path; since the anon/publishable key is bundled in the mobile
+-- app and is not a secret, that grant let anyone extracting the key read
+-- every user's safety-incident reports and insert forged ones. See
+-- api-server/migrations/004_community_reports_rls_hardening.sql for the
+-- migration that removes this from already-deployed databases.
+--
+-- The only policies this table needs are the owner-scoped `authenticated`
+-- ones below, which mirror MIGRATE_FIREBASE_AUTH.sql exactly (defined here
+-- too so a brand-new database ends up correct even if that file is run out
+-- of order).
+DROP POLICY IF EXISTS anon_server_insert ON community_reports;
+DROP POLICY IF EXISTS anon_server_select ON community_reports;
+REVOKE INSERT, SELECT ON community_reports FROM anon;
 
--- Allow the anon role to SELECT (for the /mine list endpoint)
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE tablename = 'community_reports' AND policyname = 'anon_server_select'
-  ) THEN
-    CREATE POLICY anon_server_select
-      ON community_reports FOR SELECT TO anon
-      USING (true);
-  END IF;
-END $$;
+DROP POLICY IF EXISTS "community_reports: auth read" ON community_reports;
+CREATE POLICY "community_reports: auth read"
+  ON community_reports FOR SELECT TO authenticated
+  USING (true);
 
--- Grant table permissions to the anon role
-GRANT INSERT, SELECT ON community_reports TO anon;
-GRANT INSERT, SELECT ON community_reports TO authenticated;
+DROP POLICY IF EXISTS "community_reports: owner insert" ON community_reports;
+CREATE POLICY "community_reports: owner insert"
+  ON community_reports FOR INSERT TO authenticated
+  WITH CHECK ((SELECT auth.jwt() ->> 'sub') = user_id);
+
+DROP POLICY IF EXISTS "community_reports: owner update" ON community_reports;
+CREATE POLICY "community_reports: owner update"
+  ON community_reports FOR UPDATE TO authenticated
+  USING ((SELECT auth.jwt() ->> 'sub') = user_id);
+
+DROP POLICY IF EXISTS "community_reports: owner delete" ON community_reports;
+CREATE POLICY "community_reports: owner delete"
+  ON community_reports FOR DELETE TO authenticated
+  USING ((SELECT auth.jwt() ->> 'sub') = user_id);
+
+GRANT INSERT, SELECT, UPDATE, DELETE ON community_reports TO authenticated;
 
 -- ============================================================
 -- Supabase Storage bucket for report photos (run separately)

@@ -175,7 +175,8 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
     if (sosRunIdRef.current !== runId) return;
     setSos((s) => s.phase !== "idle" ? { ...s, address: addr } : s);
 
-    const sessionResult = await liveSessionRepository.startLiveSession(point.lat, point.lng, point.accuracy);
+    const shareId = Crypto.randomUUID();
+    const sessionResult = await liveSessionRepository.startLiveSession(shareId, point.lat, point.lng, point.accuracy);
     if (sosRunIdRef.current !== runId) {
       if (sessionResult.ok) await liveSessionRepository.endLiveSession(sessionResult.value.shareId);
       return;
@@ -205,19 +206,19 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
   // ── Supabase sos_events record (with offline-queue-backed retry) ──
 
   const insertOrAdopt = useCallback(
-    async (userId: string, lat: number, lng: number, address: string | null, isRetry: boolean) => {
+    async (userId: string, lat: number, lng: number, address: string | null, idempotencyKey: string, isRetry: boolean) => {
       if (isRetry) {
         // A previous attempt's outcome is unknown — it may have already
         // succeeded server-side with the response never reaching the
-        // client. Check before inserting again rather than risk a
-        // duplicate sos_events row (sos_events has no idempotency-key
-        // column to enforce this server-side — see
-        // docs/sos-audit/technical-debt-report.md).
+        // client. Check before inserting again as a defense-in-depth
+        // secondary layer — the DB-level upsert on (user_id,
+        // idempotency_key) below is now the authoritative dedup mechanism
+        // (see api-server/migrations/005_emergency_data_idempotency.sql).
         const since = new Date(Date.now() - DEDUP_LOOKBACK_MS).toISOString();
         const existing = await sosEventsRepository.findRecentUnresolvedEvent(userId, since);
         if (existing.ok && existing.value) return existing.value;
       }
-      const result = await sosEventsRepository.insertSosEvent(userId, lat, lng, address);
+      const result = await sosEventsRepository.insertSosEvent(userId, lat, lng, address, idempotencyKey);
       return result.ok ? result.value : null;
     },
     [sosEventsRepository],
@@ -244,7 +245,7 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
           alertsDispatched: false,
         });
 
-        const event = await insertOrAdopt(user.uid, coords.lat, coords.lng, address, false);
+        const event = await insertOrAdopt(user.uid, coords.lat, coords.lng, address, idempotencyKey, false);
         if (!event) {
           trackSosEvent("sos_db_write_failed");
           logger.warn("[SafetyContext] failed to record SOS event — will retry automatically");
@@ -281,9 +282,9 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
     dbRetryTimer.current = setInterval(() => {
       const runId = sosRunIdRef.current;
       const user = firebaseAuth.currentUser;
-      if (!user || !sos.coords) return;
+      if (!user || !sos.coords || !idempotencyKeyRef.current) return;
       trackSosEvent("sos_db_retry");
-      void insertOrAdopt(user.uid, sos.coords.lat, sos.coords.lng, sos.address, true).then((event) => {
+      void insertOrAdopt(user.uid, sos.coords.lat, sos.coords.lng, sos.address, idempotencyKeyRef.current, true).then((event) => {
         if (!event || sosRunIdRef.current !== runId) return;
         void updatePendingActivation({ dbEventId: event.id });
         setSos((s) => (sosRunIdRef.current === runId && s.phase !== "idle") ? { ...s, eventId: event.id } : s);
@@ -415,7 +416,7 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
           const existing = await sosEventsRepository.findRecentUnresolvedEvent(pending.userId, since);
           let event = existing.ok ? existing.value : null;
           if (!event) {
-            const inserted = await sosEventsRepository.insertSosEvent(pending.userId, pending.lat, pending.lng, pending.address);
+            const inserted = await sosEventsRepository.insertSosEvent(pending.userId, pending.lat, pending.lng, pending.address, pending.idempotencyKey);
             event = inserted.ok ? inserted.value : null;
           }
           if (event) await updatePendingActivation({ dbEventId: event.id });

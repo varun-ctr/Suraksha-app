@@ -103,13 +103,26 @@ export const db = {
   },
 
   sosEvents: {
+    /**
+     * Upserts on (user_id, idempotency_key) — see api-server/migrations/005_emergency_data_idempotency.sql's
+     * partial unique index. A retried insert with the same client-generated key is an idempotent no-op
+     * rather than a possible duplicate emergency record. Callers that don't yet supply a key fall back to
+     * a plain insert (no onConflict target), unchanged from prior behavior.
+     */
     insert: (userId: string, row: SosEventInsert) =>
-      supabase
-        .from("sos_events")
-        .insert({ ...row, user_id: userId })
-        .select<"*", SosEventRow>("*")
-        .abortSignal(timeoutSignal())
-        .single(),
+      row.idempotency_key
+        ? supabase
+            .from("sos_events")
+            .upsert({ ...row, user_id: userId }, { onConflict: "user_id,idempotency_key" })
+            .select<"*", SosEventRow>("*")
+            .abortSignal(timeoutSignal())
+            .single()
+        : supabase
+            .from("sos_events")
+            .insert({ ...row, user_id: userId })
+            .select<"*", SosEventRow>("*")
+            .abortSignal(timeoutSignal())
+            .single(),
 
     resolve: (id: string, patch: SosEventUpdate) =>
       supabase.from("sos_events").update(patch).eq("id", id).abortSignal(timeoutSignal()),
@@ -185,7 +198,8 @@ export const db = {
         .from("community_reports")
         .select<"*", CommunityReportRow>("*")
         .eq("moderation_status", "pending")
-        .order("created_at", { ascending: false }),
+        .order("created_at", { ascending: false })
+        .limit(50),
 
     listForUser: (userId: string) =>
       supabase

@@ -10,9 +10,10 @@ async function insertSosEvent(
   lat: number,
   lng: number,
   address: string | null,
+  idempotencyKey: string,
 ): Promise<Result<SosEvent, AppError>> {
   try {
-    const { data, error } = await db.sosEvents.insert(userId, { lat, lng, address });
+    const { data, error } = await db.sosEvents.insert(userId, { lat, lng, address, idempotency_key: idempotencyKey });
     if (error || !data) {
       return err(new RepositoryError("Failed to record SOS event", { operation: "insertSosEvent", cause: error }));
     }
