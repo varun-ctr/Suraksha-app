@@ -77,6 +77,14 @@ export function BackHeader({
       <Pressable
         onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)"))}
         hitSlop={10}
+        accessibilityRole="button"
+        // Hardcoded (not routed through the i18n system) deliberately: this
+        // is `shared/`, which the architecture's dependency-boundary rule
+        // (see docs/adr/0001-feature-first-architecture.md, enforced by
+        // eslint import/no-restricted-paths) forbids from importing
+        // features/. Matches the same hardcoded "Back" already used for
+        // headerBackTitle in app/_layout.tsx's root Stack config.
+        accessibilityLabel="Go back"
         style={{
           width: 34,
           height: 34,

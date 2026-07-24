@@ -6,7 +6,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Animated, StyleSheet, Text } from "react-native";
+import { AccessibilityInfo, Animated, StyleSheet, Text } from "react-native";
 
 import { useTheme } from "@/shared/theme/ThemeContext";
 
@@ -24,6 +24,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const showToast = useCallback((msg: string) => {
     setMessage(msg);
+    // Toasts are the app's only route for many error/confirmation messages
+    // (see docs/ux-audit/02-Accessibility.md) and previously had no VoiceOver/
+    // TalkBack announcement at all — a screen-reader user had no way to know
+    // one had appeared short of blindly swiping the whole screen.
+    AccessibilityInfo.announceForAccessibility(msg);
   }, []);
 
   useEffect(() => {
@@ -52,6 +57,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {message && (
         <Animated.View
           pointerEvents="none"
+          accessibilityLiveRegion="polite"
           style={[
             styles.toast,
             { backgroundColor: c.isDark ? "#000000" : c.text, opacity },

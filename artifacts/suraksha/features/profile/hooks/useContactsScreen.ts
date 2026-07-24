@@ -144,7 +144,10 @@ export function useContactsScreen() {
         editContact(contactId, { avatarUrl: finalUri });
         showToast(t("contacts.saved"));
       } catch {
-        // ignore
+        // Previously silent — a denied camera/library permission or a picker
+        // error left the user staring at an unchanged screen with no
+        // indication anything went wrong.
+        showToast(t("contacts.photoFailed"));
       } finally {
         setUploadingPhoto(false);
       }

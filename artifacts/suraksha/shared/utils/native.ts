@@ -18,6 +18,21 @@ export async function callNumber(phone: string): Promise<void> {
   }
 }
 
+/**
+ * Deep-links to this app's page in the OS Settings app, so a user who denied
+ * a permission (location, contacts, camera, notifications) has a one-tap way
+ * to fix it instead of having to navigate there themselves. No-op on web
+ * (there is no OS Settings app to open).
+ */
+export async function openAppSettings(): Promise<void> {
+  if (Platform.OS === "web") return;
+  try {
+    await Linking.openSettings();
+  } catch {
+    // ignore — some OS/emulator configurations don't support this deep link.
+  }
+}
+
 export function mapsUrl(lat: number, lng: number, label?: string): string {
   const q = label ? encodeURIComponent(label) : `${lat},${lng}`;
   if (Platform.OS === "ios") {

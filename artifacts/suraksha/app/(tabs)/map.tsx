@@ -14,7 +14,7 @@ import { Icon } from "@/shared/components/Icon";
 import { withAlpha } from "@/shared/theme/colors";
 import { useI18n } from "@/features/settings/context/LanguageContext";
 import { useTheme } from "@/shared/theme/ThemeContext";
-import { navigateTo, searchNearby } from "@/shared/utils/native";
+import { navigateTo, openAppSettings, searchNearby } from "@/shared/utils/native";
 import { CATEGORIES, useMapScreen } from "@/features/journey/hooks/useMapScreen";
 
 export default function MapScreen() {
@@ -69,20 +69,38 @@ export default function MapScreen() {
               <Text style={{ fontSize: 11.5, color: c.text, lineHeight: 17 }}>
                 {t("map.locationOff")}
               </Text>
-              <Pressable
-                onPress={refresh}
-                style={[styles.refreshBtn, { borderColor: c.border }]}
-              >
-                <Text
-                  style={{
-                    color: c.primary,
-                    fontSize: 11,
-                    fontFamily: "Inter_600SemiBold",
-                  }}
+              <View style={{ flexDirection: "row", gap: 14 }}>
+                <Pressable
+                  onPress={refresh}
+                  style={[styles.refreshBtn, { borderColor: c.border }]}
+                  accessibilityRole="button"
                 >
-                  {t("map.enableLocation")}
-                </Text>
-              </Pressable>
+                  <Text
+                    style={{
+                      color: c.primary,
+                      fontSize: 11,
+                      fontFamily: "Inter_600SemiBold",
+                    }}
+                  >
+                    {t("map.enableLocation")}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => { void openAppSettings(); }}
+                  style={[styles.refreshBtn, { borderColor: c.border }]}
+                  accessibilityRole="button"
+                >
+                  <Text
+                    style={{
+                      color: c.textMuted,
+                      fontSize: 11,
+                      fontFamily: "Inter_600SemiBold",
+                    }}
+                  >
+                    {t("common.openSettings")}
+                  </Text>
+                </Pressable>
+              </View>
             </View>
           </View>
         )}
@@ -212,6 +230,11 @@ export default function MapScreen() {
             <Text style={{ flex: 1, fontSize: 11, color: c.text }}>
               {t("map.locationOff")}
             </Text>
+            <Pressable onPress={() => { void openAppSettings(); }} accessibilityRole="button">
+              <Text style={{ color: c.primary, fontSize: 11, fontFamily: "Inter_600SemiBold" }}>
+                {t("common.openSettings")}
+              </Text>
+            </Pressable>
           </View>
         )}
 

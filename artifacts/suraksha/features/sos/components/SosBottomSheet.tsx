@@ -1,8 +1,9 @@
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   Animated,
   Easing,
   Image,
@@ -71,6 +72,18 @@ export function SosBottomSheet({ sos, cancelSOS, alertStatuses, alertSending }: 
   const bounceAnim = useRef(new Animated.Value(1)).current;
   const pulseAnim  = useRef(new Animated.Value(0)).current;
 
+  // Respect the OS "Reduce Motion" accessibility setting for the decorative,
+  // indefinitely-looping pulse ring — the slide-in and countdown bounce are
+  // one-shot and stay, since Reduce Motion targets continuous/parallax
+  // motion, not a single transition.
+  const [reduceMotion, setReduceMotion] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => { if (mounted) setReduceMotion(enabled); });
+    const sub = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduceMotion);
+    return () => { mounted = false; sub.remove(); };
+  }, []);
+
   useEffect(() => {
     Animated.spring(slideAnim, { toValue: 0, friction: 8, tension: 60, useNativeDriver: true }).start();
   }, [slideAnim]);
@@ -82,13 +95,13 @@ export function SosBottomSheet({ sos, cancelSOS, alertStatuses, alertSending }: 
   }, [sos.countdown, sos.phase, bounceAnim]);
 
   useEffect(() => {
-    if (sos.phase !== "active") { pulseAnim.setValue(0); return; }
+    if (sos.phase !== "active" || reduceMotion) { pulseAnim.setValue(0); return; }
     const loop = Animated.loop(
       Animated.timing(pulseAnim, { toValue: 1, duration: 1800, easing: Easing.out(Easing.ease), useNativeDriver: true }),
     );
     loop.start();
     return () => loop.stop();
-  }, [sos.phase, pulseAnim]);
+  }, [sos.phase, pulseAnim, reduceMotion]);
 
   const link        = sos.shareUrl ?? (sos.coords ? locationLink(sos.coords.lat, sos.coords.lng) : null);
   const messageBody = buildEmergencyMessage(t, profile.name, sos.coords, sos.shareUrl);
@@ -163,6 +176,9 @@ export function SosBottomSheet({ sos, cancelSOS, alertStatuses, alertSending }: 
               <Pressable
                 onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); cancelSOS(); }}
                 style={styles.cancelBtn}
+                accessibilityRole="button"
+                accessibilityLabel={t("sos.cancelCountdown")}
+                accessibilityHint={t("sos.countdownSub")}
               >
                 <Icon name="x" size={16} color="#fff" />
                 <Text style={styles.cancelText}>{t("sos.cancelCountdown")}</Text>
@@ -194,7 +210,7 @@ export function SosBottomSheet({ sos, cancelSOS, alertStatuses, alertSending }: 
               <View style={{ flex: 1 }}>
                 <Text style={[styles.activeTitle, { color: c.text }]}>{t("sos.sent")}</Text>
                 <Text style={[styles.activeSub, { color: c.textMuted }]}>
-                  {alertSending ? "Alerting contacts…" : t("sos.helpComing")}
+                  {alertSending ? t("sos.alertingContacts") : t("sos.helpComing")}
                 </Text>
               </View>
               <Text style={[styles.activeTimer, { color: c.accent }]}>{fmtClock(sos.seconds)}</Text>
@@ -222,6 +238,19 @@ export function SosBottomSheet({ sos, cancelSOS, alertStatuses, alertSending }: 
               ) : (
                 <Text style={[styles.panelBody, { color: c.textMuted }]}>{t("sos.locationUnavailable")}</Text>
               )}
+              {/* Before this, there was no visibility into whether the SOS record had
+                  actually reached the backend — a silent gap on the one screen where a
+                  user under stress most needs reassurance that help is really on record. */}
+              <View style={styles.panelRow}>
+                {sos.eventId ? (
+                  <View style={[styles.cdLiveDot, { backgroundColor: c.success }]} />
+                ) : (
+                  <Icon name="activity" size={13} color={c.warning} />
+                )}
+                <Text style={[styles.panelBody, { color: sos.eventId ? c.textMuted : c.warning }]}>
+                  {sos.eventId ? t("sos.recordSaved") : t("sos.savingRecord")}
+                </Text>
+              </View>
             </View>
 
             {/* Contacts panel */}
@@ -286,6 +315,8 @@ export function SosBottomSheet({ sos, cancelSOS, alertStatuses, alertSending }: 
                         <Pressable
                           style={[styles.miniBtn, { backgroundColor: c.successSoft }]}
                           onPress={() => callNumber(contact.phone)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${t("sos.call")} ${contact.name}`}
                         >
                           <Icon name="phone" size={13} color={c.success} />
                           <Text style={[styles.miniText, { color: c.success }]}>{t("sos.call")}</Text>
@@ -293,6 +324,8 @@ export function SosBottomSheet({ sos, cancelSOS, alertStatuses, alertSending }: 
                         <Pressable
                           style={[styles.miniBtn, { backgroundColor: c.cardAlt }]}
                           onPress={() => { void sendSms(contact.phone, messageBody).catch(() => {}); }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${t("sos.sms")} ${contact.name}`}
                         >
                           <Icon name="message" size={13} color={c.text} />
                           <Text style={[styles.miniText, { color: c.text }]}>{t("sos.sms")}</Text>
@@ -300,9 +333,14 @@ export function SosBottomSheet({ sos, cancelSOS, alertStatuses, alertSending }: 
                         <Pressable
                           style={[styles.miniBtn, { backgroundColor: "#E7F7EE" }]}
                           onPress={() => openWhatsApp(contact.phone, messageBody)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${t("sos.whatsapp")} ${contact.name}`}
                         >
-                          <Icon name="send" size={13} color="#25D366" />
-                          <Text style={[styles.miniText, { color: "#25D366" }]}>{t("sos.whatsapp")}</Text>
+                          {/* #0E7A3D (not WhatsApp's usual #25D366) against this button's light
+                              mint background clears WCAG AA 4.5:1 for normal-size text; #25D366
+                              on #E7F7EE was ~1.79:1. */}
+                          <Icon name="send" size={13} color="#0E7A3D" />
+                          <Text style={[styles.miniText, { color: "#0E7A3D" }]}>{t("sos.whatsapp")}</Text>
                         </Pressable>
                       </View>
                     </View>
@@ -329,6 +367,9 @@ export function SosBottomSheet({ sos, cancelSOS, alertStatuses, alertSending }: 
             <Pressable
               style={[styles.actionBtn, { backgroundColor: c.success, borderColor: c.success, marginTop: 8, marginBottom: 4 }]}
               onPress={cancelSOS}
+              accessibilityRole="button"
+              accessibilityLabel={t("sos.imSafe")}
+              accessibilityHint={t("sos.helpComing")}
             >
               <Icon name="check" size={16} color="#fff" />
               <Text style={[styles.actionText, { color: "#fff", fontFamily: "Inter_700Bold" }]}>
