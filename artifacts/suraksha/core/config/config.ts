@@ -33,9 +33,24 @@ export interface ConfigValidation {
 }
 
 export function validateConfig(): ConfigValidation {
-  const missing = REQUIRED_VARS.filter(
-    (key) => !process.env[key]?.trim(),
-  ) as ConfigKey[];
+  // IMPORTANT: Each var must be accessed as a STATIC string literal
+  // (process.env.FOO, not process.env[key]) so Metro's Babel plugin can
+  // inline the value at bundle time. Dynamic computed access process.env[key]
+  // is NOT inlined and returns undefined in the bundled app.
+  const snapshot: Record<ConfigKey, string | undefined> = {
+    EXPO_PUBLIC_SUPABASE_URL:                process.env.EXPO_PUBLIC_SUPABASE_URL,
+    EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY:    process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    EXPO_PUBLIC_FIREBASE_API_KEY:            process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+    EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN:        process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    EXPO_PUBLIC_FIREBASE_PROJECT_ID:         process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+    EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET:     process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    EXPO_PUBLIC_FIREBASE_APP_ID:             process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+  };
+
+  const missing = (Object.keys(snapshot) as ConfigKey[]).filter(
+    (key) => !snapshot[key]?.trim(),
+  );
 
   if (__DEV__ && missing.length > 0) {
     logger.error(
