@@ -199,6 +199,9 @@ export default function IncidentScreen() {
               <Pressable
                 onPress={() => setPhotoUri(undefined)}
                 style={[styles.photoRemove, { backgroundColor: c.danger }]}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={t("incident.removePhoto")}
               >
                 <Icon name="x" size={14} color="#fff" />
               </Pressable>

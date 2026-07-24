@@ -492,6 +492,8 @@ export default function LoginScreen() {
                     placeholder="Your existing password"
                     placeholderTextColor={c.textFaint}
                     secureTextEntry
+                    textContentType="password"
+                    autoComplete="password"
                     style={[styles.fieldInput, { color: c.text }]}
                     returnKeyType="done"
                     onSubmitEditing={handleLinkAccounts}
@@ -602,11 +604,19 @@ export default function LoginScreen() {
                         placeholder="6+ characters"
                         placeholderTextColor={c.textFaint}
                         secureTextEntry={!showPass}
+                        textContentType={mode === "signup" ? "newPassword" : "password"}
+                        autoComplete={mode === "signup" ? "password-new" : "password"}
                         style={[styles.fieldInput, { color: c.text }]}
                         returnKeyType={mode === "signin" ? "done" : "next"}
                         onSubmitEditing={mode === "signin" ? handleSignIn : undefined}
                       />
-                      <Pressable onPress={() => setShowPass((p) => !p)} style={{ paddingRight: 12 }}>
+                      <Pressable
+                        onPress={() => setShowPass((p) => !p)}
+                        style={{ paddingRight: 12, paddingLeft: 8, paddingVertical: 12 }}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={showPass ? "Hide password" : "Show password"}
+                      >
                         <Icon name={showPass ? "eyeOff" : "eye"} size={16} color={c.textFaint} />
                       </Pressable>
                     </View>
@@ -628,11 +638,19 @@ export default function LoginScreen() {
                         placeholder="Re-enter password"
                         placeholderTextColor={c.textFaint}
                         secureTextEntry={!showPass2}
+                        textContentType="newPassword"
+                        autoComplete="password-new"
                         style={[styles.fieldInput, { color: c.text }]}
                         returnKeyType="done"
                         onSubmitEditing={handleSignUp}
                       />
-                      <Pressable onPress={() => setShowPass2((p) => !p)} style={{ paddingRight: 12 }}>
+                      <Pressable
+                        onPress={() => setShowPass2((p) => !p)}
+                        style={{ paddingRight: 12, paddingLeft: 8, paddingVertical: 12 }}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={showPass2 ? "Hide password" : "Show password"}
+                      >
                         <Icon name={showPass2 ? "eyeOff" : "eye"} size={16} color={c.textFaint} />
                       </Pressable>
                     </View>

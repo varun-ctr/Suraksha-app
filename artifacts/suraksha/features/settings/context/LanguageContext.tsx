@@ -142,6 +142,11 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const t = useCallback(
+    (key: string): string => locale[key] ?? enLocale[key] ?? key,
+    [locale, enLocale],
+  );
+
   const setLang = useCallback((code: LangCode) => {
     const meta = LANG_BY_CODE[code];
     const needsRtl = RTL_LANGS.has(code);
@@ -149,14 +154,16 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     void loadLocale(code);
     if (needsRtl !== currentlyRtl) {
       I18nManager.forceRTL(needsRtl);
-      const dir = needsRtl ? "right-to-left" : "left-to-right";
+      const dir = t(needsRtl ? "common.rtl" : "common.ltr");
       Alert.alert(
-        "Restart required",
-        `${meta?.englishName ?? code} uses a ${dir} layout. Restart now to apply the change.`,
+        t("common.restartRequired"),
+        t("common.restartRtlBody")
+          .replace("{lang}", meta?.englishName ?? code)
+          .replace("{dir}", dir),
         [
-          { text: "Later", style: "cancel" },
+          { text: t("common.restartLater"), style: "cancel" },
           {
-            text: "Restart now",
+            text: t("common.restartNow"),
             onPress: () => {
               Updates.reloadAsync().catch(() => {
                 // reloadAsync is unavailable in Expo Go / dev client — silently skip
@@ -166,16 +173,11 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
         ],
       );
     }
-  }, []);
+  }, [t]);
 
   const toggleLang = useCallback(() => {
     setLang(lang === "hi" ? "en" : "hi");
   }, [lang, setLang]);
-
-  const t = useCallback(
-    (key: string): string => locale[key] ?? enLocale[key] ?? key,
-    [locale, enLocale],
-  );
 
   const pick = useCallback(
     <T,>(obj: { en: T; hi: T }): T =>

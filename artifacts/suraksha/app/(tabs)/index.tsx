@@ -1,8 +1,9 @@
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   Animated,
   Easing,
   Image,
@@ -35,7 +36,7 @@ import { useJourney } from "@/features/journey/hooks/useJourney";
 import { useWeather } from "@/features/journey/hooks/useWeather";
 import { fmtClock } from "@/shared/utils/format";
 import { formatCoords } from "@/core/permissions/location";
-import { callNumber, shareLiveLocation } from "@/shared/utils/native";
+import { callNumber, openAppSettings, shareLiveLocation } from "@/shared/utils/native";
 import type { WeatherData } from "@/repositories/api/weatherRepository";
 
 // ── Safety Score Card ─────────────────────────────────────────────────────────
@@ -144,7 +145,19 @@ function HoldSOSButton({ onTrigger }: { onTrigger: () => void }) {
   const pulse = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(1)).current;
 
+  // Respect "Reduce Motion" — this pulse loops indefinitely on the home screen
+  // for as long as the app is open, which is exactly the kind of continuous
+  // motion that setting is meant to suppress.
+  const [reduceMotion, setReduceMotion] = useState(false);
   useEffect(() => {
+    let mounted = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => { if (mounted) setReduceMotion(enabled); });
+    const sub = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduceMotion);
+    return () => { mounted = false; sub.remove(); };
+  }, []);
+
+  useEffect(() => {
+    if (reduceMotion) { pulse.setValue(0); return; }
     const loop = Animated.loop(
       Animated.timing(pulse, {
         toValue: 1,
@@ -155,7 +168,7 @@ function HoldSOSButton({ onTrigger }: { onTrigger: () => void }) {
     );
     loop.start();
     return () => loop.stop();
-  }, [pulse]);
+  }, [pulse, reduceMotion]);
 
   const handlePress = () => {
     if (Platform.OS !== "web") {
@@ -180,7 +193,12 @@ function HoldSOSButton({ onTrigger }: { onTrigger: () => void }) {
             { backgroundColor: c.danger, transform: [{ scale: pulseScale }], opacity: pulseOpacity },
           ]}
         />
-        <Pressable onPress={handlePress}>
+        <Pressable
+          onPress={handlePress}
+          accessibilityRole="button"
+          accessibilityLabel={t("sos.tapOnceToActivate")}
+          accessibilityHint={t("sos.cancelWindowHint")}
+        >
           <Animated.View style={{ transform: [{ scale }] }}>
             <LinearGradient
               colors={[c.danger, c.dangerDark]}
@@ -262,15 +280,26 @@ export default function HomeScreen() {
               style={styles.iconBtn}
               onPress={() => setShowLangPicker(true)}
               hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t("home.selectLanguage")}
             >
               <Text style={{ fontSize: 16 }}>{LANG_BY_CODE[lang]?.flag ?? "🌐"}</Text>
             </Pressable>
-            <Pressable style={styles.iconBtn} onPress={() => router.push("/helpline")}>
+            <Pressable
+              style={styles.iconBtn}
+              onPress={() => router.push("/helpline")}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t("helpline.title")}
+            >
               <Icon name="bell" size={18} color="#fff" />
             </Pressable>
             <Pressable
               onPress={() => router.push("/(tabs)/profile" as never)}
               style={styles.avatarBtn}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t("tab.profile")}
             >
               {profile.avatarUrl ? (
                 <Image source={{ uri: profile.avatarUrl }} style={styles.avatarImg} />
@@ -283,10 +312,22 @@ export default function HomeScreen() {
           </View>
         </View>
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-          <View style={styles.pill}>
-            <Icon name="mapPin" size={12} color="rgba(255,255,255,0.9)" />
-            <Text style={styles.pillText} numberOfLines={1}>{locLabel}</Text>
-          </View>
+          {status === "denied" ? (
+            <Pressable
+              style={styles.pill}
+              onPress={() => { void openAppSettings(); }}
+              accessibilityRole="button"
+              accessibilityLabel={`${locLabel}. ${t("common.openSettings")}`}
+            >
+              <Icon name="mapPin" size={12} color="rgba(255,255,255,0.9)" />
+              <Text style={styles.pillText} numberOfLines={1}>{locLabel}</Text>
+            </Pressable>
+          ) : (
+            <View style={styles.pill}>
+              <Icon name="mapPin" size={12} color="rgba(255,255,255,0.9)" />
+              <Text style={styles.pillText} numberOfLines={1}>{locLabel}</Text>
+            </View>
+          )}
           {weather && (
             <View style={styles.pill}>
               <Text style={{ fontSize: 13 }}>{weather.icon}</Text>

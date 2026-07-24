@@ -215,8 +215,8 @@ function NameStep({ name, setName, t }: { name: string; setName: (v: string) => 
         icon="user"
       />
       <View style={styles.trustRow}>
-        <Icon name="lock" size={12} color={c.textFaint} />
-        <Text style={[styles.trustText, { color: c.textFaint }]}>Your data stays private and encrypted</Text>
+        <Icon name="lock" size={12} color={c.textMuted} />
+        <Text style={[styles.trustText, { color: c.textMuted }]}>{t("onb.trustDataPrivate")}</Text>
       </View>
     </View>
   );
@@ -257,8 +257,8 @@ function ContactsStep({
         icon="phone"
       />
       <View style={styles.trustRow}>
-        <Icon name="bell" size={12} color={c.textFaint} />
-        <Text style={[styles.trustText, { color: c.textFaint }]}>They'll receive your SOS alerts instantly</Text>
+        <Icon name="bell" size={12} color={c.textMuted} />
+        <Text style={[styles.trustText, { color: c.textMuted }]}>{t("onb.trustContactsNotified")}</Text>
       </View>
     </View>
   );
@@ -304,8 +304,8 @@ function LocationStep({ granted, onAllow, t }: { granted: boolean; onAllow: () =
       )}
 
       <View style={[styles.trustRow, { marginTop: 14 }]}>
-        <Icon name="lock" size={12} color={c.textFaint} />
-        <Text style={[styles.trustText, { color: c.textFaint }]}>Used only for SOS alerts — never tracked in background</Text>
+        <Icon name="lock" size={12} color={c.textMuted} />
+        <Text style={[styles.trustText, { color: c.textMuted }]}>{t("onb.trustLocationUse")}</Text>
       </View>
     </View>
   );

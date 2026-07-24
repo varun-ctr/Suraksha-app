@@ -119,6 +119,13 @@ const en: Record<string, string> = {
   "sos.contactsMissing": "No emergency contacts added",
   "sos.startingLiveTracking": "Starting live tracking…",
   "sos.liveTrackingActive": "Live tracking active",
+  "sos.alertingContacts": "Alerting contacts…",
+  "sos.savingRecord": "Saving emergency record…",
+  "sos.recordSaved": "Emergency record saved",
+
+  "onb.trustDataPrivate": "Your data stays private and encrypted",
+  "onb.trustContactsNotified": "They'll receive your SOS alerts instantly",
+  "onb.trustLocationUse": "Used only to share with contacts and respond to an SOS — background access turns on only while an SOS or journey is active.",
 
   // Emergency message sent to trusted contacts (SMS / WhatsApp)
   "sos.msg.title": "🚨 EMERGENCY ALERT",
@@ -197,6 +204,7 @@ const en: Record<string, string> = {
   "contacts.changePhoto": "Change photo",
   "contacts.saved": "Contact updated",
   "contacts.removeConfirm": "Remove this contact?",
+  "contacts.photoFailed": "Couldn't set that photo — please try again.",
 
   "helpline.title": "Emergency Helplines",
   "helpline.sub": "Tap any number to call",
@@ -391,6 +399,13 @@ const en: Record<string, string> = {
   "common.goBack": "Go Back",
   "common.retry": "Retry",
   "common.remove": "Remove",
+  "common.openSettings": "Open Settings",
+  "common.restartRequired": "Restart required",
+  "common.restartRtlBody": "{lang} uses a {dir} layout. Restart now to apply the change.",
+  "common.restartLater": "Later",
+  "common.restartNow": "Restart now",
+  "common.rtl": "right-to-left",
+  "common.ltr": "left-to-right",
 
   "sos.countdownTitle": "Preparing SOS…",
   "sos.countdownSub": "Tap cancel if this was a mistake.",
