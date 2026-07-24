@@ -19,7 +19,7 @@ import {
   stopBackgroundLocationTracking,
   setLocationUpdateListener,
 } from "@/core/permissions/backgroundLocation";
-import { useLiveSessionRepository, useSosEventsRepository } from "@/core/di/hooks";
+import { useLiveSessionRepository, useSosEventsRepository, useJourneyRepository } from "@/core/di/hooks";
 import {
   cancelAllScheduledNotifications,
   scheduleLocalNotification,
@@ -27,6 +27,7 @@ import {
 import { firebaseAuth } from "@/repositories/firebase/firebaseClient";
 import { logger } from "@/core/logger/logger";
 import { trackSosEvent } from "@/core/analytics/sosTelemetry";
+import { trackJourneyEvent } from "@/core/analytics/journeyTelemetry";
 import { sendSosAlerts, type AlertStatus } from "@/features/sos/services/sosAlertService";
 import {
   savePendingActivation,
@@ -36,6 +37,13 @@ import {
   type PendingSosActivation,
 } from "@/features/sos/services/sosOfflineQueue";
 import { isPendingActivationStale } from "@/features/sos/services/sosRecoveryPolicy";
+import {
+  saveActiveJourney,
+  getActiveJourney,
+  updateActiveJourney,
+  clearActiveJourney,
+} from "@/features/journey/services/journeyPersistence";
+import { computeJourneyStatus } from "@/domain/policies/journeyRecoveryPolicy";
 import type { Coords } from "@/domain/entities/Coords";
 import type { SosPhase, SafetyStatus, SosState, JourneyState } from "@/features/sos/types";
 
@@ -97,6 +105,7 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
   const { t } = useI18n();
   const liveSessionRepository = useLiveSessionRepository();
   const sosEventsRepository = useSosEventsRepository();
+  const journeyRepository = useJourneyRepository();
   const [sos, setSos]         = useState<SosState>(SOS_DEFAULTS);
   const [journey, setJourney] = useState<JourneyState>(JOURNEY_DEFAULTS);
   const [alertStatuses, setAlertStatuses] = useState<AlertStatus[]>([]);
@@ -105,13 +114,21 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
   const countdownTimer  = useRef<ReturnType<typeof setInterval> | null>(null);
   const sosTimer        = useRef<ReturnType<typeof setInterval> | null>(null);
   const journeyTimer    = useRef<ReturnType<typeof setInterval> | null>(null);
-  const overdueTimer    = useRef<ReturnType<typeof setInterval> | null>(null);
   const dbRetryTimer    = useRef<ReturnType<typeof setInterval> | null>(null);
   const shareIdRef      = useRef<string | null>(null);
   const sosRunIdRef     = useRef(0);
   const insertingRef    = useRef(false);
   const alertDispatchedRef = useRef(false);
   const idempotencyKeyRef  = useRef<string | null>(null);
+  // Wall-clock anchor for the active journey's timing — see
+  // domain/policies/journeyRecoveryPolicy.ts for why every tick recomputes
+  // elapsed/overdue from this rather than trusting an incrementally-updated
+  // counter, which silently stops advancing the moment the app is
+  // backgrounded or killed (the core reliability gap this audit found).
+  const journeyStartedAtMsRef = useRef<number | null>(null);
+  const journeyDbIdRef         = useRef<string | null>(null);
+  const journeyAutoSosFiredRef = useRef(false);
+  const journeyWasOverdueRef   = useRef(false);
   // Always-current refs for use inside the module-level location listener
   // and the mount-time recovery effect, both of which run outside the
   // normal render/callback closures below.
@@ -452,96 +469,215 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
   }, [sos.phase, stopLiveTracking, sosEventsRepository]);
 
   // ── Journey timer ─────────────────────────────────────────────────
+  // A timed check-in, not continuous route tracking: pick a duration, and
+  // if you don't check in before it elapses (plus a grace period), it
+  // auto-escalates to a real SOS. See domain/policies/journeyRecoveryPolicy.ts
+  // for why every tick — and every app resume/relaunch — recomputes status
+  // from wall-clock time (journeyStartedAtMsRef) rather than trusting a
+  // counter that silently stops advancing the moment the app is
+  // backgrounded or killed, which used to mean the auto-SOS escalation
+  // (the entire point of the feature) could quietly never fire.
 
   const setJourneyDuration = useCallback(
     (d: number) => setJourney((j) => ({ ...j, duration: d })),
     [],
   );
 
-  const startJourney = useCallback(
-    () => setJourney((j) => ({ ...JOURNEY_DEFAULTS, active: true, duration: j.duration })),
-    [],
-  );
+  const startJourney = useCallback(() => {
+    const startedAtMs = Date.now();
+    journeyStartedAtMsRef.current = startedAtMs;
+    journeyAutoSosFiredRef.current = false;
+    journeyWasOverdueRef.current = false;
+    journeyDbIdRef.current = null;
+    trackJourneyEvent("journey_started");
+    setJourney((j) => ({ ...JOURNEY_DEFAULTS, active: true, duration: j.duration }));
 
-  const endJourney = useCallback(
-    () => {
-      if (overdueTimer.current) { clearInterval(overdueTimer.current); overdueTimer.current = null; }
-      setJourney((j) => ({ ...JOURNEY_DEFAULTS, duration: j.duration }));
-    },
-    [],
-  );
+    void saveActiveJourney({
+      startedAtMs,
+      durationSec: journey.duration * 60,
+      overdueGraceSec: OVERDUE_GRACE_SEC,
+      dbJourneyId: null,
+      autoSosTriggered: false,
+    });
+    // Best-effort backend record — never blocks the local timer, which is
+    // the actual safety mechanism regardless of whether this write
+    // succeeds (mirrors the "never let a backend hiccup block safety"
+    // ethos already established for SOS).
+    journeyRepository.startJourney(journey.duration).then((r) => {
+      if (r.ok) {
+        journeyDbIdRef.current = r.value.id;
+        void updateActiveJourney({ dbJourneyId: r.value.id });
+      } else {
+        trackJourneyEvent("journey_db_write_failed");
+        logger.warn("[SafetyContext] failed to persist journey start", r.error);
+      }
+    });
+  }, [journey.duration, journeyRepository]);
+
+  const endJourneyRecord = useCallback(() => {
+    const dbId = journeyDbIdRef.current;
+    if (dbId) {
+      journeyRepository.endJourney(dbId).then((r) => {
+        if (!r.ok) logger.warn("[SafetyContext] failed to end journey record", r.error);
+      });
+    }
+    void clearActiveJourney();
+    journeyStartedAtMsRef.current = null;
+    journeyDbIdRef.current = null;
+    journeyAutoSosFiredRef.current = false;
+    journeyWasOverdueRef.current = false;
+  }, [journeyRepository]);
+
+  const endJourney = useCallback(() => {
+    trackJourneyEvent("journey_ended_manually");
+    endJourneyRecord();
+    setJourney((j) => ({ ...JOURNEY_DEFAULTS, duration: j.duration }));
+  }, [endJourneyRecord]);
 
   /** User taps "I'm Safe" during an overdue journey. Clears overdue + ends journey. */
-  const checkInJourney = useCallback(
-    () => {
-      if (overdueTimer.current) { clearInterval(overdueTimer.current); overdueTimer.current = null; }
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setJourney((j) => ({ ...JOURNEY_DEFAULTS, duration: j.duration }));
-    },
-    [],
-  );
+  const checkInJourney = useCallback(() => {
+    trackJourneyEvent("journey_checked_in");
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    endJourneyRecord();
+    setJourney((j) => ({ ...JOURNEY_DEFAULTS, duration: j.duration }));
+  }, [endJourneyRecord]);
 
-  // Journey elapsed-seconds tick
+  // Unified wall-clock tick — recomputes elapsed/overdue every second from
+  // journeyStartedAtMsRef rather than incrementing a counter, so a stalled
+  // JS thread (app backgrounded) never desyncs the displayed countdown: the
+  // moment ticking resumes, it's instantly correct again, and if the grace
+  // period fully elapsed while the tick wasn't running at all, the very
+  // first tick after resume detects "expired" and escalates immediately
+  // instead of waiting for however many now-meaningless ticks it "should"
+  // have taken.
   useEffect(() => {
-    if (journey.active && !journey.overdue) {
-      journeyTimer.current = setInterval(
-        () => setJourney((j) => {
-          if (!j.active) return j;
-          const next = j.seconds + 1;
-          // Transition to overdue when timer elapses
-          if (!j.overdue && next >= j.duration * 60) {
-            return { ...j, seconds: next, overdue: true, overdueSeconds: OVERDUE_GRACE_SEC };
-          }
-          return { ...j, seconds: next };
-        }),
-        1000,
-      );
-    } else {
+    if (!journey.active) {
       if (journeyTimer.current) { clearInterval(journeyTimer.current); journeyTimer.current = null; }
-    }
-    return () => {
-      if (journeyTimer.current) { clearInterval(journeyTimer.current); journeyTimer.current = null; }
-    };
-  }, [journey.active, journey.overdue]);
-
-  // Overdue countdown → auto-SOS
-  useEffect(() => {
-    if (!journey.overdue) {
-      if (overdueTimer.current) { clearInterval(overdueTimer.current); overdueTimer.current = null; }
       return;
     }
 
-    // Haptic alert to let user know they're overdue
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    const tick = () => {
+      const startedAtMs = journeyStartedAtMsRef.current;
+      if (startedAtMs === null) return;
 
-    overdueTimer.current = setInterval(() => {
-      setJourney((j) => {
-        if (!j.overdue) return j;
-        const next = j.overdueSeconds - 1;
-        if (next <= 0) {
-          // Auto-trigger SOS — clear interval and fire
-          if (overdueTimer.current) { clearInterval(overdueTimer.current); overdueTimer.current = null; }
-          // Trigger SOS on next tick to avoid setState-during-render
-          setTimeout(() => triggerSOS(), 0);
-          return { ...j, overdueSeconds: 0 };
-        }
-        return { ...j, overdueSeconds: next };
-      });
-    }, 1000);
+      const status = computeJourneyStatus(
+        { startedAtMs, durationSec: journey.duration * 60, overdueGraceSec: OVERDUE_GRACE_SEC },
+        Date.now(),
+      );
 
+      if (status.phase === "active") {
+        setJourney((j) => ({ ...j, seconds: status.elapsedSec, overdue: false, overdueSeconds: OVERDUE_GRACE_SEC }));
+        return;
+      }
+
+      if (!journeyWasOverdueRef.current) {
+        journeyWasOverdueRef.current = true;
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        trackJourneyEvent("journey_overdue");
+      }
+
+      if (status.phase === "overdue") {
+        setJourney((j) => ({ ...j, seconds: journey.duration * 60 + status.overdueElapsedSec, overdue: true, overdueSeconds: status.graceSecondsRemaining }));
+        return;
+      }
+
+      // expired — the grace period has fully elapsed.
+      setJourney((j) => ({ ...j, overdue: true, overdueSeconds: 0 }));
+      if (!journeyAutoSosFiredRef.current) {
+        journeyAutoSosFiredRef.current = true;
+        trackJourneyEvent("journey_auto_sos_triggered");
+        void updateActiveJourney({ autoSosTriggered: true });
+        // Trigger SOS on next tick to avoid setState-during-render.
+        setTimeout(() => triggerSOS(), 0);
+      }
+    };
+
+    tick();
+    journeyTimer.current = setInterval(tick, 1000);
     return () => {
-      if (overdueTimer.current) { clearInterval(overdueTimer.current); overdueTimer.current = null; }
+      if (journeyTimer.current) { clearInterval(journeyTimer.current); journeyTimer.current = null; }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [journey.overdue]);
+  }, [journey.active]);
 
-  // Schedule / cancel the local "are you safe?" notification
+  // ── Journey crash/background recovery: resume (or immediately escalate)
+  // a journey timer left over from a previous process. Without this, a
+  // journey silently loses its entire safety guarantee the moment the app
+  // is backgrounded or killed, since the JS tick above — the only thing
+  // that detects "overdue" and fires auto-SOS — simply stops running.
+  // Runs once, on mount. ─────────────────────────────────────────────
+
   useEffect(() => {
-    if (journey.active && !journey.overdue) {
+    void (async () => {
+      const persisted = await getActiveJourney();
+      if (!persisted) return;
+
+      journeyDbIdRef.current = persisted.dbJourneyId;
+      journeyStartedAtMsRef.current = persisted.startedAtMs;
+      const status = computeJourneyStatus(
+        {
+          startedAtMs: persisted.startedAtMs,
+          durationSec: persisted.durationSec,
+          overdueGraceSec: persisted.overdueGraceSec,
+        },
+        Date.now(),
+      );
+
+      if (status.phase === "expired") {
+        // The grace period fully elapsed while the app was away — exactly
+        // the scenario this fix exists for. Escalate immediately rather
+        // than silently doing nothing.
+        trackJourneyEvent("journey_recovery_expired_during_background");
+        journeyWasOverdueRef.current = true;
+        setJourney({
+          active: true,
+          duration: persisted.durationSec / 60,
+          seconds: persisted.durationSec + status.overdueElapsedSec,
+          overdue: true,
+          overdueSeconds: 0,
+        });
+        if (!persisted.autoSosTriggered) {
+          journeyAutoSosFiredRef.current = true;
+          void updateActiveJourney({ autoSosTriggered: true });
+          setTimeout(() => triggerSOS(), 0);
+        }
+        return;
+      }
+
+      // Still within the timer or the grace period — resume normally; the
+      // tick effect above picks it up the instant `active` is true.
+      trackJourneyEvent("journey_recovery_resumed");
+      journeyWasOverdueRef.current = status.phase === "overdue";
+      setJourney({
+        active: true,
+        duration: persisted.durationSec / 60,
+        seconds: status.phase === "active" ? status.elapsedSec : persisted.durationSec + status.overdueElapsedSec,
+        overdue: status.phase === "overdue",
+        overdueSeconds: status.phase === "overdue" ? status.graceSecondsRemaining : OVERDUE_GRACE_SEC,
+      });
+    })();
+    // Mount-only — deliberately not re-run on dependency changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Schedule / cancel the local "are you safe?" notification — durable at
+  // the OS level regardless of whether the JS engine ever runs again
+  // before the deadline, unlike the tick-based auto-SOS mechanism above.
+  // Scheduled using the seconds *remaining* until the original deadline
+  // (from the wall-clock anchor), not the full duration — otherwise a
+  // recovered/resumed journey would reschedule a full-duration
+  // notification measured from the resume moment, firing far later than
+  // the real deadline actually is.
+  useEffect(() => {
+    if (journey.active) {
+      const startedAtMs = journeyStartedAtMsRef.current;
+      const remainingSec = startedAtMs !== null
+        ? Math.max(1, journey.duration * 60 - Math.floor((Date.now() - startedAtMs) / 1000))
+        : journey.duration * 60;
       void scheduleLocalNotification(
         "Journey Timer Ended",
         "Your journey timer has ended — are you safe?",
-        journey.duration * 60,
+        remainingSec,
       );
     } else {
       void cancelAllScheduledNotifications();
