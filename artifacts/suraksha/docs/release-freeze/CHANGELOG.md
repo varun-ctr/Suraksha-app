@@ -26,6 +26,32 @@ changes, schema changes, large refactors, public API renames, non-security-criti
 upgrades, analytics/telemetry schema changes, permission changes — is rejected by default. The
 standing rule: **if it isn't necessary for production readiness, don't change it.**
 
+## Launch Blockers — the only bypass path
+
+A change is a **Launch Blocker** if it fixes something causing any of:
+
+- App crash
+- User cannot authenticate
+- SOS cannot be triggered
+- Journey safety workflow fails
+- Background tracking fails
+- Emergency notifications fail
+- Data loss
+- Security vulnerability (P0/P1)
+- App Store rejection issue
+- Payment/subscription failure
+- Production backend outage
+
+Only a Launch Blocker fix may bypass the normal Release Freeze review-and-wait cycle and land
+immediately. Every other accepted change (categories 3, 6, 7, 9, 10 above when *not* rising to a
+Launch Blocker's severity, plus routine instances of 1/2/5/8) still waits for the next scheduled
+release — being an accepted category is necessary but not sufficient for immediate landing; it
+must also be a Launch Blocker to jump the queue. A change that is neither an accepted category nor
+a Launch Blocker is rejected outright, full stop.
+
+Every Launch Blocker entry below must additionally state **which criterion** it satisfies, so the
+bypass itself stays auditable.
+
 ## Entry format
 
 Each accepted change gets one entry:
@@ -33,6 +59,7 @@ Each accepted change gets one entry:
 ```
 ## YYYY-MM-DD — <short title>
 - **Category**: <one of the 10 above>
+- **Launch Blocker**: Yes (<criterion>) | No — queued for next release
 - **Classification**: Critical | High | Medium | Low
 - **Reason**: why this change is necessary
 - **Risk**: what could go wrong
