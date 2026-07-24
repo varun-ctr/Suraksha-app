@@ -175,11 +175,18 @@ router.post("/sos/alert", async (req: Request, res: Response) => {
       return res.json(result);
     }
 
-    // Send SMS to every contact in parallel
+    // Send SMS to every contact in parallel. Response/cache shape is
+    // intentionally just `{id, success, error?}` — matching AlertResult's
+    // declared type exactly — since the mobile client already holds each
+    // contact's name/phone locally and only matches this response back to
+    // its own list by `id` (see sosAlertService.ts's `statuses.find((x) =>
+    // x.id === r.id)`). Including name/phone here would mean trusted-contact
+    // PII round-trips through this response and then sits in the
+    // sos_idempotency_cache table for no functional reason.
     const results = await Promise.all(
       contacts.map(async (c) => {
         const result = await sendTwilioSms(normalizePhone(c.phone), message);
-        return { id: c.id, name: c.name, phone: c.phone, ...result };
+        return { id: c.id, ...result };
       }),
     );
 
