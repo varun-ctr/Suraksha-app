@@ -86,6 +86,15 @@ export function useSakhiChat() {
     void saveSakhiHistory(messages);
   }, [messages, historyLoaded]);
 
+  // Cancel any pending auto-retry backoff on unmount — without this, leaving
+  // the chat screen mid-retry still let the timeout fire later, run a
+  // network request, and call setState on an unmounted hook instance.
+  useEffect(() => {
+    return () => {
+      if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
+    };
+  }, []);
+
   const clearChat = useCallback(() => {
     generationRef.current++; // invalidate any in-flight request/retry/offline-fallback
     if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }

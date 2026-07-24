@@ -65,6 +65,39 @@ const SIDE_TABS: { name: string; icon: IconName; key: string }[] = [
   { name: "profile", icon: "user", key: "tab.profile" },
 ];
 
+// Hoisted to module scope (not defined inline inside TabLayout's JSX): none
+// of these close over any component-scoped value (theme/language/insets) —
+// `color`/`focused` are supplied fresh by React Navigation's own tab-bar
+// renderer on every call. Defining them inline, as before, gave every one
+// of the 5 tabs a brand-new `tabBarIcon` function identity on every
+// TabLayout render (e.g. a theme or language change), forcing React
+// Navigation to treat every tab's icon as changed even when nothing about
+// it actually did. Module-scope functions have a stable identity for the
+// lifetime of the app, so this cost is now paid exactly zero times instead
+// of once per render.
+function TabIcon({ name, color, focused }: { name: IconName; color: string; focused: boolean }) {
+  return (
+    <View style={{ alignItems: "center", justifyContent: "center" }}>
+      <Icon name={name} size={focused ? 22 : 20} color={color} />
+    </View>
+  );
+}
+const renderHomeIcon = ({ color, focused }: { color: string; focused: boolean }) => (
+  <TabIcon name="home" color={color} focused={focused} />
+);
+const renderMapIcon = ({ color, focused }: { color: string; focused: boolean }) => (
+  <TabIcon name="map" color={color} focused={focused} />
+);
+const renderIncidentIcon = ({ color, focused }: { color: string; focused: boolean }) => (
+  <TabIcon name="flag" color={color} focused={focused} />
+);
+const renderRightsIcon = ({ color, focused }: { color: string; focused: boolean }) => (
+  <TabIcon name="book" color={color} focused={focused} />
+);
+const renderProfileIcon = ({ color, focused }: { color: string; focused: boolean }) => (
+  <TabIcon name="user" color={color} focused={focused} />
+);
+
 export default function TabLayout() {
   const { c } = useTheme();
   const { t } = useI18n();
@@ -105,22 +138,14 @@ export default function TabLayout() {
         name="index"
         options={{
           title: t("tab.home"),
-          tabBarIcon: ({ color, focused }) => (
-            <View style={{ alignItems: "center", justifyContent: "center" }}>
-              <Icon name="home" size={focused ? 22 : 20} color={color} />
-            </View>
-          ),
+          tabBarIcon: renderHomeIcon,
         }}
       />
       <Tabs.Screen
         name="map"
         options={{
           title: t("tab.map"),
-          tabBarIcon: ({ color, focused }) => (
-            <View style={{ alignItems: "center", justifyContent: "center" }}>
-              <Icon name="map" size={focused ? 22 : 20} color={color} />
-            </View>
-          ),
+          tabBarIcon: renderMapIcon,
         }}
       />
       <Tabs.Screen
@@ -140,33 +165,21 @@ export default function TabLayout() {
         name="incident"
         options={{
           title: t("tab.incident"),
-          tabBarIcon: ({ color, focused }) => (
-            <View style={{ alignItems: "center", justifyContent: "center" }}>
-              <Icon name="flag" size={focused ? 22 : 20} color={color} />
-            </View>
-          ),
+          tabBarIcon: renderIncidentIcon,
         }}
       />
       <Tabs.Screen
         name="rights"
         options={{
           title: t("tab.rights"),
-          tabBarIcon: ({ color, focused }) => (
-            <View style={{ alignItems: "center", justifyContent: "center" }}>
-              <Icon name="book" size={focused ? 22 : 20} color={color} />
-            </View>
-          ),
+          tabBarIcon: renderRightsIcon,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: t("tab.profile"),
-          tabBarIcon: ({ color, focused }) => (
-            <View style={{ alignItems: "center", justifyContent: "center" }}>
-              <Icon name="user" size={focused ? 22 : 20} color={color} />
-            </View>
-          ),
+          tabBarIcon: renderProfileIcon,
         }}
       />
     </Tabs>

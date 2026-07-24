@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -145,17 +145,26 @@ export default function MapScreen() {
   }
 
   // ── Native: Google Maps SDK with live GPS + place markers ───────────────────
-  const markers = places.map((p) => ({
-    id: p.id,
-    lat: p.lat,
-    lng: p.lng,
-    name: p.name,
-    address: p.address,
-    pinColor: activeCatDef ? activeCatDef.color(c) : c.primary,
-    onNavigate: () => {
-      void navigateTo(p.lat, p.lng, p.name);
-    },
-  }));
+  // Memoized so NativeMap's markers prop keeps a stable array/object identity
+  // across renders that don't actually change the place list (e.g. the ~5s
+  // GPS-driven camera updates inside NativeMap itself, or any other
+  // unrelated re-render of this screen) — without this, every Marker was
+  // rebuilt with brand-new object/closure identities on every render.
+  const markers = useMemo(
+    () =>
+      places.map((p) => ({
+        id: p.id,
+        lat: p.lat,
+        lng: p.lng,
+        name: p.name,
+        address: p.address,
+        pinColor: activeCatDef ? activeCatDef.color(c) : c.primary,
+        onNavigate: () => {
+          void navigateTo(p.lat, p.lng, p.name);
+        },
+      })),
+    [places, activeCatDef, c],
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>

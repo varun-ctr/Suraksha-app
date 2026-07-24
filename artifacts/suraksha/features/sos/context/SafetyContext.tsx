@@ -149,6 +149,18 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
   // authoritative there, regardless of what this ref says).
   const sosPhaseRef = useRef(sos.phase);
   sosPhaseRef.current = sos.phase;
+  // Always-current coords/address for the dbRetryTimer effect below — kept
+  // as refs (not effect dependencies) specifically so an incoming location
+  // ping (as often as every ~10s during an active SOS) does NOT tear down
+  // and restart the 15s retry interval. Before this, sos.coords/sos.address
+  // sat in that effect's own dependency array, so a fast-moving emergency
+  // could perpetually reset the interval before it ever fired — starving
+  // the one mechanism that's supposed to guarantee the SOS record is never
+  // permanently lost during a network blip.
+  const sosCoordsRef = useRef(sos.coords);
+  sosCoordsRef.current = sos.coords;
+  const sosAddressRef = useRef(sos.address);
+  sosAddressRef.current = sos.address;
 
   // ── Live-tracking helpers ─────────────────────────────────────────
 
@@ -274,6 +286,14 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
   // Automatic retry for a still-unconfirmed SOS event write — network
   // blips, backend timeouts, and Supabase hiccups must never permanently
   // drop the record of a real emergency.
+  //
+  // Deliberately depends only on [sos.phase, sos.eventId, insertOrAdopt] —
+  // NOT on sos.coords/sos.address — so an incoming location ping can never
+  // restart this interval mid-flight (see sosCoordsRef/sosAddressRef above
+  // for why that would otherwise starve the retry indefinitely during a
+  // fast-moving emergency). The interval callback reads the always-current
+  // ref values instead of closing over a stale sos.coords/sos.address from
+  // whichever render started it.
   useEffect(() => {
     if (sos.phase !== "active" || sos.eventId !== null) {
       if (dbRetryTimer.current) { clearInterval(dbRetryTimer.current); dbRetryTimer.current = null; }
@@ -282,9 +302,10 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
     dbRetryTimer.current = setInterval(() => {
       const runId = sosRunIdRef.current;
       const user = firebaseAuth.currentUser;
-      if (!user || !sos.coords || !idempotencyKeyRef.current) return;
+      const coords = sosCoordsRef.current;
+      if (!user || !coords || !idempotencyKeyRef.current) return;
       trackSosEvent("sos_db_retry");
-      void insertOrAdopt(user.uid, sos.coords.lat, sos.coords.lng, sos.address, idempotencyKeyRef.current, true).then((event) => {
+      void insertOrAdopt(user.uid, coords.lat, coords.lng, sosAddressRef.current, idempotencyKeyRef.current, true).then((event) => {
         if (!event || sosRunIdRef.current !== runId) return;
         void updatePendingActivation({ dbEventId: event.id });
         setSos((s) => (sosRunIdRef.current === runId && s.phase !== "idle") ? { ...s, eventId: event.id } : s);
@@ -293,7 +314,7 @@ export function SafetyProvider({ children }: { children: React.ReactNode }) {
     return () => {
       if (dbRetryTimer.current) { clearInterval(dbRetryTimer.current); dbRetryTimer.current = null; }
     };
-  }, [sos.phase, sos.eventId, sos.coords, sos.address, insertOrAdopt]);
+  }, [sos.phase, sos.eventId, insertOrAdopt]);
 
   // ── Alert dispatch (moved from SosBottomSheet — a presentational
   // component must not own the actual emergency-delivery side effect;

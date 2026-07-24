@@ -1,7 +1,6 @@
 import React from "react";
 import {
   ActivityIndicator,
-  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -9,6 +8,7 @@ import {
   View,
   type ViewStyle,
 } from "react-native";
+import { Image } from "expo-image";
 
 import { withAlpha } from "@/shared/theme/colors";
 import { useTheme } from "@/shared/theme/ThemeContext";
@@ -68,6 +68,11 @@ export function Avatar({
 }) {
   const { c } = useTheme();
   if (uri) {
+    // expo-image (not core react-native's Image) gives this — the most
+    // reused image in the app (every contact/profile avatar) — persistent
+    // disk+memory caching, so the same remote avatar URL doesn't get
+    // re-fetched/re-decoded on every remount (e.g. once per second while
+    // SosBottomSheet re-renders during an active SOS).
     return (
       <Image
         source={{ uri }}
@@ -76,6 +81,8 @@ export function Avatar({
           height: size,
           borderRadius: size / 2,
         }}
+        contentFit="cover"
+        cachePolicy="memory-disk"
       />
     );
   }
