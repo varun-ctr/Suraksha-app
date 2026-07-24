@@ -18,7 +18,6 @@ import {
   type User,
   type OAuthCredential,
 } from "firebase/auth";
-import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
 import * as AppleAuthentication from "expo-apple-authentication";
 import * as Crypto from "expo-crypto";
 import { Platform } from "react-native";
@@ -41,19 +40,39 @@ export type AuthResult = {
 };
 
 // ── Google Sign-In ─────────────────────────────────────────────────────────────
+// Lazy-loaded so the native module is never required at bundle-parse time.
+// Expo Go doesn't ship RNGoogleSignin; a top-level import crashes on startup.
 
 let _googleConfigured = false;
 
-function ensureGoogleConfigured(): void {
+async function loadGoogleSignin() {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require("@react-native-google-signin/google-signin") as typeof import("@react-native-google-signin/google-signin");
+  return mod;
+}
+
+async function ensureGoogleConfigured() {
   if (_googleConfigured) return;
+  const { GoogleSignin } = await loadGoogleSignin();
   const webClientId = optionalPublicEnv("EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID");
   GoogleSignin.configure({ webClientId });
   _googleConfigured = true;
 }
 
 export async function signInWithGoogle(): Promise<AuthResult> {
+  let GoogleSignin: (typeof import("@react-native-google-signin/google-signin"))["GoogleSignin"];
+  let statusCodes: (typeof import("@react-native-google-signin/google-signin"))["statusCodes"];
   try {
-    ensureGoogleConfigured();
+    const mod = await loadGoogleSignin();
+    GoogleSignin = mod.GoogleSignin;
+    statusCodes = mod.statusCodes;
+  } catch {
+    // Native module not available (e.g. Expo Go)
+    return { user: null, error: "Google Sign-In is not available in Expo Go. Please use a development build or sign in with email." };
+  }
+
+  try {
+    await ensureGoogleConfigured();
     await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
     await GoogleSignin.signIn();
     const { idToken } = await GoogleSignin.getTokens();
