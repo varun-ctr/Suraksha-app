@@ -69,6 +69,24 @@ export const supabase = new Proxy({} as SupabaseClient, {
 // ── Typed table helpers ───────────────────────────────────────────────────────
 // Prefer these over writing raw `.from("table_name")` in screens.
 
+// Unlike core/network/apiClient.ts's calls to this app's own backend (which
+// already have a bounded timeout via AbortSignal.timeout — see
+// DEFAULT_TIMEOUT_MS there), Supabase's own client had no timeout at all: a
+// degraded connection could leave an emergency-critical call (sos_events,
+// live_sessions, journeys) hanging indefinitely instead of failing fast into
+// the retry/offline-queue paths that already exist for exactly that case.
+// Applied only to the safety-critical tables below — see
+// docs/backend-audit/repository-audit.md for the rationale on why the
+// remaining tables (profiles, community_reports, subscriptions,
+// notification_tokens) are lower-priority follow-ups, not left out by
+// oversight.
+const SUPABASE_TIMEOUT_MS = 10_000;
+
+/** `AbortSignal.timeout()` is constructed fresh per call — a signal can only ever fire once, so a shared instance couldn't be reused across requests. */
+function timeoutSignal(): AbortSignal {
+  return AbortSignal.timeout(SUPABASE_TIMEOUT_MS);
+}
+
 export const db = {
   profiles: {
     select: () =>
@@ -90,17 +108,19 @@ export const db = {
         .from("sos_events")
         .insert({ ...row, user_id: userId })
         .select<"*", SosEventRow>("*")
+        .abortSignal(timeoutSignal())
         .single(),
 
     resolve: (id: string, patch: SosEventUpdate) =>
-      supabase.from("sos_events").update(patch).eq("id", id),
+      supabase.from("sos_events").update(patch).eq("id", id).abortSignal(timeoutSignal()),
 
     listForUser: (userId: string) =>
       supabase
         .from("sos_events")
         .select<"*", SosEventRow>("*")
         .eq("user_id", userId)
-        .order("triggered_at", { ascending: false }),
+        .order("triggered_at", { ascending: false })
+        .abortSignal(timeoutSignal()),
 
     /** Most recent unresolved event at/after `sinceIso` — used to detect a prior insert that actually succeeded before retrying it. */
     findRecentUnresolved: (userId: string, sinceIso: string) =>
@@ -112,6 +132,7 @@ export const db = {
         .gte("triggered_at", sinceIso)
         .order("triggered_at", { ascending: false })
         .limit(1)
+        .abortSignal(timeoutSignal())
         .maybeSingle(),
   },
 
@@ -121,17 +142,19 @@ export const db = {
         .from("journeys")
         .insert({ ...row, user_id: userId })
         .select<"*", JourneyRow>("*")
+        .abortSignal(timeoutSignal())
         .single(),
 
     end: (id: string, patch: JourneyUpdate) =>
-      supabase.from("journeys").update(patch).eq("id", id),
+      supabase.from("journeys").update(patch).eq("id", id).abortSignal(timeoutSignal()),
 
     listForUser: (userId: string) =>
       supabase
         .from("journeys")
         .select<"*", JourneyRow>("*")
         .eq("user_id", userId)
-        .order("started_at", { ascending: false }),
+        .order("started_at", { ascending: false })
+        .abortSignal(timeoutSignal()),
 
     /** Used by journeyRepository's retry loop to check whether a previous, client-generated-id insert actually succeeded before assuming it failed and retrying. */
     getById: (id: string) =>
@@ -139,6 +162,7 @@ export const db = {
         .from("journeys")
         .select<"*", JourneyRow>("*")
         .eq("id", id)
+        .abortSignal(timeoutSignal())
         .maybeSingle(),
   },
 
@@ -213,28 +237,32 @@ export const db = {
         .from("live_sessions")
         .insert({ ...row, user_id: userId })
         .select<"*", LiveSessionRow>("*")
+        .abortSignal(timeoutSignal())
         .single(),
 
     update: (shareId: string, patch: LiveSessionUpdate) =>
-      supabase.from("live_sessions").update(patch).eq("share_id", shareId),
+      supabase.from("live_sessions").update(patch).eq("share_id", shareId).abortSignal(timeoutSignal()),
 
     end: (shareId: string) =>
       supabase
         .from("live_sessions")
         .update({ is_active: false })
-        .eq("share_id", shareId),
+        .eq("share_id", shareId)
+        .abortSignal(timeoutSignal()),
 
     getByShareId: (shareId: string) =>
       supabase
         .from("live_sessions")
         .select<"*", LiveSessionRow>("*")
         .eq("share_id", shareId)
+        .abortSignal(timeoutSignal())
         .single(),
 
     getPublicByShareId: (shareId: string) =>
       supabase
         .rpc("get_live_session", { p_share_id: shareId })
         .returns<LiveSessionPublic[]>()
+        .abortSignal(timeoutSignal())
         .single(),
 
     /** Marks any other still-active sessions for this user inactive — closes zombie sessions a prior crash/kill left behind before a new one starts. */
@@ -243,6 +271,7 @@ export const db = {
         .from("live_sessions")
         .update({ is_active: false })
         .eq("user_id", userId)
-        .eq("is_active", true),
+        .eq("is_active", true)
+        .abortSignal(timeoutSignal()),
   },
 };
