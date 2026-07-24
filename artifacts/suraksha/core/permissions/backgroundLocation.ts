@@ -26,7 +26,6 @@
  * SafetyContext's in-memory `shareIdRef` isn't reachable from here.
  */
 import * as Location from "expo-location";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Needs direct repository access: the background task can run in a headless
 // JS context with no React tree mounted (see file header), so there's no
@@ -37,10 +36,15 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { liveSessionRepository } from "@/repositories/supabase/liveSessionRepository";
 import { logger } from "@/core/logger/logger";
 import { getTaskManager } from "@/core/capabilities/nativeCapabilities";
+import { secureAsyncGet, secureAsyncSet, secureAsyncRemove } from "@/core/storage/secureAsyncStorage";
 import type { GeoPoint } from "@/core/permissions/location";
 
 export const BACKGROUND_LOCATION_TASK = "suraksha-sos-background-location";
-const ACTIVE_SHARE_ID_KEY = "suraksha.sos.activeShareId";
+// Encrypted at rest (see core/storage/secureAsyncStorage.ts) — this share id
+// is what lets whoever holds it look up the live location of an active SOS
+// via get_live_session(); worth the same at-rest protection as the SOS/
+// journey records, even though it's a token rather than raw coordinates.
+export const ACTIVE_SHARE_ID_KEY = "suraksha.sos.activeShareId";
 
 type LocationUpdateListener = (point: GeoPoint) => void;
 let listener: LocationUpdateListener | null = null;
@@ -97,7 +101,7 @@ if (TaskManager) {
 
       let shareId: string | null = null;
       try {
-        shareId = await AsyncStorage.getItem(ACTIVE_SHARE_ID_KEY);
+        shareId = await secureAsyncGet(ACTIVE_SHARE_ID_KEY);
       } catch (e) {
         logger.warn("[backgroundLocation] failed to read active share id", e);
         return;
@@ -150,7 +154,7 @@ export async function startBackgroundLocationTracking(shareId: string): Promise<
   if (!TaskManager) return false; // native module unavailable (Expo Go) — see the guard above
 
   try {
-    await AsyncStorage.setItem(ACTIVE_SHARE_ID_KEY, shareId);
+    await secureAsyncSet(ACTIVE_SHARE_ID_KEY, shareId);
   } catch (e) {
     logger.warn("[backgroundLocation] failed to persist active share id", e);
   }
@@ -183,7 +187,7 @@ export async function startBackgroundLocationTracking(shareId: string): Promise<
 export async function stopBackgroundLocationTracking(): Promise<void> {
   setLocationUpdateListener(null);
   try {
-    await AsyncStorage.removeItem(ACTIVE_SHARE_ID_KEY);
+    await secureAsyncRemove(ACTIVE_SHARE_ID_KEY);
   } catch (e) {
     logger.warn("[backgroundLocation] failed to clear active share id", e);
   }

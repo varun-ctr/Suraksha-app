@@ -2,8 +2,26 @@ import { Router, type IRouter } from "express";
 import { createClient } from "@supabase/supabase-js";
 import { getBearerToken, verifyFirebaseToken } from "../lib/firebaseAdmin";
 import { optionalEnv } from "../lib/env";
+import { checkRateLimit } from "../lib/rateLimit";
+import { detectSpamSignals } from "../lib/spamDetection";
+import { captureAlert } from "../lib/errorReporting";
 
 const router: IRouter = Router();
+
+// Mirrors /sos/alert's rate-limit shape (see sos-alert.ts) — a genuine
+// user submits at most a handful of incident reports per hour; 10/hour
+// gives real, repeated legitimate use (e.g. reporting several unrelated
+// hazards while out) comfortable headroom without leaving the shared
+// community map open to unbounded spam from one compromised/malicious
+// account (see docs/security-audit/08-Abuse-Prevention.md).
+const RATE_LIMIT = { windowSeconds: 60 * 60, limit: 10 };
+
+// Client-retry-safety / duplicate-prevention window: a retried POST (e.g.
+// after a client-side timeout whose insert actually succeeded server-side)
+// within this window, from the same user, with the same type/coordinates,
+// returns the existing report instead of inserting a visually-identical
+// second one onto the shared map.
+const DUPLICATE_WINDOW_MS = 60 * 1000;
 
 function getSupabaseClient() {
   const url = optionalEnv("SUPABASE_URL");
@@ -28,6 +46,13 @@ router.post("/community-reports", async (req, res) => {
     return;
   }
 
+  const rate = await checkRateLimit("community_report", user.uid, RATE_LIMIT);
+  if (!rate.allowed) {
+    req.log.warn({ uid: user.uid, count: rate.count }, "Community report rate limit exceeded");
+    res.status(429).json({ error: "rate_limited", message: "Too many reports submitted — please wait and try again." });
+    return;
+  }
+
   const { type, lat, lng, address, description, photo_url } = req.body as {
     type?: string;
     lat?: number;
@@ -44,6 +69,40 @@ router.post("/community-reports", async (req, res) => {
 
   try {
     const supa = getSupabaseClient();
+
+    // Client-retry-safety / duplicate-prevention: see DUPLICATE_WINDOW_MS
+    // above. Checked before insert so a retried request adopts the prior
+    // successful write instead of creating a second, visually-identical
+    // report on the shared community map.
+    const since = new Date(Date.now() - DUPLICATE_WINDOW_MS).toISOString();
+    const { data: existing } = await supa
+      .from("community_reports")
+      .select("*")
+      .eq("user_id", user.uid)
+      .eq("type", type)
+      .eq("lat", lat)
+      .eq("lng", lng)
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existing) {
+      res.status(200).json(existing);
+      return;
+    }
+
+    // Spam-detection hook — see lib/spamDetection.ts for why this is
+    // currently a deliberate no-op; logged (not blocked) so a future real
+    // implementation has a place to plug in without a route change.
+    const spamSignals = detectSpamSignals({ type, description: description ?? null });
+    if (spamSignals.length > 0) {
+      captureAlert("community_report_spam_signal", {
+        uid: user.uid,
+        signals: spamSignals.map((s) => s.reason),
+      });
+    }
+
     const { data, error } = await supa
       .from("community_reports")
       .insert({

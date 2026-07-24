@@ -21,12 +21,18 @@
  * terminal outcome is reached; it is not a history log (see
  * docs/journey-audit/technical-debt-report.md TD-5 for why a "past
  * journeys" feature is out of scope here).
+ *
+ * Encrypted at rest (AES-256-CBC + HMAC-SHA256, the same envelope
+ * protecting the Firebase session — see core/storage/cryptoBox.ts), since
+ * this is live safety-state (an active check-in timer, its escalation
+ * outcome) for the duration of a journey. See
+ * core/storage/secureAsyncStorage.ts for the encrypt/decrypt wrapper.
  */
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { logger } from "@/core/logger/logger";
+import { secureAsyncGet, secureAsyncSet, secureAsyncRemove } from "@/core/storage/secureAsyncStorage";
 import type { JourneyOutcome, JourneyEscalationReason } from "@/domain/entities/JourneyOutcome";
 
-const ACTIVE_JOURNEY_KEY = "suraksha.journey.active.v2";
+export const ACTIVE_JOURNEY_KEY = "suraksha.journey.active.v2";
 
 export interface PersistedJourney {
   /** Client-generated UUID, stable across app restarts — also the backend row's primary key. */
@@ -52,7 +58,7 @@ export interface PersistedJourney {
 
 export async function saveActiveJourney(journey: PersistedJourney): Promise<void> {
   try {
-    await AsyncStorage.setItem(ACTIVE_JOURNEY_KEY, JSON.stringify(journey));
+    await secureAsyncSet(ACTIVE_JOURNEY_KEY, JSON.stringify(journey));
   } catch (e) {
     logger.warn("[journeyPersistence] failed to persist active journey", e);
   }
@@ -60,7 +66,7 @@ export async function saveActiveJourney(journey: PersistedJourney): Promise<void
 
 export async function getActiveJourney(): Promise<PersistedJourney | null> {
   try {
-    const raw = await AsyncStorage.getItem(ACTIVE_JOURNEY_KEY);
+    const raw = await secureAsyncGet(ACTIVE_JOURNEY_KEY);
     return raw ? (JSON.parse(raw) as PersistedJourney) : null;
   } catch (e) {
     logger.warn("[journeyPersistence] failed to read active journey", e);
@@ -77,7 +83,7 @@ export async function updateActiveJourney(patch: Partial<PersistedJourney>): Pro
 
 export async function clearActiveJourney(): Promise<void> {
   try {
-    await AsyncStorage.removeItem(ACTIVE_JOURNEY_KEY);
+    await secureAsyncRemove(ACTIVE_JOURNEY_KEY);
   } catch (e) {
     logger.warn("[journeyPersistence] failed to clear active journey", e);
   }

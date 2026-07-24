@@ -51,6 +51,94 @@ const config: ExpoConfig = {
     // expo-image-picker / expo-contacts plugin config below, which writes
     // them into Info.plist at prebuild time — kept in one place so the
     // wording can't drift between two config sites.
+    //
+    // Apple Privacy Manifest (PrivacyInfo.xcprivacy) — Expo generates and
+    // bundles this file at prebuild/build time from the declarations below
+    // (supported since Expo SDK 50+; no native ios/ directory needed). See
+    // docs/security-hardening/03-Privacy-Manifest.md for the full
+    // per-declaration rationale.
+    privacyManifests: {
+      NSPrivacyTracking: false,
+      NSPrivacyTrackingDomains: [],
+      NSPrivacyCollectedDataTypes: [
+        {
+          NSPrivacyCollectedDataType: "NSPrivacyCollectedDataTypePreciseLocation",
+          NSPrivacyCollectedDataTypeLinked: true,
+          NSPrivacyCollectedDataTypeTracking: false,
+          NSPrivacyCollectedDataTypePurposes: ["NSPrivacyCollectedDataTypePurposeAppFunctionality"],
+        },
+        {
+          NSPrivacyCollectedDataType: "NSPrivacyCollectedDataTypePhoneNumber",
+          NSPrivacyCollectedDataTypeLinked: true,
+          NSPrivacyCollectedDataTypeTracking: false,
+          NSPrivacyCollectedDataTypePurposes: ["NSPrivacyCollectedDataTypePurposeAppFunctionality"],
+        },
+        {
+          NSPrivacyCollectedDataType: "NSPrivacyCollectedDataTypeEmailAddress",
+          NSPrivacyCollectedDataTypeLinked: true,
+          NSPrivacyCollectedDataTypeTracking: false,
+          NSPrivacyCollectedDataTypePurposes: ["NSPrivacyCollectedDataTypePurposeAppFunctionality"],
+        },
+        {
+          NSPrivacyCollectedDataType: "NSPrivacyCollectedDataTypePhotosorVideos",
+          NSPrivacyCollectedDataTypeLinked: true,
+          NSPrivacyCollectedDataTypeTracking: false,
+          NSPrivacyCollectedDataTypePurposes: ["NSPrivacyCollectedDataTypePurposeAppFunctionality"],
+        },
+        {
+          NSPrivacyCollectedDataType: "NSPrivacyCollectedDataTypeOtherUserContent",
+          NSPrivacyCollectedDataTypeLinked: true,
+          NSPrivacyCollectedDataTypeTracking: false,
+          NSPrivacyCollectedDataTypePurposes: ["NSPrivacyCollectedDataTypePurposeAppFunctionality"],
+        },
+        {
+          NSPrivacyCollectedDataType: "NSPrivacyCollectedDataTypeUserID",
+          NSPrivacyCollectedDataTypeLinked: true,
+          NSPrivacyCollectedDataTypeTracking: false,
+          NSPrivacyCollectedDataTypePurposes: ["NSPrivacyCollectedDataTypePurposeAppFunctionality"],
+        },
+        {
+          // Sentry crash reports (see core/analytics/crashReporting.ts) —
+          // not linked to a user identity: this app never calls
+          // Sentry.setUser()/setTag() with any identifying value.
+          NSPrivacyCollectedDataType: "NSPrivacyCollectedDataTypeCrashData",
+          NSPrivacyCollectedDataTypeLinked: false,
+          NSPrivacyCollectedDataTypeTracking: false,
+          NSPrivacyCollectedDataTypePurposes: ["NSPrivacyCollectedDataTypePurposeAppFunctionality"],
+        },
+      ],
+      // "Required Reason" API categories — declared for the APIs this app's
+      // own code and its bundled SDKs (Firebase, Sentry, AsyncStorage,
+      // expo-secure-store, image picker) are known to touch. Reason codes
+      // are Apple's own standard, publicly documented codes for exactly
+      // this kind of Expo/React-Native + Firebase + Sentry app.
+      NSPrivacyAccessedAPITypes: [
+        {
+          // AsyncStorage / expo-secure-store / Firebase / Sentry all read
+          // or write this app's own UserDefaults-backed storage.
+          NSPrivacyAccessedAPIType: "NSPrivacyAccessedAPICategoryUserDefaults",
+          NSPrivacyAccessedAPITypeReasons: ["CA92.1"],
+        },
+        {
+          // Image picker / file-backed caches read file metadata inside
+          // the app's own container.
+          NSPrivacyAccessedAPIType: "NSPrivacyAccessedAPICategoryFileTimestamp",
+          NSPrivacyAccessedAPITypeReasons: ["0A2A.1"],
+        },
+        {
+          // Sentry performance/crash timing and Firebase Analytics both
+          // measure elapsed time within the app.
+          NSPrivacyAccessedAPIType: "NSPrivacyAccessedAPICategorySystemBootTime",
+          NSPrivacyAccessedAPITypeReasons: ["35F9.1"],
+        },
+        {
+          // Photo/incident-report upload flows check available space
+          // before writing a temporary file.
+          NSPrivacyAccessedAPIType: "NSPrivacyAccessedAPICategoryDiskSpace",
+          NSPrivacyAccessedAPITypeReasons: ["85F4.1"],
+        },
+      ],
+    },
   },
   android: {
     package: "com.sakhisuraksha.app",
@@ -136,11 +224,9 @@ const config: ExpoConfig = {
       },
     ],
     "expo-apple-authentication",
-    // Not yet invoked anywhere in the app (see core/permissions/biometrics.ts
-    // — the capability is ready but not wired into a login/unlock flow yet).
-    // Declared now so NSFaceIDUsageDescription is already in place in
-    // Info.plist for when it is, rather than needing a config change at the
-    // same time as the first feature that actually calls authenticateAsync().
+    // Powers the opt-in App Lock feature (default off — see
+    // features/security/hooks/useAppLock.ts and AppContext's
+    // settings.appLockEnabled), which calls authenticateAsync() on iOS.
     [
       "expo-local-authentication",
       {

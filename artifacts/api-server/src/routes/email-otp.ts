@@ -132,8 +132,34 @@ router.post("/auth/email-otp/verify", async (req: Request, res: Response) => {
     return;
   }
 
-  // Correct code — one-time use, invalidate immediately.
-  await supabase.from("email_otp_codes").delete().eq("email", email);
+  // Correct code — consume it atomically before doing anything else.
+  // Replay protection: the earlier SELECT above is not atomic with this
+  // DELETE, so two concurrent verify requests carrying the same correct
+  // code could otherwise both pass the hash check and both mint a Firebase
+  // custom token for one code. Conditioning the DELETE on the exact
+  // code_hash we just checked, and requiring it to actually remove a row
+  // before proceeding, means only the first request to reach this point
+  // succeeds — a concurrent second request (or a replay after the code was
+  // already consumed) finds nothing left to delete and is rejected exactly
+  // like an expired/invalid code, with no additional round trip needed.
+  const { data: deleted, error: deleteError } = await supabase
+    .from("email_otp_codes")
+    .delete()
+    .eq("email", email)
+    .eq("code_hash", row.code_hash)
+    .select("email");
+
+  if (deleteError) {
+    logger.error({ err: deleteError, email: maskEmail(email) }, "Email OTP consume failed");
+    res.status(500).json({ error: "server", message: "Could not verify code. Please try again." });
+    return;
+  }
+  if (!deleted || deleted.length === 0) {
+    // Already consumed by a concurrent request — never allow a code to be
+    // used twice.
+    res.status(400).json({ error: "invalid_or_expired", message: "That code is invalid or has expired." });
+    return;
+  }
 
   try {
     const uid = await getOrCreateUserByEmail(email);

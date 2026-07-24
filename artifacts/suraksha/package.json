@@ -9,7 +9,7 @@
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
-    "test": "node --test --experimental-strip-types \"shared/utils/__tests__/**/*.test.ts\" \"features/sos/utils/__tests__/**/*.test.ts\" \"features/sos/services/__tests__/**/*.test.ts\" \"features/community/utils/__tests__/**/*.test.ts\" \"features/profile/context/__tests__/**/*.test.ts\" \"core/storage/__tests__/**/*.test.ts\" \"core/capabilities/__tests__/**/*.test.ts\" \"domain/**/__tests__/**/*.test.ts\" \"repositories/**/__tests__/**/*.test.ts\"",
+    "test": "node --test --experimental-strip-types \"shared/utils/__tests__/**/*.test.ts\" \"features/sos/utils/__tests__/**/*.test.ts\" \"features/sos/services/__tests__/**/*.test.ts\" \"features/community/utils/__tests__/**/*.test.ts\" \"features/profile/context/__tests__/**/*.test.ts\" \"core/storage/__tests__/**/*.test.ts\" \"core/capabilities/__tests__/**/*.test.ts\" \"core/analytics/__tests__/**/*.test.ts\" \"domain/**/__tests__/**/*.test.ts\" \"repositories/**/__tests__/**/*.test.ts\"",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "prebuild:android": "expo prebuild --platform android --clean"
